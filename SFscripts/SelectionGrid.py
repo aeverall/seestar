@@ -46,6 +46,9 @@ import re
 import dill
 import pickle
 
+import cProfile
+import pstats
+
 import sys, os
 os.path.exists("../../Project/Milky/FitGalaxyModels/")
 sys.path.append("../FitGalMods/")
@@ -112,51 +115,56 @@ class FieldInterpolator():
         
         self.testbool=testbool
 
-        data_path = '../Data/'
 
+        data_path = '../SFdata'
+        tmass_path = "/media/andy/37E3-0F91/2MASS"
 
         # RAVE column headers and file names:
         if survey=='RAVE':
+            rave_path = data_path + "/RAVE"
+
             star_coords = ['FieldName', 'RA_TGAS', 'DE_TGAS', 'Jmag_2MASS', 'Kmag_2MASS', 'Hmag_2MASS']
-            star_path = '../Data/RAVE/RAVE_wPlateIDs.csv'
+            star_path = rave_path + '/RAVE_wPlateIDs.csv'
             field_coords = (['RAVE_FIELD', 'RAdeg', 'DEdeg'], 'Equatorial')
-            field_path = '../Data/RAVE/RAVE_FIELDS_wFieldIDs.csv'
+            field_path = rave_path + '/RAVE_FIELDS_wFieldIDs.csv'
             self.tmass_coords = ['RA', 'Dec', 'j', 'h', 'k']
-            #tmass_path = '../Data/2MASS/RAVE-2MASS_sqsets/RAVEfield3_'
-            tmass_path = '/media/andy/37E3-0F91/2MASS/RAVE-2MASS_fieldbyfield_29-11/RAVEfield_'
+
+            ravetmass_path = tmass_path + '/RAVE-2MASS_fieldbyfield_29-11/RAVEfield_'
 
             SA = 28.3
-            tmass_pickle = '../Data/RAVE/2massdata_RAVEfields.pickle'
-            survey_pickle = '../Data/RAVE/surveydata_RAVEfields.pickle'
-            sf_pickle = '../Data/RAVE/sf_RAVEfields.pickle'
+            tmass_pickle = rave_path + '/2massdata_RAVEfields.pickle'
+            survey_pickle = rave_path + '/surveydata_RAVEfields.pickle'
+            sf_pickle = rave_path + '/sf_RAVEfields.pickle'
             self.tmasstag = '.csv'
             self.fieldlabel_type = str
 
             if testbool:
-                tmass_pickle = '../Data/RAVE/2massdata_RAVEfields_test.pickle'
-                survey_pickle = '../Data/RAVE/surveydata_RAVEfields_test.pickle'
-                sf_pickle = '../Data/RAVE/sf_RAVEfields_test.pickle'
+                tmass_pickle = rave_path + '/2massdata_RAVEfields_test.pickle'
+                survey_pickle = rave_path + '/surveydata_RAVEfields_test.pickle'
+                sf_pickle = rave_path + '/sf_RAVEfields_test.pickle'
 
         # Apogee column headers and file names:
         if survey=='Apogee':
+            apg_path = data_path + "/Apogee"
+
             star_coords = ['# location_id', 'ra', 'dec', 'j', 'k', 'h']
             field_coords = (['FieldName', 'RA', 'Dec'], 'Equatorial')
-            star_path = '../Data/Apogee/TGAS_APOGEE_supp_keplercannon_masses_ages.csv'
-            field_path = '../Data/Apogee/apogeetgasdr14_fieldinfo.csv'
+            star_path = apg_path + '/TGAS_APOGEE_supp_keplercannon_masses_ages.csv'
+            field_path = apg_path + '/apogeetgasdr14_fieldinfo.csv'
             self.tmass_coords = ['RA', 'Dec', 'j', 'h', 'k']
-            #tmass_path = '../Data/Apogee/apg2mass/'
-            tmass_path = '/media/andy/37E3-0F91/2MASS/Apogee-2MASS/APOGEEfield_'
+            
+            apgtmass_path = tmass_path + '/Apogee-2MASS/APOGEEfield_'
             self.tmasstag = '.csv'
 
             SA = 7
-            tmass_pickle = '../Data/Apogee/2massdata_apogeeFields_test.pickle'
-            survey_pickle = '../Data/Apogee/surveydata_apogeeFields_test.pickle'
-            sf_pickle = '../Data/Apogee/sf_apogeefields.pickle'
+            tmass_pickle = apg_path + '/2massdata_apogeeFields_test.pickle'
+            survey_pickle = apg_path + '/surveydata_apogeeFields_test.pickle'
+            sf_pickle = apg_path + '/sf_apogeefields.pickle'
 
             self.fieldlabel_type = float
 
         #iso_pickle = "../Data/isochrone_distributions.pickle"
-        iso_pickle = "../Data/Isochrones/isochrone_distributions_resampled.pickle"
+        iso_pickle = data_path + "/Isochrones/isochrone_distributions_resampled.pickle"
         
         self.pointings = self.ImportDataframe(field_path, field_coords[0], 
                                              data_source='Fields', 

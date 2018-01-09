@@ -1,15 +1,15 @@
-GitHub account:
+## GitHub account:
 
 - Include data for RAVE-TGAS so that selection function can be run.
 - Create an example running code script.
 - Include Plate selectors for 2MASS/Vista data.
 - Fix scripts so that the github account is running.
 
-Local:
+## Local:
 
 - Create local ipynb which tests the operation of the code.
 
-Code improvements:
+## Code improvements:
 
 - Generalise so that both 2MASS and Vista are included in the survey.
 - Create point distributions so that Poisson noise factors are minimised.
