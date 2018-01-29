@@ -45,6 +45,7 @@ from itertools import product
 import re
 import dill
 import pickle
+import multiprocessing
 
 import cProfile
 import pstats
@@ -65,6 +66,7 @@ from ArrayMechanics import *
 from AngleDisks import *
 from PlotCoordinates import *
 from DataImport import *
+import ComputerOps
 
 # Cleaning up:
 # Recomment iterateAll in doc string
@@ -129,7 +131,7 @@ class FieldInterpolator():
             field_path = rave_path + '/RAVE_FIELDS_wFieldIDs.csv'
             self.tmass_coords = ['RA', 'Dec', 'j', 'h', 'k']
 
-            ravetmass_path = tmass_path + '/RAVE-2MASS_fieldbyfield_29-11/RAVEfield_'
+            tmass_path = tmass_path + '/RAVE-2MASS_fieldbyfield_29-11/RAVEfield_'
 
             SA = 28.3
             tmass_pickle = rave_path + '/2massdata_RAVEfields.pickle'
@@ -153,7 +155,7 @@ class FieldInterpolator():
             field_path = apg_path + '/apogeetgasdr14_fieldinfo.csv'
             self.tmass_coords = ['RA', 'Dec', 'j', 'h', 'k']
             
-            apgtmass_path = tmass_path + '/Apogee-2MASS/APOGEEfield_'
+            tmass_path = tmass_path + '/Apogee-2MASS/APOGEEfield_'
             self.tmasstag = '.csv'
 
             SA = 7
@@ -164,7 +166,7 @@ class FieldInterpolator():
             self.fieldlabel_type = float
 
         #iso_pickle = "../Data/isochrone_distributions.pickle"
-        iso_pickle = data_path + "/Isochrones/isochrone_distributions_resampled.pickle"
+        iso_pickle = data_path + "/evoTracks/isochrone_distributions_resampled.pickle"
         
         self.pointings = self.ImportDataframe(field_path, field_coords[0], 
                                              data_source='Fields', 
@@ -184,7 +186,7 @@ class FieldInterpolator():
         #self.pointings=self.pointings[11:14]
         print(len(self.pointings))
         print(self.pointings[['RA','Dec','l','b','half_opening']])
-        ############self.pointings = self.pointings.iloc[:15]
+        self.pointings = self.pointings.iloc[:200]
         
         if surveysf_exists==False:
 
@@ -424,8 +426,100 @@ class FieldInterpolator():
             #Save Field data in the class variable
             return data
             
-
     def iterateAllFields(self, tmass_path):
+
+        '''
+        iterateAllFields - Iterates over the list of fields and executes
+                           iterateField for each individual field.
+                         - Includes multiprocessing to improve efficiency.
+
+        Parameters
+        ----------
+            tmass_path - string
+                    - Path to the file containing tmass plate files for 
+
+        **kwargs
+        --------
+
+
+        Returns
+        -------
+
+
+        '''
+
+        # Create processor pools for multiprocessing
+        nCores = multiprocessing.cpu_count()
+        pool = multiprocessing.Pool( nCores )
+
+        # List of fields in pointings database
+        field_list = self.pointings.fieldID.values.tolist()
+
+        # Locations for storage of solutions
+        tmass_interp= {}
+        data_interp = {}
+
+        Nfields = 0
+
+        ## Write argument list
+        #tasks = [(tmass_path, field) for field in field_list]
+
+        # Enable multiprocessing to pickle bound methods in class
+        #ComputerOps.pickleBoundMethods()
+        def _pickle_method(method):
+            func_name = method.im_func.__name__
+            obj = method.im_self
+            cls = method.im_class
+            if func_name.startswith('__') and not func_name.endswith('__'): #deal with mangled names
+                cls_name = cls.__name__.lstrip('_')
+                func_name = '_' + cls_name + func_name
+            return _unpickle_method, (func_name, obj, cls)
+
+        def _unpickle_method(func_name, obj, cls):
+            for cls in cls.__mro__:
+                try:
+                    func = cls.__dict__[func_name]
+                except KeyError:
+                    pass
+                else:
+                    break
+            return func.__get__(obj, cls)
+
+        import copy_reg
+        import types
+        copy_reg.pickle(types.MethodType, _pickle_method, _unpickle_method)
+
+        # Build results into a full list of multiprocessing instances
+        results = []
+        for field in field_list:
+            results.append(pool.apply_async( self.iterateField, args=(tmass_path, field)))
+        print( "Successfully did the pickle bit")
+
+
+        """tupleofinterps= pool.map( self.iterateField, tasks)
+
+        for interps in tupleofinterps:
+            tmass_interp[field], data_interp[field] = interps
+            # Print out progress at every 100 completions
+            Nfields += 1
+            if Nfields % 100 == 0:
+                print('Number of fields interpolated: '+str(Nfields))
+        """
+
+        for r in results:
+            print(r.get())
+            print(type(r.get()))
+            tmass_fieldinterp, data_fieldinterp, field = r.get()
+            tmass_interp[field] = tmass_fieldinterp
+            data_interp[field] = data_fieldinterp
+
+        # Exit the pools as they won't be used again
+        pool.close()
+        pool.join()
+
+        return tmass_interp, data_interp
+
+    def iterateField(self, tmass_path, field):
 
         '''
         iterateTmassFields- Iterates over each field file of 2MASS star data and 
@@ -450,93 +544,84 @@ class FieldInterpolator():
         First use DataImport.reformatTmassFieldFiles to put files into correct format
 
         '''
-
-        # List of fields in pointings database
-        field_list = self.pointings.fieldID.values.tolist()
-
-        tmass_interp= {}
-        data_interp = {}
         
         database_coords = ['RA','DEC','J','K','H']
         df_coords = ['RA','Dec','Jmag','Kmag','Hmag']
-        
-        for field in field_list:
+
             
-            # Import 2MASS data and rename magnitude columns
-            tmass_points = pd.read_csv(tmass_path+str(field)+self.tmasstag)
-            coords = ['Jmag', 'Hmag', 'Kmag']
-            tmass_points=tmass_points.rename(index=str, 
-                                             columns=dict(zip(self.tmass_coords[2:5], coords)))
-            tmass_points['Colour'] = tmass_points.Jmag - tmass_points.Kmag
+        # Import 2MASS data and rename magnitude columns
+        tmass_points = pd.read_csv(tmass_path+str(field)+self.tmasstag)
+        coords = ['Jmag', 'Hmag', 'Kmag']
+        tmass_points=tmass_points.rename(index=str, 
+                                         columns=dict(zip(self.tmass_coords[2:5], coords)))
+        tmass_points['Colour'] = tmass_points.Jmag - tmass_points.Kmag
 
-            # Select preferred survey stars
-            survey_points = self.stars[self.stars.fieldID == field]
+        # Select preferred survey stars
+        survey_points = self.stars[self.stars.fieldID == field]
 
-            # Only create an interpolant if there are any points in the region
-            if len(survey_points)>0:
-                # Range of colours and magnitudes
-                deltamag = (np.max(tmass_points.Hmag)-np.min(tmass_points.Hmag))/np.sqrt(len(tmass_points))
-                deltacol = (np.max(tmass_points.Colour)-np.min(tmass_points.Colour))/np.sqrt(len(tmass_points))
+        # Only create an interpolant if there are any points in the region
+        if len(survey_points)>0:
+            # Range of colours and magnitudes
+            deltamag = (np.max(tmass_points.Hmag)-np.min(tmass_points.Hmag))/np.sqrt(len(tmass_points))
+            deltacol = (np.max(tmass_points.Colour)-np.min(tmass_points.Colour))/np.sqrt(len(tmass_points))
 
-                mag_min, mag_max = (np.min(survey_points.Hmag) - deltamag/2, np.max(survey_points.Hmag) + deltamag/2)
-                col_min, col_max = (np.min(survey_points.Colour) - deltacol/2, np.max(survey_points.Colour) + deltacol/2)
+            mag_min, mag_max = (np.min(survey_points.Hmag) - deltamag/2, np.max(survey_points.Hmag) + deltamag/2)
+            col_min, col_max = (np.min(survey_points.Colour) - deltacol/2, np.max(survey_points.Colour) + deltacol/2)
 
-                # N_tmass = len(tmass_points)
-                # Minimum of 3 grid boundaries in order to create a grid
-                #Nside_grid = max(int(np.ceil(np.sqrt(N_tmass)) + 1), 3)
-                # Set 6 grid boundaries in the interests of memory preservation
-                Nside = int(np.sqrt(len(survey_points)/2))
-                survey_Nside = np.max((Nside, 8))
+            # N_tmass = len(tmass_points)
+            # Minimum of 3 grid boundaries in order to create a grid
+            #Nside_grid = max(int(np.ceil(np.sqrt(N_tmass)) + 1), 3)
+            # Set 6 grid boundaries in the interests of memory preservation
+            Nside = int(np.sqrt(len(survey_points)/2))
+            survey_Nside = np.max((Nside, 8))
 
-                # Add another grid square width to the gridsize
-                extra_mag = (mag_max-mag_min)/(survey_Nside-2)
-                extra_col = (col_max-col_min)/(survey_Nside-2)
-                mag_max += extra_mag
-                mag_min -= extra_mag
-                col_max += extra_col
-                col_min -= extra_col
+            # Add another grid square width to the gridsize
+            extra_mag = (mag_max-mag_min)/(survey_Nside-2)
+            extra_col = (col_max-col_min)/(survey_Nside-2)
+            mag_max += extra_mag
+            mag_min -= extra_mag
+            col_max += extra_col
+            col_min -= extra_col
 
-                # Number of grid boundaries
-                tmass_points = tmass_points[(tmass_points.Hmag > mag_min)&\
-                                            (tmass_points.Hmag < mag_max)&\
-                                            (tmass_points.Colour > col_min)&\
-                                            (tmass_points.Colour < col_max)]
-                Nside = int(np.sqrt(len(tmass_points)/2))
-                tmass_Nside = np.max((Nside, 10))
-                tmass_Nside = 8
-                survey_Nside = 8
-                print(tmass_Nside, survey_Nside)
+            # Number of grid boundaries
+            tmass_points = tmass_points[(tmass_points.Hmag > mag_min)&\
+                                        (tmass_points.Hmag < mag_max)&\
+                                        (tmass_points.Colour > col_min)&\
+                                        (tmass_points.Colour < col_max)]
+            Nside = int(np.sqrt(len(tmass_points)/2))
+            tmass_Nside = np.max((Nside, 10))
+            tmass_Nside = 8
+            survey_Nside = 8
+            #print(tmass_Nside, survey_Nside)
 
-                # Interpolate for 2MASS data
-                tmass_interpolant, tmass_gridarea, tmass_magrange, tmass_colrange = self.CreateInterpolant(tmass_points, tmass_Nside,
-                                                                                                     (mag_min, mag_max), (col_min, col_max),
-                                                                                                     range_limited=True)
-                # Interpolate for survey data
-                survey_interpolant, survey_gridarea, survey_magrange, survey_colrange = self.CreateInterpolant(survey_points, survey_Nside,
-                                                                                                              (mag_min, mag_max), (col_min, col_max))
+            # Interpolate for 2MASS data
+            tmass_interpolant, tmass_gridarea, tmass_magrange, tmass_colrange = self.CreateInterpolant(tmass_points, tmass_Nside,
+                                                                                                 (mag_min, mag_max), (col_min, col_max),
+                                                                                                 range_limited=True)
+            # Interpolate for survey data
+            survey_interpolant, survey_gridarea, survey_magrange, survey_colrange = self.CreateInterpolant(survey_points, survey_Nside,
+                                                                                                          (mag_min, mag_max), (col_min, col_max))
 
-                # mag_range, col_range are now the maximum and minimum values of grid centres used in the RGI.
-                tmass_interp[field] = {'interp': tmass_interpolant,
-                                       'grid_area': tmass_gridarea,
-                                       'mag_range': tmass_magrange,
-                                       'col_range': tmass_colrange,
-                                       'Nside_grid': tmass_Nside}
-                # mag_range, col_range are now the maximum and minimum values of grid centres used in the RGI.
-                data_interp[field] = {'interp': survey_interpolant,
-                                       'grid_area': survey_gridarea,
-                                       'mag_range': survey_magrange,
-                                       'col_range': survey_colrange,
-                                       'Nside_grid': survey_Nside,
-                                       'grid_points': True}
+            # mag_range, col_range are now the maximum and minimum values of grid centres used in the RGI.
+            tmass_interp_field = {'interp': tmass_interpolant,
+                                   'grid_area': tmass_gridarea,
+                                   'mag_range': tmass_magrange,
+                                   'col_range': tmass_colrange,
+                                   'Nside_grid': tmass_Nside}
+            # mag_range, col_range are now the maximum and minimum values of grid centres used in the RGI.
+            data_interp_field = {'interp': survey_interpolant,
+                                   'grid_area': survey_gridarea,
+                                   'mag_range': survey_magrange,
+                                   'col_range': survey_colrange,
+                                   'Nside_grid': survey_Nside,
+                                   'grid_points': True}
 
-                if (len(tmass_interp))%100 == 0: 
-                    print('Number of fields interpolated: '+str(len(tmass_interp)))
-
-            else:
-                # There are no stars on the field plate
-                data_interp[field] = {'grid_points': False}
+        else:
+            # There are no stars on the field plate
+            data_interp_field = {'grid_points': False}
+            tmass_interp_field = None
             
-        return tmass_interp, data_interp
+        return tmass_interp_field, data_interp_field, field
 
     def CreateInterpolant(self, 
                           points, Nside_grid,
