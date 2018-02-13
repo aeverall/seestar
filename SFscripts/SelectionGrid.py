@@ -1,6 +1,6 @@
 '''
 SelectionGrid - Contains tools for creating a selection function for a given
-                datasource which uses plate based obsevation techniques
+                spectroscopic source which uses plate based obsevation techniques
 
 Classes
 -------
@@ -42,21 +42,15 @@ DataImport
 import numpy as np
 import pandas as pd
 from itertools import product
-import re
-import dill
-import pickle
-import multiprocessing
-
-import cProfile
-import pstats
-
+import re, dill, pickle, multiprocessing
+import cProfile, pstats
 import sys, os
-os.path.exists("../../Project/Milky/FitGalaxyModels/")
-sys.path.append("../FitGalMods/")
 
 from matplotlib import pyplot as plt
 import matplotlib
 import matplotlib.gridspec as gridspec
+from matplotlib.colors import LogNorm
+from matplotlib.ticker import LogFormatter
 
 from scipy.interpolate import RegularGridInterpolator as RGI
 
@@ -67,12 +61,8 @@ from AngleDisks import *
 from PlotCoordinates import *
 from DataImport import *
 import ComputerOps
+import StatisticalModels
 
-# Cleaning up:
-# Recomment iterateAll in doc string
-# Delete iterateTmass and iterateSurvey class functions
-# Comment an explanation for how grid regions and sizes are decided
-# Deal with the face that grid[grid==np.inf] = 0.0 is destroying our results
 
 
 class FieldInterpolator():
@@ -80,6 +70,10 @@ class FieldInterpolator():
     '''
     FieldInterpolants - Class for building a dictionary of interpolants for each of the survey Fields
                         The interpolants are used for creating Field selection functions
+
+    Parameters
+    ----------
+        pickleFile - str - path to pickled instance of class with file names and coordinate lists
 
     Functions
     ---------
@@ -110,147 +104,109 @@ class FieldInterpolator():
             print(string + ': ')
             print(object)
     
-    def __init__(self, survey = 'RAVE',
+    def __init__(self, pickleFile, survey = 'RAVE',
                  surveysf_exists = True,
                  ColMagSF_exists = True,
                  testbool = False, testfield = ''):
         
+        # If true, only run selection function for a couple of fields
         self.testbool=testbool
 
+        # Change message to check that SF is running for updated version
+        print("Latest Version")
 
-        data_path = '../SFdata'
-        tmass_path = "/media/andy/37E3-0F91/2MASS"
+        # Get file names and coordinates from pickled file
+        with open(pickleFile, "rb") as input:
+            file_info  = pickle.load(input) 
 
-        # RAVE column headers and file names:
-        if survey=='RAVE':
-            rave_path = data_path + "/RAVE"
+        spectro_coords = file_info.spectro_coords
+        spectro_path = file_info.spectro_path
+        spectro_pickle_path = file_info.spectro_pickle_path
 
-            star_coords = ['FieldName', 'RA_TGAS', 'DE_TGAS', 'Jmag_2MASS', 'Kmag_2MASS', 'Hmag_2MASS']
-            star_path = rave_path + '/RAVE_wPlateIDs.csv'
-            field_coords = (['RAVE_FIELD', 'RAdeg', 'DEdeg'], 'Equatorial')
-            field_path = rave_path + '/RAVE_FIELDS_wFieldIDs.csv'
-            self.tmass_coords = ['RA', 'Dec', 'j', 'h', 'k']
+        self.photo_coords = file_info.photo_coords
+        self.photo_path = file_info.photo_path
+        photo_pickle_path = file_info.photo_pickle_path
 
-            tmass_path = tmass_path + '/RAVE-2MASS_fieldbyfield_29-11/RAVEfield_'
+        field_coords = file_info.field_coords
+        field_path = file_info.field_path
 
-            SA = 28.3
-            tmass_pickle = rave_path + '/2massdata_RAVEfields.pickle'
-            survey_pickle = rave_path + '/surveydata_RAVEfields.pickle'
-            sf_pickle = rave_path + '/sf_RAVEfields.pickle'
-            self.tmasstag = '.csv'
-            self.fieldlabel_type = str
+        obsSF_pickle_path = file_info.obsSF_pickle_path
+        sf_pickle_path = file_info.sf_pickle_path
 
-            if testbool:
-                tmass_pickle = rave_path + '/2massdata_RAVEfields_test.pickle'
-                survey_pickle = rave_path + '/surveydata_RAVEfields_test.pickle'
-                sf_pickle = rave_path + '/sf_RAVEfields_test.pickle'
+        SA = file_info.field_SA
 
-        # Apogee column headers and file names:
-        if survey=='Apogee':
-            apg_path = data_path + "/Apogee"
+        self.photo_tag = file_info.photo_tag
+        self.fieldlabel_type = file_info.fieldlabel_type
 
-            star_coords = ['# location_id', 'ra', 'dec', 'j', 'k', 'h']
-            field_coords = (['FieldName', 'RA', 'Dec'], 'Equatorial')
-            star_path = apg_path + '/TGAS_APOGEE_supp_keplercannon_masses_ages.csv'
-            field_path = apg_path + '/apogeetgasdr14_fieldinfo.csv'
-            self.tmass_coords = ['RA', 'Dec', 'j', 'h', 'k']
-            
-            tmass_path = tmass_path + '/Apogee-2MASS/APOGEEfield_'
-            self.tmasstag = '.csv'
+        iso_pickle = file_info.iso_pickle_path
 
-            SA = 7
-            tmass_pickle = apg_path + '/2massdata_apogeeFields_test.pickle'
-            survey_pickle = apg_path + '/surveydata_apogeeFields_test.pickle'
-            sf_pickle = apg_path + '/sf_apogeefields.pickle'
+        # Import the dataframe of pointings        
+        pointings = self.ImportDataframe(field_path, field_coords[0], 
+                                         data_source='Fields', 
+                                         angle_units='degrees',
+                                         coordinates= field_coords[1],
+                                         Field_solidangle=False, solidangle=SA)
+        pointings = pointings.set_index('fieldID', drop=False)
+        pointings = pointings.drop_duplicates(subset = 'fieldID')
 
-            self.fieldlabel_type = float
-
-        #iso_pickle = "../Data/isochrone_distributions.pickle"
-        iso_pickle = data_path + "/evoTracks/isochrone_distributions_resampled.pickle"
-        
-        self.pointings = self.ImportDataframe(field_path, field_coords[0], 
-                                             data_source='Fields', 
-                                             angle_units='degrees',
-                                             coordinates= field_coords[1],
-                                             Field_solidangle=False, solidangle=SA)
-        self.pointings = self.pointings.set_index('fieldID', drop=False)
-        self.pointings = self.pointings.drop_duplicates(subset = 'fieldID')
-
-        ############Testing on 1 plate at a time
+        # Limit number of fields for testing the selection function
         if testbool: 
             testfield = ['1758m28', '0051m27']
-            self.pointings = self.pointings[self.pointings.fieldID.isin(testfield)]
-        #self.printTest('List of pointings to be tested', self.pointings)
-        #if survey=='RAVE': self.pointings = self.pointings[(self.pointings.RA < 235*np.pi/180)][:10]
-        #                                (self.pointings.RA < 350*np.pi/180)]
-        #self.pointings=self.pointings[11:14]
-        print(len(self.pointings))
-        print(self.pointings[['RA','Dec','l','b','half_opening']])
-        self.pointings = self.pointings.iloc[:200]
+            pointings = pointings[self.pointings.fieldID.isin(testfield)]
+        pointings = pointings.iloc[3:4]
+        print(len(pointings))
+
+        self.pointings = pointings
         
-        if surveysf_exists==False:
-
-            
-            # Parsec isochrones
-            print("Undilling isochrone interpolants...")
-            with open(iso_pickle, "rb") as input:
-                self.pi = dill.load(input)
-            print("...done.")
-            print(" ")
-
-            self.isoage = np.copy(self.pi['isoage']) 
-            self.isomh  = np.copy(self.pi['isomh'])
+        # surveysf_exists true if Selection Function has already been calculated
+        if not surveysf_exists:
     
-            
-            if ColMagSF_exists == False:
+            # ColMagSF_exists true if Observable coord SF has already been calculated
+            if not ColMagSF_exists:
                 
                 print('Importing data for Colour-Magnitude Field interpolants...')
-                self.stars = pd.DataFrame()
-                self.mag_range, self.col_range = (0.,0.),(0.,0.)
 
-                self.stars = self.ImportDataframe(star_path, star_coords, 
+                self.stars = self.ImportDataframe(spectro_path, spectro_coords, 
                                                  angle_units='degrees')
-                print("...done.")
-                print(" ")                
+                print("...done.\n")     
                 
             
                 print('Creating Colour-Magnitude Field interpolants...')
-                self.tmass_interp, self.data_interp = self.iterateAllFields(tmass_path)
-                print("...done.")
-                print(" ")
-                self.printTest('2MASS interpolants', self.tmass_interp)
-                self.printTest('Survey interpolants', self.data_interp)
+                self.obsSF = self.iterateAllFields()
+                print("...done\n.")
                 
-                with open(survey_pickle, 'wb') as handle:
-                    pickle.dump(self.data_interp, handle)
-                with open(tmass_pickle, 'wb') as handle:
-                    pickle.dump(self.tmass_interp, handle)
+                with open(obsSF_pickle_path, 'wb') as handle:
+                    pickle.dump(self.obsSF, handle)
                     
             else:
                 # Once Colour Magnitude selection functions have been created
                 # Unpickle colour-magnitude interpolants
                 print("Unpickling colour-magnitude interpolant dictionaries...")
-                with open(survey_pickle, "rb") as input:
-                    self.data_interp = pickle.load(input)
-                with open(tmass_pickle, "rb") as input:
-                    self.tmass_interp = pickle.load(input)
-                print("...done.")
-                print(" ")
+                with open(obsSF_pickle_path, "rb") as input:
+                    self.obsSF = pickle.load(input)
+                print("...done.\n")
                 
+            # Extract isochrones
+            print("Undilling isochrone interpolants...")
+            with open(iso_pickle, "rb") as input:
+                self.pi = dill.load(input)
+            print("...done.\n")
+
+            self.isoage = np.copy(self.pi['isoage']) 
+            self.isomh  = np.copy(self.pi['isomh'])
+
             print('Creating Distance Age Metalicity interpolants...')
             surveysf, agerng, mhrng, srng = self.createDistMhAgeInterp()
-            with open(sf_pickle, 'wb') as handle:
+            with open(sf_pickle_path, 'wb') as handle:
                     pickle.dump((surveysf, agerng, mhrng, srng), handle)
-            print("...done.")
-            print(" ")
+            print("...done.\n")
         
         # Once full selection function has been created
         # Unpickle survey selection function
         print("Unpickling survey selection function...")
-        with open(sf_pickle, "rb") as input:
+        with open(sf_pickle_path, "rb") as input:
             self.surveysf, self.agerng, self.mhrng, self.srng  = pickle.load(input)
-        print("...done.")
-        print(" ")
+        print("...done.\n")
         
     def __call__(self, catalogue):
 
@@ -386,7 +342,7 @@ class FieldInterpolator():
         if coordinates == 'Equatorial': coords = ['fieldID','RA', 'Dec']
         elif coordinates == 'Galactic': coords = ['fieldID','l', 'b']
 
-        if data_source=='stars': coords.extend(['Jmag', 'Kmag', 'Hmag'])
+        if data_source=='stars': coords.extend(['appA', 'appB', 'appC'])
         elif data_source=='Fields':
             if Field_solidangle: coords.extend(['SolidAngle'])
             else: data['SolidAngle'] = np.zeros((len(data))) + solidangle
@@ -407,10 +363,10 @@ class FieldInterpolator():
         if coordinates == 'Galactic': data['RA'], data['Dec'] = GalToEquat(data.l, data.b)
 
         if data_source=='stars': 
-            data['Colour'] = data.Jmag - data.Kmag
+            data['Colour'] = data.appA - data.appB
 
             # Magnitude and colour ranges from full sample
-            mag_range = (np.min(data.Hmag), np.max(data.Hmag))
+            mag_range = (np.min(data.appC), np.max(data.appC))
             col_range = (np.min(data.Colour), np.max(data.Colour))
 
             #Save star results in the class variables
@@ -426,7 +382,7 @@ class FieldInterpolator():
             #Save Field data in the class variable
             return data
             
-    def iterateAllFields(self, tmass_path):
+    def iterateAllFields(self):
 
         '''
         iterateAllFields - Iterates over the list of fields and executes
@@ -447,302 +403,55 @@ class FieldInterpolator():
 
 
         '''
+        multiCore = False
+        if multiCore:
+            # Create processor pools for multiprocessing
+            nCores = multiprocessing.cpu_count() - 1
+            pool = multiprocessing.Pool( nCores )
 
-        # Create processor pools for multiprocessing
-        nCores = multiprocessing.cpu_count()
-        pool = multiprocessing.Pool( nCores )
+            # List of fields in pointings database
+            field_list = self.pointings.fieldID.values.tolist()
 
-        # List of fields in pointings database
-        field_list = self.pointings.fieldID.values.tolist()
+            # Locations for storage of solutions
+            obsSelectionFunction = {}
 
-        # Locations for storage of solutions
-        tmass_interp= {}
-        data_interp = {}
+            # Build results into a full list of multiprocessing instances
+            print("multiprocessing process for observable fields...\n")
+            results = []
+            for field in field_list:
+                results.append(pool.apply_async(iterateField, 
+                                                args=(self.stars, self.photo_path, field,
+                                                    self.photo_tag, self.photo_coords)))
 
-        Nfields = 0
+            for r in results:
+                obsSF_field, field = r.get()
+                obsSelectionFunction[field] = obsSF_field
 
-        ## Write argument list
-        #tasks = [(tmass_path, field) for field in field_list]
-
-        # Enable multiprocessing to pickle bound methods in class
-        #ComputerOps.pickleBoundMethods()
-        def _pickle_method(method):
-            func_name = method.im_func.__name__
-            obj = method.im_self
-            cls = method.im_class
-            if func_name.startswith('__') and not func_name.endswith('__'): #deal with mangled names
-                cls_name = cls.__name__.lstrip('_')
-                func_name = '_' + cls_name + func_name
-            return _unpickle_method, (func_name, obj, cls)
-
-        def _unpickle_method(func_name, obj, cls):
-            for cls in cls.__mro__:
-                try:
-                    func = cls.__dict__[func_name]
-                except KeyError:
-                    pass
-                else:
-                    break
-            return func.__get__(obj, cls)
-
-        import copy_reg
-        import types
-        copy_reg.pickle(types.MethodType, _pickle_method, _unpickle_method)
-
-        # Build results into a full list of multiprocessing instances
-        results = []
-        for field in field_list:
-            results.append(pool.apply_async( self.iterateField, args=(tmass_path, field)))
-        print( "Successfully did the pickle bit")
-
-
-        """tupleofinterps= pool.map( self.iterateField, tasks)
-
-        for interps in tupleofinterps:
-            tmass_interp[field], data_interp[field] = interps
-            # Print out progress at every 100 completions
-            Nfields += 1
-            if Nfields % 100 == 0:
-                print('Number of fields interpolated: '+str(Nfields))
-        """
-
-        for r in results:
-            print(r.get())
-            print(type(r.get()))
-            tmass_fieldinterp, data_fieldinterp, field = r.get()
-            tmass_interp[field] = tmass_fieldinterp
-            data_interp[field] = data_fieldinterp
-
-        # Exit the pools as they won't be used again
-        pool.close()
-        pool.join()
-
-        return tmass_interp, data_interp
-
-    def iterateField(self, tmass_path, field):
-
-        '''
-        iterateTmassFields- Iterates over each field file of 2MASS star data and 
-                            creates a colour-magnitude interpolant for the plate.
-
-        Parameters
-        ----------
-            file_path: string
-                    - Location of folder of 2MASS star files
-
-        Inherited
-        ---------
-            self.pointings: Dataframe
-                    - Dataframe of coordinates and IDs of survey fields
-
-        Returns
-        -------
-            tmass_interp: dict
-                    - Dictionary of interpolants with: 'interp', 'grid_area', 'mag_range', 'col_range'
-                    - Doesn't contain entries for fields where there is no 2MASS plate file
-
-        First use DataImport.reformatTmassFieldFiles to put files into correct format
-
-        '''
-        
-        database_coords = ['RA','DEC','J','K','H']
-        df_coords = ['RA','Dec','Jmag','Kmag','Hmag']
-
-            
-        # Import 2MASS data and rename magnitude columns
-        tmass_points = pd.read_csv(tmass_path+str(field)+self.tmasstag)
-        coords = ['Jmag', 'Hmag', 'Kmag']
-        tmass_points=tmass_points.rename(index=str, 
-                                         columns=dict(zip(self.tmass_coords[2:5], coords)))
-        tmass_points['Colour'] = tmass_points.Jmag - tmass_points.Kmag
-
-        # Select preferred survey stars
-        survey_points = self.stars[self.stars.fieldID == field]
-
-        # Only create an interpolant if there are any points in the region
-        if len(survey_points)>0:
-            # Range of colours and magnitudes
-            deltamag = (np.max(tmass_points.Hmag)-np.min(tmass_points.Hmag))/np.sqrt(len(tmass_points))
-            deltacol = (np.max(tmass_points.Colour)-np.min(tmass_points.Colour))/np.sqrt(len(tmass_points))
-
-            mag_min, mag_max = (np.min(survey_points.Hmag) - deltamag/2, np.max(survey_points.Hmag) + deltamag/2)
-            col_min, col_max = (np.min(survey_points.Colour) - deltacol/2, np.max(survey_points.Colour) + deltacol/2)
-
-            # N_tmass = len(tmass_points)
-            # Minimum of 3 grid boundaries in order to create a grid
-            #Nside_grid = max(int(np.ceil(np.sqrt(N_tmass)) + 1), 3)
-            # Set 6 grid boundaries in the interests of memory preservation
-            Nside = int(np.sqrt(len(survey_points)/2))
-            survey_Nside = np.max((Nside, 8))
-
-            # Add another grid square width to the gridsize
-            extra_mag = (mag_max-mag_min)/(survey_Nside-2)
-            extra_col = (col_max-col_min)/(survey_Nside-2)
-            mag_max += extra_mag
-            mag_min -= extra_mag
-            col_max += extra_col
-            col_min -= extra_col
-
-            # Number of grid boundaries
-            tmass_points = tmass_points[(tmass_points.Hmag > mag_min)&\
-                                        (tmass_points.Hmag < mag_max)&\
-                                        (tmass_points.Colour > col_min)&\
-                                        (tmass_points.Colour < col_max)]
-            Nside = int(np.sqrt(len(tmass_points)/2))
-            tmass_Nside = np.max((Nside, 10))
-            tmass_Nside = 8
-            survey_Nside = 8
-            #print(tmass_Nside, survey_Nside)
-
-            # Interpolate for 2MASS data
-            tmass_interpolant, tmass_gridarea, tmass_magrange, tmass_colrange = self.CreateInterpolant(tmass_points, tmass_Nside,
-                                                                                                 (mag_min, mag_max), (col_min, col_max),
-                                                                                                 range_limited=True)
-            # Interpolate for survey data
-            survey_interpolant, survey_gridarea, survey_magrange, survey_colrange = self.CreateInterpolant(survey_points, survey_Nside,
-                                                                                                          (mag_min, mag_max), (col_min, col_max))
-
-            # mag_range, col_range are now the maximum and minimum values of grid centres used in the RGI.
-            tmass_interp_field = {'interp': tmass_interpolant,
-                                   'grid_area': tmass_gridarea,
-                                   'mag_range': tmass_magrange,
-                                   'col_range': tmass_colrange,
-                                   'Nside_grid': tmass_Nside}
-            # mag_range, col_range are now the maximum and minimum values of grid centres used in the RGI.
-            data_interp_field = {'interp': survey_interpolant,
-                                   'grid_area': survey_gridarea,
-                                   'mag_range': survey_magrange,
-                                   'col_range': survey_colrange,
-                                   'Nside_grid': survey_Nside,
-                                   'grid_points': True}
+            # Exit the pools as they won't be used again
+            pool.close()
+            pool.join()
 
         else:
-            # There are no stars on the field plate
-            data_interp_field = {'grid_points': False}
-            tmass_interp_field = None
-            
-        return tmass_interp_field, data_interp_field, field
+            # List of fields in pointings database
+            field_list = self.pointings.fieldID.values.tolist()
 
-    def CreateInterpolant(self, 
-                          points, Nside_grid,
-                          mag_range, col_range,
-                          Grid = False, range_limited=False):
+            # Locations for storage of solutions
+            obsSelectionFunction = {}
 
-        '''
-        CreateInterpolant - Creates an interpolant in colour-magnitude space for the given set
-                            of coordinates.
+            for field in field_list:
 
-        Parameters
-        ----------
-            points: Dataframe
-                    - Set of points used to create an interpolant over col-mag space
+                obsSF_field, field = iterateField(self.stars, self.photo_path, field,
+                                                self.photo_tag, self.photo_coords)
+                obsSelectionFunction[field] = obsSF_field
 
-        Dependancies
-        ------------
-            IndexColourMagSG - Creates an interpolant of the RAVE star density in col-mag space
-                             - For the points given which are from one specific observation plate
-
-        **kwargs
-        --------
-            Grid: bool (False)
-                    -  if True, also returns the interpolation grid so that it can be plotted
-
-        Returns
-        -------
-            interp: RGI instance
-                    - Interpolant of the survey stars on the field in col-mag space
-
-            
-        if Grid... 
-            pop_grid: array
-                    - Interpolation grid values
-            mag: array
-                    - Array of values used for grid
-            col: array
-                    - Array of values used for grid
-
-        else...
-            grid_area: float
-                    - Area per grid square in the interp grid
-            mag_range: tuple
-                    - Min and max of magnitudes in interpolant
-            col_range: tuple
-                    - Min and max of colours in interpolant
-        '''
-
-        interp, pop_grid, mag_centers, col_centers = IndexColourMagSG(points, 
-                                                                     (Nside_grid, Nside_grid),
-                                                                     mag_range, col_range,
-                                                                     'Hmag', 'Colour',
-                                                                     range_limited=range_limited)
-
-        grid_area = (mag_centers[1] - mag_centers[0]) * (col_centers[1] - col_centers[0])
-        mag_range = (np.min(mag_centers), np.max(mag_centers))
-        col_range = (np.min(col_centers), np.max(col_centers))
-
-        if Grid: return interp, pop_grid, mag, col
-        else: return interp, grid_area, mag_range, col_range
-        
-    def sfFieldColMag(self, field, col, mag, weight):
-
-        '''
-        sfFieldColMag - Converts survey interpolant and 2MASS interpolant into a selection grid
-                        in colour and magnitude space
-
-        Parameters
-        ----------
-            field: string/float/int
-                    - ID of the field which we're creating a selection function for
-
-            col: array
-                    - Grid of colour (J-K) values over which we're finding the value of the selection function
-
-            mag: array
-                    - Grid of H magnitude values over which we're finding the value of the selection function
-
-        Inherited
-        ---------
-            self.data_interp: dict
-                    - Dictionary of survey interpolants in col-mag space with col-mag ranges and grid areas given
-
-            self.tmass_interp: dict
-                    - Dictionary of 2MASS interpolants in col-mag space with col-mag ranges and grid areas given
-
-        Returns
-        -------
-            grid: array
-                    - Array with same dimensions as col/mag giving the ratio of survey/2MASS interpolants normalised
-                      by the grid areas.
-        '''
-
-        survey = self.data_interp[field]
-        tmass = self.tmass_interp[field]
-        
-        grid = np.zeros_like(col)
-        
-        # If dictionary contains nan values, the field contains no stars
-        if ~np.isnan(survey['grid_area']):
-
-            bools = (col>survey['col_range'][0])&(col<survey['col_range'][1])&\
-                    (mag>survey['mag_range'][0])&(mag<survey['mag_range'][1])
-
-            grid[bools] = (survey['interp']((mag[bools],col[bools]))/survey['grid_area'])/\
-                          (tmass['interp']((mag[bools],col[bools]))/tmass['grid_area'])   
-            
-            grid[grid==np.inf]=0.
-            grid[np.isnan(grid)] = 0.
-
-        # Weight the grid to correspond to IMF weightings for each star
-        prob = grid*weight
-
-        return prob
+        return obsSelectionFunction
             
             
     def createDistMhAgeInterp(self,
                               agemin = 0,agemax = 13,
                               mhmin=-2.5,mhmax=0.5,
                               smin=0.001,smax=20.,ns=20,
-                              test=False, GoodMemory=False):
+                              GoodMemory=False):
 
         '''
         createDistMhAgeInterp - Creates a selection function in terms of age, mh, s
@@ -750,19 +459,19 @@ class FieldInterpolator():
 
         Inherited
         ---------
-            self.data_interp: dict
-                    - Dictionary of survey interpolants in col-mag space with col-mag ranges and grid areas given
+            self.spectro_interp: dict
+                    - Dictionary of spectroscopic interpolants in col-mag space with col-mag ranges and grid areas given
 
             self.pointings: Dataframe
-                    - Dataframe of coordinates and IDs of survey fields
+                    - Dataframe of coordinates and IDs of spectro fields
 
             self.pi: dict
                     - Dictionary of isochrone data
 
-            self.tmass_interp: dict
-                    - Dictionary of 2MASS interpolants in col-mag space with col-mag ranges and grid areas given
+            self.photo_interp: dict
+                    - Dictionary of photometric interpolants in col-mag space with col-mag ranges and grid areas given
 
-            sfFieldColMag - Converts survey interpolant and 2MASS interpolant into a selection grid
+            sfFieldColMag - Converts spectroscopic interpolant and photomectric interpolant into a selection grid
                             in colour and magnitude space
 
         **kwargs
@@ -793,22 +502,6 @@ class FieldInterpolator():
             (smin,smax): tuple of floats
                     - s range of the selection function  
         '''
-
-        if test:
-            print("Unpickling colour-magnitude interpolant dictionaries...")
-            with open('../Data/surveydata_apogeeFields_test.pickle', "rb") as input:
-                self.data_interp = pickle.load(input)
-            with open('../Data/2massdata_apogeeFields_test.pickle', "rb") as input:
-                self.tmass_interp = pickle.load(input)
-            print("...done.")
-            print(" ")
-            data_path = '../Data/'
-            # Parsec isochrones
-            print("Undilling isochrone interpolants...")
-            with open(data_path + "stellarprop_parsecdefault_currentmass.dill", "rb") as input:
-                self.pi = dill.load(input)
-            print("...done.")
-            print(" ")
         
         # Copy variables locally
         fieldInfo = self.pointings
@@ -856,8 +549,7 @@ class FieldInterpolator():
         # Create grids for distances and selection function probabilities
         sgrid    = np.logspace(np.log10(smin),np.log10(smax),ns)
                    
-        fieldInfo['tmass_bool'] = fieldInfo.fieldID.apply(lambda x: x in self.tmass_interp)
-        fieldInfo=fieldInfo.set_index('fieldID', drop=False)
+        fieldInfo = fieldInfo.set_index('fieldID', drop=False)
 
         # Create datagrids for selection function
         nage, nmh, ns = len(agegrid), len(mhgrid), len(sgrid)
@@ -871,156 +563,86 @@ class FieldInterpolator():
         age_mh['isoname'] = "age"+age_mh.age.astype(str)+"mh"+age_mh.mh.astype(str)
 
         # Absolute magnitude arrays from isodict
-        age_mh['absJ'] = age_mh.isoname.map(lambda x: isodict[x].Jabs)
-        age_mh['absH'] = age_mh.isoname.map(lambda x: isodict[x].Habs)
-        age_mh['absKs'] = age_mh.isoname.map(lambda x: isodict[x].Kabs)
+        age_mh['absA'] = age_mh.isoname.map(lambda x: isodict[x].Jabs)
+        age_mh['absB'] = age_mh.isoname.map(lambda x: isodict[x].Habs)
+        age_mh['absC'] = age_mh.isoname.map(lambda x: isodict[x].Kabs)
         age_mh['weight'] = age_mh.isoname.map(lambda x: isodict[x].weight)
 
         # Grids of apparent magnitudes varying with distance over sgrid
         ns = len(sgrid)
 
-        age_mh['isosize'] = age_mh.absJ.map(lambda x: len(x))
+        age_mh['isosize'] = age_mh.absA.map(lambda x: len(x))
         fulllength = max(age_mh.isosize)
         smat = np.stack([[sgrid,]*fulllength,]*len(age_mh))
 
-        age_mh['J_K'] = age_mh.absJ - age_mh.absKs
-        age_mh[['absH', 'J_K', 'weight']] = age_mh[['absH', 'J_K', 'weight']].\
+        age_mh['ABcol'] = age_mh.absA - age_mh.absB
+        age_mh[['absC', 'ABcol', 'weight']] = age_mh[['absC', 'ABcol', 'weight']].\
                                             applymap(lambda x: np.concatenate((x, np.zeros(fulllength-len(x)))))
                 
-        absHmat = np.vstack(age_mh.absH)
-        J_Kmat = np.vstack(age_mh.J_K)
+        absCmat = np.vstack(age_mh.absC)
+        ABcolmat = np.vstack(age_mh.ABcol)
         weightmat = np.vstack(age_mh.weight)
                 
-        absHmat = np.stack([absHmat]*ns, axis=2)
-        J_Kmat = np.stack([J_Kmat]*ns, axis=2)
+        absCmat = np.stack([absCmat]*ns, axis=2)
+        ABcolmat = np.stack([ABcolmat]*ns, axis=2)
         weightmat = np.stack([weightmat]*ns, axis=2)
 
         mag_conversion = 5*np.log10(smat*1000./10.)
-        appHmat = mag_conversion + absHmat
-        print('appHmat range of values:' + str((np.min(appHmat), np.max(appHmat))))
+        appCmat = mag_conversion + absCmat
+        print('appHmat range of values:' + str((np.min(appCmat), np.max(appCmat))))
 
         age_mh = age_mh[['age', 'mh', 'isosize']]
         age_mh.set_index(['age','mh'], inplace=True)
 
         # Clear out unused arrays for memory
-        del(smat, mag_conversion, absHmat)
+        del(smat, mag_conversion, absCmat)
         gc.collect()
 
-        print('Undergoing field-by-field age-mh-s interpolations...')
-        fieldInfo['agemhssf'] = fieldInfo.apply(self.fieldInterp, 
-                                                args=(agegrid, mhgrid, sgrid, age_mh, 
-                                                J_Kmat, appHmat, weightmat), axis=1)
-        print('...done')
+        # True if we're running for efficiency
+        # False if we want to debug the code
+        multiCore = False
+        if multiCore:
+            # Create processor pools for multiprocessing
+            nCores = multiprocessing.cpu_count() - 1
+            pool = multiprocessing.Pool( nCores )
 
-        
+            # Build results into a full list of multiprocessing instances
+            print("\nmultiprocessing process for spectroscopic fields...")
+            results = []
+            field_list = fieldInfo["fieldID"].tolist()
+            for field in field_list:
+                results.append(pool.apply_async(fieldInterp, 
+                                                args=(fieldInfo.loc[field], agegrid, mhgrid, sgrid, age_mh, 
+                                                ABcolmat, appCmat, weightmat,
+                                                self.obsSF[field])))
+                                                #self.spectro_interp[field], self.photo_interp[field])))
+
+            sfList = []
+            for r in results:
+                sf_field_interp, fieldID = r.get()
+                sfList.append([fieldID, sf_field_interp])
+            agemhssfDf = pd.DataFrame(sfList, columns=['fieldID', 'agemhssf'])
+            agemhssfDf = agemhssfDf.set_index('fieldID')
+            fieldInfo = pd.merge(fieldInfo, agemhssfDf, how='inner', left_index=True, right_index=True)
+
+            # Exit the pools as they won't be used again
+            pool.close()
+            pool.join()
+        else:
+            # Undergo the same procedure without multiprocessing to debug the code
+            field_list = fieldInfo["fieldID"].tolist()
+            sfList = []
+            for field in field_list:
+                    sf_field_interp, fieldID = fieldInterp(fieldInfo.loc[field], agegrid, mhgrid, sgrid, age_mh, 
+                                                            ABcolmat, appCmat, weightmat,
+                                                            self.obsSF[field])
+                                                            #self.spectro_interp[field], self.photo_interp[field])))
+                    sfList.append([fieldID, sf_field_interp])
+            agemhssfDf = pd.DataFrame(sfList, columns=['fieldID', 'agemhssf'])
+            agemhssfDf = agemhssfDf.set_index('fieldID')
+            fieldInfo = pd.merge(fieldInfo, agemhssfDf, how='inner', left_index=True, right_index=True)
+
         return fieldInfo, (agemin, agemax), (mhmin, mhmax), (smin, smax)
-
-    def fieldInterp(self, fieldInfo, agegrid, mhgrid, sgrid, 
-                    age_mh, col, mag, weight):
-
-        '''
-        fieldInterp - Converts grids of colour and magnitude coordinates and a 
-                      colour-magnitude interpolant into the age, mh, s selection
-                      function interpolant.
-
-        Parameters
-        ----------
-            fieldInfo: single row Dataframe
-                    - fieldID and tmass_bool information on the given field
-
-            agegrid, mhgrid, sgrid: 3D array
-                    - Distribution of coordinates over which the selection function
-                      will be generated
-
-            sf: function instance from FieldInterpolator class
-                    sfFieldColMag - Converts survey interpolant and 2MASS interpolant into a selection grid
-                                    in colour and magnitude space
-
-            age_mh: Dataframe
-                    - Contains all unique age-metalicity values as individual rows which are then unstacked to
-                      a matrix to allow for efficient calculation of the selection function.
-
-            J_Kmat: array
-                    - Matrix of colour values over the colour-magnitude space
-
-            appJmat: array
-                    - Matrix of H magnitude values over the colour-magnitude space
-
-            weightmat: array
-                    - Matrix of weightings of isochrone points so that the IMF is integrated over
-
-        Dependencies
-        ------------
-            RegularGridInterpolator
-
-        Returns
-        -------
-        if tmass_bool:
-            sfinterpolant
-
-        else:
-            RGI([], 0)
-
-        #### Make sure we find a better way of dealing with this so that its clear when
-        #### there are problems with fields not being in the database.
-        '''
-
-        # Import field data
-        fieldID = fieldInfo['fieldID']
-
-        if self.data_interp[fieldID]['grid_points']:
-            # For fields with RAVE-TGAS stars
-            sys.stdout.write("\rCurrent field being interpolated: %s" % fieldID)
-            sys.stdout.flush()
-            
-
-            # Selection function probabilities from colour-magnitude interpolants
-            survey = self.data_interp[fieldID]
-            tmass = self.tmass_interp[fieldID]
-
-            sfprob = np.zeros_like(col)
-            # If dictionary contains nan values, the field contains no stars
-            if ~np.isnan(survey['grid_area']):
-
-                # Make sure values fall within interpolant range for colour and magnitude
-                # Any points outside the range will provide a 0 contribution
-                bools = (col>survey['col_range'][0])&(col<survey['col_range'][1])&\
-                        (mag>survey['mag_range'][0])&(mag<survey['mag_range'][1])&\
-                        (col>tmass['col_range'][0])&(col<tmass['col_range'][1])&\
-                        (mag>tmass['mag_range'][0])&(mag<tmass['mag_range'][1])
-
-                sfprob[bools] = (survey['interp']((mag[bools],col[bools]))/survey['grid_area'])/\
-                              (tmass['interp']((mag[bools],col[bools]))/tmass['grid_area'])   
-
-                sfprob[sfprob==np.inf]=0.
-                sfprob[np.isnan(sfprob)] = 0.
-            sfprob *= weight
-
-                           
-            # Integrating (sum) selection probabilities to get in terms of age,mh,s
-            integrand = np.sum(sfprob, axis=1)
-
-            # Transform to selection grid (age,mh,s) and interpolate to get plate selection function
-            age_mh['integrand'] = integrand.tolist()
-
-            sfgrid = np.array(age_mh[['integrand']].unstack()).tolist()
-            sfgrid = np.array(sfgrid)
-
-            # Expand grids to account for central coordinates
-            sfgrid, agegrid = extendGrid(sfgrid, agegrid, axis=0,
-                                             x_lbound=True, x_lb=0.)
-            sfgrid, mhgrid = extendGrid(sfgrid, mhgrid, axis=1)
-            sfgrid, sgrid = extendGrid(sfgrid, sgrid, axis=2,
-                                           x_lbound=True, x_lb=0.)
-
-            sfinterpolant = RGI((agegrid,mhgrid,sgrid),sfgrid)
-
-        else:
-            # For fields with no RAVE-TGAS stars - 0 value everywhere in field
-            print('No stars in field: '+str(fieldID))
-            sfinterpolant = RGI([], 0)
-
-        return sfinterpolant 
     
             
     def ProjectGrid(self, field):
@@ -1177,47 +799,185 @@ class FieldInterpolator():
             Phi, Th = GenerateCircle(PhiRad[i],ThRad[i],SA[i])
             PlotDisk(Phi, Th, ax)
     
-
-
-def PointDataSample(df, pointings, plate):
+def iterateField(stars, photo_path, field, photo_tag, photo_coords):
 
     '''
-    PointDataSample - Creates sample of points which correspond to a plate from RAVE catalogue
+    iteratephotoFields- Iterates over each field file of 2MASS star data and 
+                        creates a colour-magnitude interpolant for the plate.
 
     Parameters
     ----------
-        df: DataFrame
-                - Data from the RAVE catalogue with a 'plate' field
+        stars:
 
-        pointings: DataFrame
-                - Dataframe of plate coordinates from Wojno's work
+        photo_path: string
+                - Location of folder of photometric catalogue files
 
-        plate: string
-                - Id of plate
+        field
+
+        photo_tag
+
+        photo_coords
+
+    Inherited
+    ---------
+        self.pointings: Dataframe
+                - Dataframe of coordinates and IDs of survey fields
 
     Returns
     -------
-        points: DataFrame
-                - Data about stars on plate including the Theta, Phi coordinates from z-axis
+        photo_interp: dict
+                - Dictionary of interpolants with: 'interp', 'grid_area', 'mag_range', 'col_range'
+                - Doesn't contain entries for fields where there is no 2MASS plate file
 
-        plate_coord: tuple of floats (radians)
-                - Galactic coordinates of centre of the observation plate
+    First use DataImport.reformatTmassFieldFiles to put files into correct format
 
     '''
+    print(field)
+    
+    database_coords = ['RA','DEC','J','K','H']
+    df_coords = ['RA','Dec','appA','appB','appC']
 
-    points = df[df.plate == plate]
-    plate_coords = pointings[pointings.plate == plate]
-    plate_coords['RArad'], plate_coords['DErad'] = plate_coords.RAdeg*np.pi/180, plate_coords.DEdeg*np.pi/180
-    plate_coords['l'], plate_coords['b'] = EquatToGal(plate_coords.RArad, plate_coords.DErad)
+        
+    # Import 2MASS data and rename magnitude columns
+    photo_points = pd.read_csv(photo_path+str(field)+photo_tag)
+    coords = ['appA', 'appB', 'appC']
+    photo_points=photo_points.rename(index=str, 
+                                     columns=dict(zip(photo_coords[2:5], coords)))
+    photo_points['Colour'] = photo_points.appA - photo_points.appB
 
-    lc, bc = plate_coords.l.iloc[0], plate_coords.b.iloc[0]
-    points['Phi'], points['Theta'] = InverseRotation(points.l, points.b, lc, bc)
-    points['Th_zero'] = AngleShift(points.Theta)
-    plate_coord = (lc,bc)
+    # Select preferred survey stars
+    spectro_points = stars[stars.fieldID == field]
 
-    points['J_K'] = points.Jmag_2MASS - points.Kmag_2MASS
+    # Only create an interpolant if there are any points in the region
+    if len(spectro_points)>0:
 
-    return points, plate_coord
+        if len(spectro_points)>1:
+
+            # Double range of colours and magnitudes to allow smoothing to be effective
+            extra_mag = (np.max(spectro_points.appC)-np.min(spectro_points.appC))/2
+            extra_col = (np.max(spectro_points.Colour)-np.min(spectro_points.Colour))/2
+
+            # Range of colours and magnitudes used
+            mag_min, mag_max = (np.min(spectro_points.appC) - extra_mag, np.max(spectro_points.appC) + extra_mag)
+            col_min, col_max = (np.min(spectro_points.Colour) - extra_col, np.max(spectro_points.Colour) + extra_col)
+
+        else:
+            # If only 1 point, the max will be equivalent to the value
+            mag_exact = np.max(spectro_points.appC)
+            col_exact = np.max(spectro_points.Colour)
+
+            # Range of colours and magnitudes used
+            mag_min, mag_max = (mag_exact - 1, mag_exact + 1)
+            col_min, col_max = (col_exact - 1, col_exact + 1)          
+
+        # Chose only photometric survey points within the colour-magnitude region
+        photo_points = photo_points[(photo_points.appC > mag_min)&\
+                                    (photo_points.appC < mag_max)&\
+                                    (photo_points.Colour > col_min)&\
+                                    (photo_points.Colour < col_max)]
+
+        # Interpolate for 2MASS data
+        photo_interpolant, photo_gridarea, photo_magrange, photo_colrange = CreateInterpolant(photo_points,
+                                                                                             (mag_min, mag_max), (col_min, col_max),
+                                                                                             range_limited=True,
+                                                                                             datatype = "photo")
+        # Interpolate for spectro data
+        spectro_interpolant, spectro_gridarea, spectro_magrange, spectro_colrange = CreateInterpolant(spectro_points,
+                                                                                                      (mag_min, mag_max), (col_min, col_max),
+                                                                                                      datatype = "spectro")
+
+        # Store information inside an observableSF instance where the selection function is calculated.
+        instanceSF = observableSF(field)
+        setattrs(instanceSF,
+                photo_interp = photo_interpolant,
+                photo_gridarea = photo_gridarea,
+                photo_magrange = photo_magrange,
+                photo_colrange = photo_colrange,
+                spectro_interp = spectro_interpolant,
+                spectro_gridarea = spectro_gridarea,
+                spectro_magrange = spectro_magrange,
+                spectro_colrange = spectro_colrange,
+                grid_points = True)
+
+
+    else:
+        # There are no stars on the field plate
+        instanceSF = observableSF(field)
+        instanceSF.grid_points = False
+        
+
+    return instanceSF, field
+
+def CreateInterpolant(points,
+                      mag_range, col_range,
+                      Grid = False, range_limited=False,
+                      datatype=""):
+
+    '''
+    CreateInterpolant - Creates an interpolant in colour-magnitude space for the given set
+                        of coordinates.
+
+    Parameters
+    ----------
+        points: Dataframe
+                - Set of points used to create an interpolant over col-mag space
+
+    Dependancies
+    ------------
+        IndexColourMagSG - Creates an interpolant of the RAVE star density in col-mag space
+                         - For the points given which are from one specific observation plate
+
+    **kwargs
+    --------
+        Grid: bool (False)
+                -  if True, also returns the interpolation grid so that it can be plotted
+
+    Returns
+    -------
+        interp: RGI instance
+                - Interpolant of the spectroscopic survey stars on the field in col-mag space
+
+        
+    if Grid... 
+        pop_grid: array
+                - Interpolation grid values
+        mag: array
+                - Array of values used for grid
+        col: array
+                - Array of values used for grid
+
+    else...
+        grid_area: float
+                - Area per grid square in the interp grid
+        mag_range: tuple
+                - Min and max of magnitudes in interpolant
+        col_range: tuple
+                - Min and max of colours in interpolant
+    '''
+
+    PoissonProcess = True
+    if PoissonProcess:
+        profile = PoissonLikelihood(points, mag_range, col_range,
+                                    'appC', 'Colour',
+                                    datatype=datatype)
+        grid_area = np.nan
+        return profile, grid_area, mag_range, col_range
+
+
+    else:
+        Nside_grid = 8
+        interp, pop_grid, mag_centers, col_centers = IndexColourMagSG(points, 
+                                                                     (Nside_grid, Nside_grid),
+                                                                     mag_range, col_range,
+                                                                     'Hmag', 'Colour',
+                                                                     range_limited=range_limited)
+
+        grid_area = (mag_centers[1] - mag_centers[0]) * (col_centers[1] - col_centers[0])
+        mag_range = (np.min(mag_centers), np.max(mag_centers))
+        col_range = (np.min(col_centers), np.max(col_centers))
+
+        if Grid: return interp, pop_grid, mag, col
+        else: return interp, grid_area, mag_range, col_range
 
 
 def IndexColourMagSG(points, N_2D, 
@@ -1336,6 +1096,523 @@ def IndexColourMagSG(points, N_2D,
 
     return interpolation, selection_grid, mag_centers, col_centers
 
+def PoissonLikelihood(points,
+                     mag_range, col_range,
+                     mag_label, col_label,
+                     datatype=""):
+    '''
+    PoissonLikelihood
+
+    Parameters
+    ----------
+
+
+    **kwargs
+    --------
+
+
+    Returns
+    -------
+
+
+    '''
+
+    # Make copy of points in order to save gc.collect runtime
+    points = pd.DataFrame(np.copy(points), columns=list(points))
+
+    x = getattr(points, mag_label)
+    y = getattr(points, col_label)
+
+    modelType = 'GMM'
+
+    if modelType == 'GMM':
+
+        # Number of Gaussian components
+        if datatype == "spectro":
+            nComponents = 1
+        elif datatype == "photo":
+            nComponents = 4
+
+        print(nComponents)
+
+        # Generate the model
+        model = StatisticalModels.GaussianMM(x, y, nComponents, mag_range, col_range)
+        model.optimizeParams()
+        model.testIntegral()
+
+    elif modelType == 'Grid':
+
+        # Number of grid cells
+        nx, ny = 8, 9
+        model = StatisticalModels.PenalisedGridModel(x, y, (nx,ny), mag_range, col_range)
+        model.optimizeParams()
+        model.generateInterpolant()
+
+        print('...complete')
+    else:
+        raise ValueError("A valid modelType has not been provided - either \"Gaussian\" for GMM or \"Grid\" for PenalisedGridModel")
+
+    return model
+
+def fieldInterp(fieldInfo, agegrid, mhgrid, sgrid, 
+                age_mh, col, mag, weight, obsSF):
+                #spectro, photo):
+
+    '''
+    fieldInterp - Converts grids of colour and magnitude coordinates and a 
+                  colour-magnitude interpolant into the age, mh, s selection
+                  function interpolant.
+
+    Parameters
+    ----------
+        fieldInfo: single row Dataframe
+                - fieldID and photo_bool information on the given field
+
+        agegrid, mhgrid, sgrid: 3D array
+                - Distribution of coordinates over which the selection function
+                  will be generated
+
+        sf: function instance from FieldInterpolator class
+                sfFieldColMag - Converts survey interpolant and 2MASS interpolant into a selection grid
+                                in colour and magnitude space
+
+        age_mh: Dataframe
+                - Contains all unique age-metalicity values as individual rows which are then unstacked to
+                  a matrix to allow for efficient calculation of the selection function.
+
+        J_Kmat: array
+                - Matrix of colour values over the colour-magnitude space
+
+        appJmat: array
+                - Matrix of H magnitude values over the colour-magnitude space
+
+        weightmat: array
+                - Matrix of weightings of isochrone points so that the IMF is integrated over
+
+    Dependencies
+    ------------
+        RegularGridInterpolator
+
+    Returns
+    -------
+    if photo_bool:
+        sfinterpolant
+
+    else:
+        RGI([], 0)
+
+    #### Make sure we find a better way of dealing with this so that its clear when
+    #### there are problems with fields not being in the database.
+    '''
+
+    # Import field data
+    fieldID = fieldInfo['fieldID']
+
+    # True if there were any stars in the field pointing
+    if obsSF.grid_points:
+        # For fields with RAVE-TGAS stars
+        sys.stdout.write("\rCurrent field being interpolated: %s" % fieldID)
+        sys.stdout.flush()
+
+        sfprob = np.zeros_like(col)
+
+        # Make sure values fall within interpolant range for colour and magnitude
+        # Any points outside the range will provide a 0 contribution
+        bools = (col>obsSF.spectro_colrange[0])&(col<obsSF.spectro_colrange[1])&\
+                (mag>obsSF.spectro_magrange[0])&(mag<obsSF.spectro_magrange[1])
+
+        sfprob[bools] = obsSF((mag[bools],col[bools]))
+
+        sfprob[sfprob==np.inf]=0.
+        sfprob[np.isnan(sfprob)] = 0.
+
+        # Include weight from IMF and density of mass points per isochrone
+        sfprob *= weight
+                       
+        # Integrating (sum) selection probabilities to get in terms of age,mh,s
+        integrand = np.sum(sfprob, axis=1)
+
+        # Transform to selection grid (age,mh,s) and interpolate to get plate selection function
+        age_mh['integrand'] = integrand.tolist()
+
+        sfgrid = np.array(age_mh[['integrand']].unstack()).tolist()
+        sfgrid = np.array(sfgrid)
+
+        # Expand grids to account for central coordinates
+        sfgrid, agegrid = extendGrid(sfgrid, agegrid, axis=0,
+                                         x_lbound=True, x_lb=0.)
+        sfgrid, mhgrid = extendGrid(sfgrid, mhgrid, axis=1)
+        sfgrid, sgrid = extendGrid(sfgrid, sgrid, axis=2,
+                                       x_lbound=True, x_lb=0.)
+
+        sfinterpolant = RGI((agegrid,mhgrid,sgrid),sfgrid)
+
+    else:
+        # For fields with no RAVE-TGAS stars - 0 value everywhere in field
+        print('No stars in field: '+str(fieldID))
+        sfinterpolant = RGI([], 0)
+
+    return sfinterpolant, fieldID
+
+def sfFieldColMag(field, col, mag, weight, spectro, photo):
+
+    '''
+    sfFieldColMag - Converts spectro interpolant and 2MASS interpolant into a selection grid
+                    in colour and magnitude space
+
+    Parameters
+    ----------
+        field: string/float/int
+                - ID of the field which we're creating a selection function for
+
+        col: array
+                - Grid of colour (J-K) values over which we're finding the value of the selection function
+
+        mag: array
+                - Grid of H magnitude values over which we're finding the value of the selection function
+
+    Inherited
+    ---------
+        self.spectro_interp: dict
+                - Dictionary of spectroscopic spectro interpolants in col-mag space with col-mag ranges and grid areas given
+
+        self.tmass_interp: dict
+                - Dictionary of photometric spectro interpolants in col-mag space with col-mag ranges and grid areas given
+
+    Returns
+    -------
+        grid: array
+                - Array with same dimensions as col/mag giving the ratio of spectro/2MASS interpolants normalised
+                  by the grid areas.
+    '''
+    
+    grid = np.zeros_like(col)
+    
+    # If dictionary contains nan values, the field contains no stars
+    if ~np.isnan(spectro['grid_area']):
+
+        bools = (col>spectro['col_range'][0])&(col<spectro['col_range'][1])&\
+                (mag>spectro['mag_range'][0])&(mag<spectro['mag_range'][1])
+
+        grid[bools] = (spectro['interp']((mag[bools],col[bools]))/spectro['grid_area'])/\
+                      (photo['interp']((mag[bools],col[bools]))/photo['grid_area'])   
+        
+        grid[grid==np.inf]=0.
+        grid[np.isnan(grid)] = 0.
+
+    # Weight the grid to correspond to IMF weightings for each star
+    prob = grid*weight
+
+    return prob
+
+
+class observableSF():
+
+    '''
+
+
+    Parameters
+    ----------
+
+
+    **kwargs
+    --------
+
+
+    Returns
+    -------
+
+
+    '''
+
+    def __init__(self, fieldID):
+
+        self.field = fieldID
+
+        # mag_range, col_range are now the maximum and minimum values of grid centres used in the RGI.
+        self.photo_interp = None
+        self.photo_gridarea = None
+        self.photo_magrange = None
+        self.photo_colrange = None
+        self.photo_Nside = None
+        # mag_range, col_range are now the maximum and minimum values of grid centres used in the RGI.
+        self.spectro_interp = None
+        self.spectro_gridarea = None
+        self.spectro_magrange = None
+        self.spectro_colrange = None
+        self.spectro_Nside = None
+        
+        self.grid_points = None
+
+    def __call__(self, (x, y)):
+
+        photo = self.photo_interp((x, y))
+        spectro = self.spectro_interp((x, y))
+
+        return spectro/photo
+
+    def normalise(self):
+        return self.spectro_gridarea/self.photo_gridarea
+
+def setattrs(_self, **kwargs):
+
+    '''
+
+
+    Parameters
+    ----------
+
+
+    **kwargs
+    --------
+
+
+    Returns
+    -------
+
+
+    '''
+
+    for k,v in kwargs.items():
+        setattr(_self, k, v)
+
+
+def findNearestFields(anglelist, pointings, Phistr, Thstr):
+
+    '''
+    findNearestFields - Returns the nearest field for each point in the given list
+                        in angles (smallest angle displacement)
+
+    Parameters
+    ----------
+        anglelist: tuple of arrays
+                - First array in tuple is Phi coordinates, second is Th coordinates
+                - Angle coordinates of points in question.
+
+        pointings: DataFrame
+                - Database of field pointings which we're trying to match to the coordinates
+
+        Phistr: stirng
+                - Phi coordinate ( 'RA' of 'l' )
+
+        Thstr: stirng
+                - Th coordinate ( 'Dec' of 'b' )
+
+    Dependencies
+    ------------
+        AngleSeparation - returns the angular seperation between 2 points
+
+    Returns
+    -------
+        fieldlist - list of fields which coorrespont to closest pointings to the points.
+    '''
+    
+    fieldlist = []
+    
+    for i in range(len(anglelist[0])):
+        Phi = anglelist[0][i]
+        Th = anglelist[1][i]
+        points = pointings[[Phistr, Thstr, 'fieldID']]
+        displacement = AngleSeparation(points[Phistr], points[Thstr], Phi, Th)
+        field = points[displacement == displacement.min()]['fieldID'].iloc[0]
+        
+        fieldlist.append(field)
+        
+    return fieldlist
+
+"""
+Functions for plotting the field distributions
+"""
+
+def plotObsSF(interp, realm='SF',
+            save=False, saven='', title='',
+            scat = False, scatdata=[], 
+            fig_given = False, ax = None, fig = None, 
+            view_contours = True, **kwargs):
+
+
+    options = {'col_range': interp.spectro_colrange,
+               'mag_range': interp.spectro_magrange}
+    options.update(kwargs)
+    
+    # Array for the coordinates in each dimension
+    colmin, colmax, ncol  = options['col_range'][0], options['col_range'][1], 100
+    magmin, magmax, nmag  = options['mag_range'][0], options['mag_range'][1], 120
+    
+    # Slight deviation inside boundaries to avoid going outside limits
+    colmod  = np.linspace(colmin+1e-4,colmax-1e-4,ncol)
+    magmod   = np.linspace(magmin+1e-4,magmax-1e-4,nmag)
+    
+    options = {'col': colmod,
+               'mag': magmod,
+               'pointings': []}
+    options.update(kwargs)
+    
+    colmod = options['col']
+    magmod = options['mag']
+
+    # Labels and ticks for the grid plots
+    axis_ticks = {'col': colmod, 'mag': magmod}
+    axis_labels = {'col': r"J - K",
+                  'mag': r"H"}
+    Tfont = {'fontname':'serif', 'weight': 100, 'fontsize':20}
+    Afont = {'fontname':'serif', 'weight': 700, 'fontsize':20}
+
+    # Create 3D grids to find values of interpolants over col, mag, s
+    col2d = np.transpose(np.stack([colmod,]*len(magmod)), (1,0))
+    mag2d = np.transpose(np.stack([magmod,]*len(colmod)), (0,1))
+    
+    if realm == 'SF': grid = interp((mag2d,col2d))
+    elif realm == 'spectro': grid = interp.spectro_interp((mag2d, col2d))
+    elif realm == 'photo': grid = interp.photo_interp((mag2d, col2d))
+    else: print('realm not correctly specified: SF or spectro or photo')
+
+    # Contourf takes the transpose of the matrix
+    grid = np.transpose(grid)
+    lvls = np.logspace(-10, np.log( np.max(grid)*10 ), 20 )
+    #lvls = np.logspace(-10, 8, 20 )
+    #lvls = np.logspace(np.log( np.min( grid ) ), np.log( np.max(grid) ), 20 )
+    print(np.max(grid))
+
+    if not fig_given:
+        # Set up figure with correct number of plots
+        fig = plt.figure(figsize=(10,10))
+        print("oldfig")
+
+    if view_contours:
+        # Plot the grid on the plotting instance at the given inde
+        im = plt.contourf(axis_ticks.get('col'),axis_ticks.get('mag'), grid,
+                         colormap='YlGnBu', levels=lvls, norm=LogNorm())
+
+        if not fig_given:
+            # Add a colour bar to show the variation over the seleciton function.
+            fig.colorbar(im)
+            formatter = LogFormatter(10, labelOnlyBase=False) 
+            fig.colorbar(im, ticks=[1,5,10,20,50], format=formatter)
+        else:
+            #formatter = LogFormatter(10, labelOnlyBase=False) 
+            cb = fig.colorbar(im, ax=ax, ticks=[1e-10, 1E-5, 1E0, 1E5, 1E10], format='%.0E')# ticks=tks, format=formatter)
+            cb.ax.set_yticklabels([r'$10^{-10}$', r'$10^{-5}$', r'$10^{0}$', r'$10^{5}$', r'$10^{10}$'], fontsize=25)
+
+    plt.xlabel(r'$J-K$')
+    plt.ylabel(r'$m_H$')
+    plt.title(title)
+
+    if scat:
+        plt.scatter(scatdata[1], scatdata[0], zorder = 1)
+
+    # If the fig can be saved
+    if save: fig.savefig(saven, bbox_inches='tight')
+
+
+def plotSpectroscopicSF(fieldInts, field,
+                        srange = (0.01, 20.), mh = -0.2,
+                        continuous=False, nlevels=10, title='',
+                        save=False, fname='', **kwargs):
+
+    '''
+    plotSFInterpolants - Plots the selection function in any combination of age, mh, s coordinates.
+                         Can chose what the conditions on individual plots are (3rd coord, Field...)
+
+    Parameters
+    ----------
+        fieldInts: DataFrame
+                - Database of selection function interpolants for each field in the survey
+
+    **kwargs
+    --------
+        age, mh, s: 1D array
+                - arrays of values which the coordinates will vary over
+
+        fields: list
+                - field IDs which the plots will use selection functions from
+
+        Phi, Th: 1D array
+                - If var1, var2 == 'l', 'b' - the positions of plates will vary over this range
+                - My not be exactly right positions as this depends on the plate position
+
+        pointings: list
+                - Database of field pointings - only contains pointings where a selection function
+                  interpolant has correctly been produced (photo_bool==True)
+
+    Dependencies
+    ------------
+        findNearestFields - Returns the nearest field for each point in the given list
+                            in angles (smallest angle displacement)
+
+    Returns
+    -------
+        None
+
+        Plots an axis-shared multi-plot of the specified fields/coordinates selection functions.
+    '''
+
+    # Array for the coordinates in each dimension
+    smin, smax, ns = srange[0], srange[1], 80
+    agemin, agemax, nage = 0.0001, 13, 100
+    
+    smod    = np.logspace(np.log10(smin),np.log10(smax),ns)
+    agemod  = np.linspace(agemin,agemax,nage)
+    agemod    = np.logspace(np.log10(agemin),np.log10(agemax),nage)
+
+    # Labels and ticks for the grid plots
+    axis_ticks = {'s': smod, 'age': agemod}
+    axis_labels = {'s': r"$s$ (kpc)",
+                  'age': r"$\tau$ (Gyr)",
+                  'mh': r"[M/H]"}
+    Tfont = {'fontname':'serif', 'weight': 100, 'fontsize':20}
+    Afont = {'fontname':'serif', 'weight': 700, 'fontsize':20}
+
+    # Create 3D grids to find values of interpolants over age, mh, s
+    s2d = np.stack([smod,]*len(agemod))
+    age2d = np.transpose(np.stack([agemod,]*len(smod)))
+    sf2d = fieldInts.agemhssf.loc[field]((age2d, mh, s2d))
+
+    # Normalise contour levels to see the full range of contours
+    gridmax = np.max(sf2d)
+    levels = np.linspace(0, gridmax, nlevels)
+    
+    # Create figure
+    fig = plt.figure(figsize=(15, 15))
+    im = plt.contourf(age2d,s2d,sf2d,
+                     levels=levels,colormap='YlGnBu')    
+    plt.yscale('log')
+    plt.xlabel(r'$\tau (Gyr)$')
+    plt.ylabel(r'$s (kpc)$')
+    plt.title(title)#r"$\mathrm{P}(\mathrm{S}|\mathrm{[M/H] = -0.2},\, s,\, \tau)$")
+    plt.colorbar(im, format="%.3f")
+
+    if save:
+        print(fname)
+        plt.savefig(fname, bbox_inches='tight')
+
+    """
+    if not fig_given:
+        # Set up figure with correct number of plots
+        fig = plt.figure(figsize=(10,10))
+
+    # Plot the grid on the plotting instance at the given inde
+    im = plt.contourf(age2d,s2d,sf2d,
+                     colormap='YlGnBu', levels=lvls, norm=LogNorm())
+
+    if not fig_given:
+        # Add a colour bar to show the variation over the seleciton function.
+        fig.colorbar(im)
+        formatter = LogFormatter(10, labelOnlyBase=False) 
+        fig.colorbar(im, ticks=[1,5,10,20,50], format=formatter)
+    else:
+        #formatter = LogFormatter(10, labelOnlyBase=False) 
+        cb = fig.colorbar(im, ax=ax, ticks=np.linspace(0.01, 0.1, 10), format='%.0E')# ticks=tks, format=formatter)
+        #cb.ax.set_yticklabels([r'$10^{-2}$', r'$10^{-1.5}$', r'$10^{0}$', r'$10^{1}$', r'$10^{2}$'], fontsize=25)
+
+    plt.yscale('log')
+    plt.xlabel(r'$\tau (Gyr)$')
+    plt.ylabel(r'$s (kpc)$')
+    plt.title(title)
+
+    # If the fig can be saved
+    if save: fig.savefig(fname, bbox_inches='tight')
+    """
 
 def plotSFInterpolants(fieldInts, (varx, vary), var1, var2, 
                         srange = (0.01, 20.), 
@@ -1377,7 +1654,7 @@ def plotSFInterpolants(fieldInts, (varx, vary), var1, var2,
 
         pointings: list
                 - Database of field pointings - only contains pointings where a selection function
-                  interpolant has correctly been produced (tmass_bool==True)
+                  interpolant has correctly been produced (photo_bool==True)
 
     Dependencies
     ------------
@@ -1558,48 +1835,12 @@ def plotSFInterpolants(fieldInts, (varx, vary), var1, var2,
         plt.savefig(fname, bbox_inches='tight')
 
 
-def findNearestFields(anglelist, pointings, Phistr, Thstr):
 
-    '''
-    findNearestFields - Returns the nearest field for each point in the given list
-                        in angles (smallest angle displacement)
 
-    Parameters
-    ----------
-        anglelist: tuple of arrays
-                - First array in tuple is Phi coordinates, second is Th coordinates
-                - Angle coordinates of points in question.
 
-        pointings: DataFrame
-                - Database of field pointings which we're trying to match to the coordinates
-
-        Phistr: stirng
-                - Phi coordinate ( 'RA' of 'l' )
-
-        Thstr: stirng
-                - Th coordinate ( 'Dec' of 'b' )
-
-    Dependencies
-    ------------
-        AngleSeparation - returns the angular seperation between 2 points
-
-    Returns
-    -------
-        fieldlist - list of fields which coorrespont to closest pointings to the points.
-    '''
-    
-    fieldlist = []
-    
-    for i in range(len(anglelist[0])):
-        Phi = anglelist[0][i]
-        Th = anglelist[1][i]
-        points = pointings[[Phistr, Thstr, 'fieldID']]
-        displacement = AngleSeparation(points[Phistr], points[Thstr], Phi, Th)
-        field = points[displacement == displacement.min()]['fieldID'].iloc[0]
-        
-        fieldlist.append(field)
-        
-    return fieldlist
+"""
+Not sure if these functions are any use any more
+"""
 
 def plot1DSF(fieldInts, var, scale = 'lin', **kwargs):
 
@@ -1731,68 +1972,43 @@ def plotSumSF(fieldInts, var, scale = 'lin', **kwargs):
     return sf
 
 
-def plotColMagInterpolants(interp, compare=False, interp2='', 
-                        save=False, saven='', title='', **kwargs):
-    if compare:    
-        options = {'col_range': (max(interp['col_range'][0], interp2['col_range'][0]),
-                                 (min(interp['col_range'][1], interp2['col_range'][1]))),
-                   'mag_range': (max(interp['mag_range'][0], interp2['mag_range'][0]),
-                                 (min(interp['mag_range'][1], interp2['mag_range'][1])))}
-    else:
-        options = {'col_range': (interp['col_range'][0], interp['col_range'][1]),
-                   'mag_range': (interp['mag_range'][0], interp['mag_range'][1])}
-    options.update(kwargs)
-    
-    # Array for the coordinates in each dimension
-    colmin, colmax, ncol  = options['col_range'][0], options['col_range'][1], 30
-    magmin, magmax, nmag  = options['mag_range'][0], options['mag_range'][1], 50
-    
-    colmod  = np.linspace(colmin+1e-4,colmax-1e-4,ncol)
-    magmod   = np.linspace(magmin+1e-4,magmax-1e-4,nmag)
-    
-    options = {'col': colmod,
-               'mag': magmod,
-               'pointings': []}
-    options.update(kwargs)
-    
-    colmod = options['col']
-    magmod = options['mag']
+def PointDataSample(df, pointings, plate):
 
-    # Labels and ticks for the grid plots
-    axis_ticks = {'col': colmod, 'mag': magmod}
-    axis_labels = {'col': r"J - K",
-                  'mag': r"H"}
-    Tfont = {'fontname':'serif', 'weight': 100, 'fontsize':20}
-    Afont = {'fontname':'serif', 'weight': 700, 'fontsize':20}
+    '''
+    PointDataSample - Creates sample of points which correspond to a field from spectroscopic catalogue
 
-    # Create 3D grids to find values of interpolants over col, mag, s
-    col2d = np.transpose(np.stack([colmod,]*len(magmod)), (1,0))
-    mag2d = np.transpose(np.stack([magmod,]*len(colmod)), (0,1))
-    
-    grid = interp['interp']((mag2d,col2d))/interp['grid_area']
-    if compare:
-        grid2 = interp2['interp']((mag2d,col2d))
-        #grid2[grid2<10] = 0.
-        grid2 = grid2/interp2['grid_area']
-        grid = grid/grid2
+    Parameters
+    ----------
+        df: DataFrame
+                - Data from the RAVE catalogue with a 'plate' field
 
-    # Set up figure with correct number of plots
-    fig = plt.figure(figsize=(10,10))
+        pointings: DataFrame
+                - Dataframe of plate coordinates from Wojno's work
 
-        
-    # Contourf takes the transpose of the matrix
-    grid = np.transpose(grid)
+        plate: string
+                - Id of plate
 
-        
-    # Plot the grid on the plotting instance at the given inde
-    im = plt.contourf(axis_ticks.get('col'),axis_ticks.get('mag'), grid,
-                     colormap='YlGnBu')
-    plt.xlabel(r'$J-K$')
-    plt.ylabel(r'$m_H$')
-    plt.title(title)
+    Returns
+    -------
+        points: DataFrame
+                - Data about stars on plate including the Theta, Phi coordinates from z-axis
 
-    # Add a colour bar to show the variation over the seleciton function.
-    fig.colorbar(im)
+        plate_coord: tuple of floats (radians)
+                - Galactic coordinates of centre of the observation plate
 
-    # If the fig can be saved
-    if save: fig.savefig(saven, bbox_inches='tight')
+    '''
+
+    points = df[df.plate == plate]
+    plate_coords = pointings[pointings.plate == plate]
+    plate_coords['RArad'], plate_coords['DErad'] = plate_coords.RAdeg*np.pi/180, plate_coords.DEdeg*np.pi/180
+    plate_coords['l'], plate_coords['b'] = EquatToGal(plate_coords.RArad, plate_coords.DErad)
+
+    lc, bc = plate_coords.l.iloc[0], plate_coords.b.iloc[0]
+    points['Phi'], points['Theta'] = InverseRotation(points.l, points.b, lc, bc)
+    points['Th_zero'] = AngleShift(points.Theta)
+    plate_coord = (lc,bc)
+
+    points['J_K'] = points.Jmag_2MASS - points.Kmag_2MASS
+
+    return points, plate_coord
+
