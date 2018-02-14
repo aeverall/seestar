@@ -91,6 +91,7 @@ class surveyInformation():
 		self.iso_pickle_file = ''
 		self.iso_pickle_path = self.data_path + self.iso_pickle_file
 
+
 	def __call__(self):
 
 		self.spectro_folder = self.data_path + self.spectro
@@ -125,14 +126,18 @@ class surveyInformation():
 		if not os.path.exists(self.photo_path):
 			print("\nThe path to your photometric survey, photo_path, does not exist: %s" % self.photo_path)
 
-		# 3) field_path, field_coords
+		# 3) field_path, field_coords, limlabels
 		try:
 			# Use .xxx in file path to determine file type
 			re_dotfile = re.compile('.+\.(?P<filetype>[a-z]+)')
 			filetype = re_dotfile.match(self.field_path).group('filetype')
 			# Import data as a pandas DataFrame
-			test_data2 = getattr(pd, 'read_'+filetype)(self.field_path, usecols = self.field_coords[0], nrows = 5)
+			test_data2 = getattr(pd, 'read_'+filetype)(self.field_path, nrows = 5)
 			print("\nYour angular coordinates will be treated as %s." % self.field_coords[1])
+
+			for i in range(len(self.field_coords[0])):
+				try: cut = test_data2[self.field_coords[0][i]].iloc[0]
+				except KeyError: print("\nfield_coords column header, %s, is not in dataframe" % self.field_coords[0][i])
 		except AttributeError:
 			print("\nfield_path has not been given a file name with .type on the end.")
 		except IOError:

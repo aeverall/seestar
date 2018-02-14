@@ -62,6 +62,7 @@ from PlotCoordinates import *
 from DataImport import *
 import ComputerOps
 import StatisticalModels
+import FieldUnions
 
 
 
@@ -153,7 +154,7 @@ class FieldInterpolator():
         if testbool: 
             testfield = ['1758m28', '0051m27']
             pointings = pointings[self.pointings.fieldID.isin(testfield)]
-        pointings = pointings.iloc[3:4]
+        #pointings = pointings.iloc[3:4]
         print(len(pointings))
 
         self.pointings = pointings
@@ -220,54 +221,27 @@ class FieldInterpolator():
         ----------
             catalogue: DataFrame
                     - The catalogue of stars which we want the selection function probability of.
-                    - Must contain: age, s, mh, RA, Dec
+                    - Must contain: age, s, mh, l, b
 
         Returns
         -------
             catalogue: DataFrame
-                    - The same as the input dataframe with an additional 'sf' column
-
-            missing_fields: list
-                    - All fields which shoulld be in the database but are missing
+                    - The same as the input dataframe with an additional columns:
+                    - 'inion', 'field_info', 'points'
         '''
 
-        # Assign each point to a pointing
-        catalogue = self.PointsToPointings(catalogue, Phi='RA', Th='Dec')
+        # Every row in the dataframe receives a list of field pointings which overlap on 
+        # the given galactic coordinates
+        catalogue = self.PointsToPointings(catalogue, Phi='l', Th='b')
 
-        # Lists which the selection function and missing fields will be added to
-        listsf = []
-        missing_fields = []
-        print(catalogue)
+        # Every pointing is transformed to a tuple of SFprobability, and pointing l, b
+        catalogue['field_info'] = catalogue.apply(FieldUnions.pointsListMap, args=(self.surveysf, ) , axis=1)
 
-        # Iterate over stars in catalogue
-        for index in catalogue.index:
-            # List to append values of sf for individual fields to
-            sf_star = []
-            # Iterate over fields corresponding to each coordinate
-            for field in catalogue.points.loc[index]:
-                # PointsToPointings converts all field types to strings, convert back
-                field = self.fieldlabel_type(field)
-                print(field)
-                try:
-                    interp = self.surveysf.loc[field]['agemhssf']
-                    try:
-                        sf = interp((catalogue.age.loc[index],
-                                     catalogue.mh.loc[index],
-                                     catalogue.s.loc[index]))
-                    except IndexError: 
-                        sf=0.
-                # If field is not in surveysf, add field to missing_fields list
-                except KeyError: 
-                    sf=0.0
-                    missing_fields.append(field)
-                    print('missing_fields')
-                sf_star.append(sf)
+        # The SF probabilities and coordinates of overlapping fields are used to calculate
+        # the field union.
+        catalogue['union'] = catalogue.field_info.map(FieldUnions.fieldUnion)
 
-            listsf.append(np.sum(sf_star))
-
-        catalogue['sf'] = pd.Series(listsf)
-
-        return catalogue, missing_fields
+        return catalogue
         
         
     def ImportDataframe(self, path,
@@ -343,9 +317,12 @@ class FieldInterpolator():
         elif coordinates == 'Galactic': coords = ['fieldID','l', 'b']
 
         if data_source=='stars': coords.extend(['appA', 'appB', 'appC'])
+
         elif data_source=='Fields':
+            coords.extend(['mlBound', 'muBound', 'clBound', 'cuBound'])
             if Field_solidangle: coords.extend(['SolidAngle'])
             else: data['SolidAngle'] = np.zeros((len(data))) + solidangle
+
         data = data.rename(index=str, columns=dict(zip(coord_labels, coords)))
 
         # Remove any null values from data
@@ -421,7 +398,7 @@ class FieldInterpolator():
             for field in field_list:
                 results.append(pool.apply_async(iterateField, 
                                                 args=(self.stars, self.photo_path, field,
-                                                    self.photo_tag, self.photo_coords)))
+                                                    self.photo_tag, self.photo_coords, self.pointings.loc[field])))
 
             for r in results:
                 obsSF_field, field = r.get()
@@ -441,7 +418,7 @@ class FieldInterpolator():
             for field in field_list:
 
                 obsSF_field, field = iterateField(self.stars, self.photo_path, field,
-                                                self.photo_tag, self.photo_coords)
+                                                self.photo_tag, self.photo_coords, self.pointings.loc[field])
                 obsSelectionFunction[field] = obsSF_field
 
         return obsSelectionFunction
@@ -727,7 +704,7 @@ class FieldInterpolator():
         '''
         
         df = AnglePointsToPointingsMatrix(stars[:20000], self.pointings,
-                                          Phi, Th, 'SolidAngle')
+                                          Phi, Th, 'SolidAngle', IDtype = self.fieldlabel_type)
         
         return df
 
@@ -799,7 +776,7 @@ class FieldInterpolator():
             Phi, Th = GenerateCircle(PhiRad[i],ThRad[i],SA[i])
             PlotDisk(Phi, Th, ax)
     
-def iterateField(stars, photo_path, field, photo_tag, photo_coords):
+def iterateField(stars, photo_path, field, photo_tag, photo_coords, fieldpointing):
 
     '''
     iteratephotoFields- Iterates over each field file of 2MASS star data and 
@@ -832,13 +809,14 @@ def iterateField(stars, photo_path, field, photo_tag, photo_coords):
     First use DataImport.reformatTmassFieldFiles to put files into correct format
 
     '''
-    print(field)
+
+    sys.stdout.write("\rCurrent field in col-mag calculation: %s" % field)
+    sys.stdout.flush()
     
     database_coords = ['RA','DEC','J','K','H']
     df_coords = ['RA','Dec','appA','appB','appC']
 
-        
-    # Import 2MASS data and rename magnitude columns
+    # Import photometric data and rename magnitude columns
     photo_points = pd.read_csv(photo_path+str(field)+photo_tag)
     coords = ['appA', 'appB', 'appC']
     photo_points=photo_points.rename(index=str, 
@@ -851,6 +829,7 @@ def iterateField(stars, photo_path, field, photo_tag, photo_coords):
     # Only create an interpolant if there are any points in the region
     if len(spectro_points)>0:
 
+        """
         if len(spectro_points)>1:
 
             # Double range of colours and magnitudes to allow smoothing to be effective
@@ -869,6 +848,25 @@ def iterateField(stars, photo_path, field, photo_tag, photo_coords):
             # Range of colours and magnitudes used
             mag_min, mag_max = (mag_exact - 1, mag_exact + 1)
             col_min, col_max = (col_exact - 1, col_exact + 1)          
+        """
+
+        # Use given limits to determine boundaries of dataset
+        # apparent mag upper bound
+        if fieldpointing.mlBound == "NoLimit":
+            mag_min = np.min(spectro_points.appC) - 2
+        else: mag_min = fieldpointing.mlBound
+        # apparent mag lower bound
+        if fieldpointing.muBound == "NoLimit":
+            mag_max = np.max(spectro_points.appC) + 2
+        else: mag_max = fieldpointing.muBound
+        # colour uppper bound
+        if fieldpointing.clBound == "NoLimit":
+            col_min = np.min(spectro_points.Colour) - 1
+        else: col_min = fieldpointing.clBound
+        # colour lower bound
+        if fieldpointing.cuBound == "NoLimit":
+            col_max = np.max(spectro_points.Colour) + 1
+        else: col_max = fieldpointing.cuBound
 
         # Chose only photometric survey points within the colour-magnitude region
         photo_points = photo_points[(photo_points.appC > mag_min)&\
@@ -876,7 +874,7 @@ def iterateField(stars, photo_path, field, photo_tag, photo_coords):
                                     (photo_points.Colour > col_min)&\
                                     (photo_points.Colour < col_max)]
 
-        # Interpolate for 2MASS data
+        # Interpolate for photo data
         photo_interpolant, photo_gridarea, photo_magrange, photo_colrange = CreateInterpolant(photo_points,
                                                                                              (mag_min, mag_max), (col_min, col_max),
                                                                                              range_limited=True,
@@ -955,16 +953,25 @@ def CreateInterpolant(points,
                 - Min and max of colours in interpolant
     '''
 
-    PoissonProcess = True
-    if PoissonProcess:
+    # What fitting process do you want to use for the data
+    Process = "Number"
+
+    # Optimum Poisson likelihood process
+    if Process == "Poisson":
         profile = PoissonLikelihood(points, mag_range, col_range,
                                     'appC', 'Colour',
                                     datatype=datatype)
         grid_area = np.nan
         return profile, grid_area, mag_range, col_range
+    # Ratio of number of stars in the field.
+    elif Process == "Number":
 
+        grid_area = np.nan
+        profile = FlatRegion(len(points), mag_range, col_range)
 
-    else:
+        return profile, grid_area, mag_range, col_range
+    # Histogram grid density process
+    elif Process == "Grid":
         Nside_grid = 8
         interp, pop_grid, mag_centers, col_centers = IndexColourMagSG(points, 
                                                                      (Nside_grid, Nside_grid),
@@ -979,7 +986,82 @@ def CreateInterpolant(points,
         if Grid: return interp, pop_grid, mag, col
         else: return interp, grid_area, mag_range, col_range
 
+# Used when Process == Poisson
+def PoissonLikelihood(points,
+                     mag_range, col_range,
+                     mag_label, col_label,
+                     datatype=""):
+    '''
+    PoissonLikelihood
 
+    Parameters
+    ----------
+
+
+    **kwargs
+    --------
+
+
+    Returns
+    -------
+
+
+    '''
+
+    # Make copy of points in order to save gc.collect runtime
+    points = pd.DataFrame(np.copy(points), columns=list(points))
+
+    x = getattr(points, mag_label)
+    y = getattr(points, col_label)
+
+    modelType = 'GMM'
+
+    if modelType == 'GMM':
+
+        # Number of Gaussian components
+        if datatype == "spectro":
+            nComponents = 1
+        elif datatype == "photo":
+            nComponents = 4
+
+        # Generate the model
+        model = StatisticalModels.GaussianMM(x, y, nComponents, mag_range, col_range)
+        model.optimizeParams()
+        model.testIntegral()
+
+    elif modelType == 'Grid':
+
+        # Number of grid cells
+        nx, ny = 8, 9
+        model = StatisticalModels.PenalisedGridModel(x, y, (nx,ny), mag_range, col_range)
+        model.optimizeParams()
+        model.generateInterpolant()
+
+        print('...complete')
+    else:
+        raise ValueError("A valid modelType has not been provided - either \"Gaussian\" for GMM or \"Grid\" for PenalisedGridModel")
+
+    return model
+
+# Used when Process == "Number"
+class FlatRegion:
+
+    def __init__(self, value, rangex, rangey):
+        self.value = value
+        self.rangex = rangex
+        self.rangey = rangey
+
+    def __call__(self, (x, y)):
+
+        result = np.zeros(np.shape(x))
+        result[(x>self.rangex[0]) & \
+                (x<self.rangex[1]) & \
+                (y>self.rangey[0]) & \
+                (y<self.rangey[1])] = self.value
+
+        return result
+
+# Used when Process == Grid
 def IndexColourMagSG(points, N_2D, 
                      mag_range, col_range,
                      mag_label, col_label,
@@ -1095,64 +1177,6 @@ def IndexColourMagSG(points, N_2D,
     interpolation = RGI((mag_centers, col_centers), np.transpose(selection_grid))
 
     return interpolation, selection_grid, mag_centers, col_centers
-
-def PoissonLikelihood(points,
-                     mag_range, col_range,
-                     mag_label, col_label,
-                     datatype=""):
-    '''
-    PoissonLikelihood
-
-    Parameters
-    ----------
-
-
-    **kwargs
-    --------
-
-
-    Returns
-    -------
-
-
-    '''
-
-    # Make copy of points in order to save gc.collect runtime
-    points = pd.DataFrame(np.copy(points), columns=list(points))
-
-    x = getattr(points, mag_label)
-    y = getattr(points, col_label)
-
-    modelType = 'GMM'
-
-    if modelType == 'GMM':
-
-        # Number of Gaussian components
-        if datatype == "spectro":
-            nComponents = 1
-        elif datatype == "photo":
-            nComponents = 4
-
-        print(nComponents)
-
-        # Generate the model
-        model = StatisticalModels.GaussianMM(x, y, nComponents, mag_range, col_range)
-        model.optimizeParams()
-        model.testIntegral()
-
-    elif modelType == 'Grid':
-
-        # Number of grid cells
-        nx, ny = 8, 9
-        model = StatisticalModels.PenalisedGridModel(x, y, (nx,ny), mag_range, col_range)
-        model.optimizeParams()
-        model.generateInterpolant()
-
-        print('...complete')
-    else:
-        raise ValueError("A valid modelType has not been provided - either \"Gaussian\" for GMM or \"Grid\" for PenalisedGridModel")
-
-    return model
 
 def fieldInterp(fieldInfo, agegrid, mhgrid, sgrid, 
                 age_mh, col, mag, weight, obsSF):

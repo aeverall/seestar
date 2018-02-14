@@ -715,7 +715,7 @@ def PointsInPointings(df, pointings):
     for i in range(len(pointings)):
         plotting(df['bool'+str(i)])
 
-def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, SA):
+def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, SA, IDtype = str):
 
     '''
     AnglePointsToPointingsMatrix - Adds a column to the df with the number of the field pointing
@@ -787,16 +787,23 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, SA):
     Mbool = pd.DataFrame(np.transpose(Mbool), columns=Plates)
     Mplates = pd.DataFrame(np.repeat([Plates,], len(df), axis=0), columns=Plates)
     Mplates = Mplates*Mbool
-    plate_series = pd.Series(Mplates.values.tolist())
 
     def filtering(x, remove):
         x = filter(lambda a: a!=remove, x)
         return x
 
-    plate_series = plate_series.apply(filtering, args=('', ))
-    plate_series = pd.DataFrame(plate_series, columns=['points'])
+    field_listoflists = Mplates.values.tolist()
+    field_listoflists = [filtering(x, '') for x in field_listoflists]
+
+    dtypeMap = lambda row: map(IDtype, row)
+    field_listoflists = map(dtypeMap, field_listoflists)
+
+    field_series = pd.Series(field_listoflists)
+
+
+    field_series = pd.DataFrame(field_series, columns=['points'])
     df = df.reset_index()
-    df = df.merge(plate_series, how='inner', right_index=True, left_index=True)
+    df = df.merge(field_series, how='inner', right_index=True, left_index=True)
     df.index = df['index']
 
     return df

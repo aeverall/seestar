@@ -50,8 +50,6 @@ DataImport
 import pandas as pd
 import numpy as np
 
-from MilkyWayDFModified import MilkyWayDF as mwdf
-from GalDFModified import GalDF
 import CoordTrans
 
 import gc
