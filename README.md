@@ -1,6 +1,7 @@
 # SeeMost
-=========
-## SElEction function for Multi-Object SpecTrographs
+(SElEction function for Multi-Object SpecTrographs)
+=======
+
 
 SeeMost is a package for creating and using selection functions for multi-fibre spectroscopic surveys.
 
