@@ -20,7 +20,7 @@ $ git clone https://github.com/AndrewEverall/SFgenerator.git
 Download larger scale datasets into separate files for each survey.
 Data we provide can be found at ___.
 ```html
-<span style = "color: red"> File containing data resources will be added soon. </span>
+// <span style = "color: red"> File containing data resources will be added soon. </span>
 ```
 
 Required for constructing selection function from scratch:
@@ -43,7 +43,7 @@ If starting from the full photometric catalogue, stars can be selected to into i
 SFscripts/___.py
 ```
 ```html
-<span style = "color: red"> script for assigning stars to fields will be added soon. </span>
+// <span style = "color: red"> script for assigning stars to fields will be added soon. </span>
 ```
 
 
