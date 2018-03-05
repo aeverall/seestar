@@ -232,27 +232,26 @@ class GaussianMM():
         
         # Function which calculates the actual distribution
         self.distribution = multiDistribution
-
-        print("integrate with Simpson's")
         
     def __call__(self, (x, y)):
         
         return self.distribution(self.params_f, x, y, self.nComponents)
         
         
-    def optimizeParams(self):
+    def optimizeParams(self, method = "SLSQP"):
 
         # nll is the negative lnlike distribution
         nll = lambda *args: -self.lnprob(*args)
 
         # result is the set of theta parameters which optimise the likelihood given x, y, yerr
-        result = op.minimize(nll, self.params_i, method = "Powell")
+        result = op.minimize(nll, self.params_i, method = method)
         
         # Save evaluated parameters to internal values
         self.params_f = []
         for i in range(self.nComponents):
             self.params_f.append(result["x"][i*6:(i+1)*6])
        
+        return nll(result["x"])
 
     # ln(Likelihood) based on a Poisson likelihood distribution
     def lnlike(self, params):

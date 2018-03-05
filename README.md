@@ -1,6 +1,56 @@
-# SFgenerator
-Creates a selection function given age, metallicity and mass for multifibre spectroscopic surveys.
+# SeeMost
+=========
+## SElEction function for Multi-Object SpecTrographs
 
-This database contains the python scripts necessary in order to build a selection function for a multifibre spectroscopic survey from the data sample.
+SeeMost is a package for creating and using selection functions for multi-fibre spectroscopic surveys.
 
-Within this database I will include: The selection function scripts and all dependencies, some premade selection functions for given surveys (such as RAVE, Lamost, Apogee, TGAS), the datasets used in the creation of these (2MASS, Vista).
+The full theory and design of the selection function can be found in Everall & Das (in prep.).
+
+Here we explain how to download and use this resource. We also provide prebuilt selection functions for RAVE, APOGEE, Gaia-ESO, GALAH, LAMOST and SEGUE.
+
+
+## Download
+
+Go to the location where you would like to store the repository.
+
+```
+$ git clone https://github.com/AndrewEverall/SFgenerator.git
+```
+
+Download larger scale datasets into separate files for each survey.
+Data we provide can be found at ___.
+```html
+<span style = "color: red"> File containing data resources will be added soon. </span>
+```
+
+Required for constructing selection function from scratch:
+\- Spectrograph data including crossmatch with photometric catalogue.
+\- Full photometric catalogue or datapoints on photometric catalogue selected by field pointing in the spectrograph.
+\- List of field pointings from the spectrograph.
+
+
+## Setup files
+
+For each survey, a class containing the description of file locations and datatypes is required.
+
+A jupyter notebook with a couple of examples of generating this file:
+```
+SFexamples/FileLocations.ipynb
+```
+
+If starting from the full photometric catalogue, stars can be selected to into individual field files using:
+```
+SFscripts/___.py
+```
+```html
+<span style = "color: red"> script for assigning stars to fields will be added soon. </span>
+```
+
+
+## Run selection function
+
+
+## Use selection function in code
+
+
+## Shortcuts to generate selection function

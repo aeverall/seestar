@@ -154,7 +154,7 @@ class FieldInterpolator():
         if testbool: 
             testfield = ['1758m28', '0051m27']
             pointings = pointings[self.pointings.fieldID.isin(testfield)]
-        #pointings = pointings.iloc[3:4]
+        pointings = pointings.iloc[3:4]
         print(len(pointings))
 
         self.pointings = pointings
@@ -702,7 +702,7 @@ class FieldInterpolator():
             df: Dataframe
                     - stars dataset with an additional column containing lists of field IDs for each point.
         '''
-        
+        print("\nNote: this is only working for 20000 stars out of the sample due to memory constraints.")
         df = AnglePointsToPointingsMatrix(stars[:20000], self.pointings,
                                           Phi, Th, 'SolidAngle', IDtype = self.fieldlabel_type)
         
@@ -795,10 +795,7 @@ def iterateField(stars, photo_path, field, photo_tag, photo_coords, fieldpointin
 
         photo_coords
 
-    Inherited
-    ---------
-        self.pointings: Dataframe
-                - Dataframe of coordinates and IDs of survey fields
+        fieldpointing
 
     Returns
     -------
@@ -954,7 +951,7 @@ def CreateInterpolant(points,
     '''
 
     # What fitting process do you want to use for the data
-    Process = "Number"
+    Process = "Poisson"
 
     # Optimum Poisson likelihood process
     if Process == "Poisson":
