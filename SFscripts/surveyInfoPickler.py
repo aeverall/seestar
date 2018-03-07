@@ -91,6 +91,7 @@ class surveyInformation():
 		self.iso_pickle_file = ''
 		self.iso_pickle_path = self.data_path + self.iso_pickle_file
 
+		self.overlap_fname = ''
 
 	def __call__(self):
 
@@ -103,6 +104,7 @@ class surveyInformation():
 		self.spectro_pickle_path = self.spectro_folder + self.spectro_pickle_fname
 		self.sf_pickle_path = self.spectro_folder + self.sf_pickle_fname
 		self.obsSF_pickle_path = self.spectro_folder + self.obsSF_pickle_fname
+		self.overlap_path = self.spectro_folder + self.overlap_fname
 
 		self.iso_pickle_path = self.data_path + self.iso_pickle_file
 
@@ -143,7 +145,7 @@ class surveyInformation():
 		except IOError:
 			print("\nThe path to your field coordinates, field_path, does not exist: %s" % self.field_path)
 
-		# 4) photo_pickle_path, spectro_pickle_path, sf_pickle_path
+		# 4) photo_pickle_path, spectro_pickle_path, sf_pickle_path, obsSF_pickle_path, overlap_path
 		if not os.path.exists(self.photo_pickle_path):
 			print("\nThe path to your photometric pickled instance, photo_pickle_path, does not exist: %s" % self.photo_pickle_path)
 		if not os.path.exists(self.spectro_pickle_path):
@@ -152,6 +154,8 @@ class surveyInformation():
 			print("\nThe path to your selection function pickled instance, sf_pickle_path, does not exist: %s" % self.sf_pickle_path)
 		if not os.path.exists(self.obsSF_pickle_path):
 			print("\nThe path to your selection function pickled instance, obsSF_pickle_path, does not exist: %s" % self.obsSF_pickle_path)
+		if not os.path.exists(self.overlap_path):
+			print("\nThe path to your selection function pickled instance, obsSF_pickle_path, does not exist: %s" % self.overlap_path)
 
 		# 5) field_SA
 		print("\n The solid angle extent of your fields is %s\n" % str(self.field_SA))

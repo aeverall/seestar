@@ -105,10 +105,11 @@ class FieldInterpolator():
             print(string + ': ')
             print(object)
     
-    def __init__(self, pickleFile, survey = 'RAVE',
+    def __init__(self, pickleFile,
                  surveysf_exists = True,
                  ColMagSF_exists = True,
-                 testbool = False, testfield = ''):
+                 testbool = False, testfield = '',
+                 overlapdata_exists = False):
         
         # If true, only run selection function for a couple of fields
         self.testbool=testbool
@@ -154,7 +155,7 @@ class FieldInterpolator():
         if testbool: 
             testfield = ['1758m28', '0051m27']
             pointings = pointings[self.pointings.fieldID.isin(testfield)]
-        pointings = pointings.iloc[3:4]
+        pointings = pointings.iloc[3:6]
         print(len(pointings))
 
         self.pointings = pointings
@@ -208,6 +209,14 @@ class FieldInterpolator():
         with open(sf_pickle_path, "rb") as input:
             self.surveysf, self.agerng, self.mhrng, self.srng  = pickle.load(input)
         print("...done.\n")
+
+        if not overlapdata_exists:
+            # Create the field intersection database
+            database = FieldUnions.CreateIntersectionDatabase(5000, pointings, self.fieldlabel_type)
+            database.to_csv(file_info.overlap_path)
+        else: database = pd.read_csv(file_info.overlap_path)
+
+        self.FUInstance = FieldUnions.FieldUnion(database)
         
     def __call__(self, catalogue):
 
@@ -235,11 +244,11 @@ class FieldInterpolator():
         catalogue = self.PointsToPointings(catalogue, Phi='l', Th='b')
 
         # Every pointing is transformed to a tuple of SFprobability, and pointing l, b
-        catalogue['field_info'] = catalogue.apply(FieldUnions.pointsListMap, args=(self.surveysf, ) , axis=1)
+        catalogue['field_info'] = catalogue.apply(lambda row: self.FUInstance.pointsListMap(self.surveysf, row) , axis=1)
 
         # The SF probabilities and coordinates of overlapping fields are used to calculate
         # the field union.
-        catalogue['union'] = catalogue.field_info.map(FieldUnions.fieldUnion)
+        catalogue['union'] = catalogue.field_info.map(self.FUInstance.fieldUnion)
 
         return catalogue
         
@@ -702,9 +711,11 @@ class FieldInterpolator():
             df: Dataframe
                     - stars dataset with an additional column containing lists of field IDs for each point.
         '''
-        print("\nNote: this is only working for 20000 stars out of the sample due to memory constraints.")
-        df = AnglePointsToPointingsMatrix(stars[:20000], self.pointings,
-                                          Phi, Th, 'SolidAngle', IDtype = self.fieldlabel_type)
+        print("\nNote: this is iterating through 10k stars at a time.\n\
+        If lots of memory available, increase N for greater efficiency.")
+        df = AnglePointsToPointingsMatrix(stars, self.pointings,
+                                          Phi, Th, 'SolidAngle', IDtype = self.fieldlabel_type,
+                                          Nsample = 10000)
         
         return df
 

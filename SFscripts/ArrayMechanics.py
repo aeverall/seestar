@@ -715,7 +715,7 @@ def PointsInPointings(df, pointings):
     for i in range(len(pointings)):
         plotting(df['bool'+str(i)])
 
-def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, SA, IDtype = str):
+def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, SA, IDtype = str, Nsample = 10000):
 
     '''
     AnglePointsToPointingsMatrix - Adds a column to the df with the number of the field pointing
@@ -740,6 +740,15 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, SA, IDtype = str):
         SA: SolidAngle
             Column header for solid angle of plate on sky
 
+    kwargs
+    ------
+        IDtype: object
+            Type of python object used for field IDs 
+
+        Nsample: int
+            Number of stars to be assigned per iterations
+            Can't do too many at once due to computer memory constraints
+
     Returns
     -------
         df: pd.DataFrame
@@ -750,63 +759,71 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, SA, IDtype = str):
     '''
     df = df.copy()
 
-    pointings = pointings.reset_index(drop=True)
-    pointings = pointings.copy()
-    
-    Mp_df = np.repeat([getattr(df,Phi)], 
-                        len(pointings), 
-                        axis=0)
-    Mt_df = np.repeat([getattr(df,Th)], 
-                        len(pointings), 
-                        axis=0)
-    Mp_point = np.transpose(np.repeat([getattr(pointings,Phi)],
-                                        len(df), 
-                                        axis=0))
-    Mt_point = np.transpose(np.repeat([getattr(pointings,Th)], 
-                                        len(df), 
-                                        axis=0))
-    Msa_point = np.transpose(np.repeat([getattr(pointings,SA)], 
-                                        len(df), 
-                                        axis=0))
-    Msa_point = np.sqrt(Msa_point/np.pi) * np.pi/180
-    
-    Mbool = AngleSeparation(Mp_df,
-                            Mt_df,
-                            Mp_point,
-                            Mt_point) < Msa_point
+    # Iterate over portions of size, Nsample to constrain memory usage.
+    for i in range(len(df)/Nsample + 1):
 
-    del(Mt_df)
-    del(Mp_df)
-    del(Mp_point)
-    del(Mt_point)
-    del(Msa_point)
-    gc.collect()
+        dfi = df.iloc[i*Nsample:(i+1)*Nsample]
 
-    Plates = pointings.fieldID.astype(str).tolist()
+        pointings = pointings.reset_index(drop=True)
+        pointings = pointings.copy()
+        
+        Mp_df = np.repeat([getattr(dfi,Phi)], 
+                            len(pointings), 
+                            axis=0)
+        Mt_df = np.repeat([getattr(dfi,Th)], 
+                            len(pointings), 
+                            axis=0)
+        Mp_point = np.transpose(np.repeat([getattr(pointings,Phi)],
+                                            len(dfi), 
+                                            axis=0))
+        Mt_point = np.transpose(np.repeat([getattr(pointings,Th)], 
+                                            len(dfi), 
+                                            axis=0))
+        Msa_point = np.transpose(np.repeat([getattr(pointings,SA)], 
+                                            len(dfi), 
+                                            axis=0))
+        Msa_point = np.sqrt(Msa_point/np.pi) * np.pi/180
+        
+        Mbool = AngleSeparation(Mp_df,
+                                Mt_df,
+                                Mp_point,
+                                Mt_point) < Msa_point
 
-    Mbool = pd.DataFrame(np.transpose(Mbool), columns=Plates)
-    Mplates = pd.DataFrame(np.repeat([Plates,], len(df), axis=0), columns=Plates)
-    Mplates = Mplates*Mbool
+        del(Mt_df)
+        del(Mp_df)
+        del(Mp_point)
+        del(Mt_point)
+        del(Msa_point)
+        gc.collect()
 
-    def filtering(x, remove):
-        x = filter(lambda a: a!=remove, x)
-        return x
+        Plates = pointings.fieldID.astype(str).tolist()
 
-    field_listoflists = Mplates.values.tolist()
-    field_listoflists = [filtering(x, '') for x in field_listoflists]
+        Mbool = pd.DataFrame(np.transpose(Mbool), columns=Plates)
+        Mplates = pd.DataFrame(np.repeat([Plates,], len(dfi), axis=0), columns=Plates)
+        Mplates = Mplates*Mbool
 
-    dtypeMap = lambda row: map(IDtype, row)
-    field_listoflists = map(dtypeMap, field_listoflists)
+        def filtering(x, remove):
+            x = filter(lambda a: a!=remove, x)
+            return x
 
-    field_series = pd.Series(field_listoflists)
+        field_listoflists = Mplates.values.tolist()
+        field_listoflists = [filtering(x, '') for x in field_listoflists]
+
+        dtypeMap = lambda row: map(IDtype, row)
+        field_listoflists = map(dtypeMap, field_listoflists)
+
+        field_series = pd.Series(field_listoflists)
 
 
-    field_series = pd.DataFrame(field_series, columns=['points'])
-    df = df.reset_index()
-    df = df.merge(field_series, how='inner', right_index=True, left_index=True)
-    df.index = df['index']
+        field_series = pd.DataFrame(field_series, columns=['points'])
+        dfi = dfi.reset_index()
+        dfi = dfi.merge(field_series, how='inner', right_index=True, left_index=True)
+        dfi.index = dfi['index']
 
-    return df
+        if i == 0: newdf = dfi
+        else: newdf = pd.concat((newdf, dfi))
+
+    return newdf
 
 def EqAreaCircles(delta, N):
 
