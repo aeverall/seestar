@@ -232,6 +232,9 @@ class GaussianMM():
         
         # Function which calculates the actual distribution
         self.distribution = multiDistribution
+
+        #Print out values of L as calculated
+        self.runningL = False
         
     def __call__(self, (x, y)):
         
@@ -281,8 +284,10 @@ class GaussianMM():
 
         lnL = contPoints - contInteg
 
-        sys.stdout.write("\rlogL: %.2f, sum log(f(xi)): %.2f, integral: %.2f" % (lnL, contPoints, contInteg))
-        sys.stdout.flush()
+        if self.runningL:
+            print(self.runningL)
+            sys.stdout.write("\rlogL: %.2f, sum log(f(xi)): %.2f, integral: %.2f" % (lnL, contPoints, contInteg))
+            sys.stdout.flush()
 
             
         return contPoints - contInteg

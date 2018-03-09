@@ -152,11 +152,11 @@ class FieldInterpolator():
         pointings = pointings.drop_duplicates(subset = 'fieldID')
 
         # Limit number of fields for testing the selection function
-        if testbool: 
-            testfield = ['1758m28', '0051m27']
-            pointings = pointings[self.pointings.fieldID.isin(testfield)]
-        pointings = pointings.iloc[3:6]
-        print(len(pointings))
+        #if testbool: 
+        #    testfield = ['1758m28', '0051m27']
+        #    pointings = pointings[self.pointings.fieldID.isin(testfield)]
+        #pointings = pointings.iloc[3:6]
+        #print(len(pointings))
 
         self.pointings = pointings
         
@@ -202,6 +202,13 @@ class FieldInterpolator():
             with open(sf_pickle_path, 'wb') as handle:
                     pickle.dump((surveysf, agerng, mhrng, srng), handle)
             print("...done.\n")
+
+        # Once Colour Magnitude selection functions have been created
+        # Unpickle colour-magnitude interpolants
+        print("Unpickling colour-magnitude interpolant dictionaries...")
+        with open(obsSF_pickle_path, "rb") as input:
+            self.obsSF = pickle.load(input)
+        print("...done.\n")
         
         # Once full selection function has been created
         # Unpickle survey selection function
@@ -332,6 +339,7 @@ class FieldInterpolator():
             if Field_solidangle: coords.extend(['SolidAngle'])
             else: data['SolidAngle'] = np.zeros((len(data))) + solidangle
 
+        print(dict(zip(coord_labels, coords)))
         data = data.rename(index=str, columns=dict(zip(coord_labels, coords)))
 
         # Remove any null values from data
@@ -404,10 +412,19 @@ class FieldInterpolator():
             # Build results into a full list of multiprocessing instances
             print("multiprocessing process for observable fields...\n")
             results = []
+
+            # Field numbering to show progress
+            fieldN = 0
+            fieldL = len(field_list)
             for field in field_list:
+
+                sys.stdout.write("\rCurrent field in col-mag calculation: %s, %d/%d" % (str(field), fieldN, fieldL))
+                sys.stdout.flush()
+
                 results.append(pool.apply_async(iterateField, 
                                                 args=(self.stars, self.photo_path, field,
                                                     self.photo_tag, self.photo_coords, self.pointings.loc[field])))
+                fieldN+=1
 
             for r in results:
                 obsSF_field, field = r.get()
@@ -424,11 +441,19 @@ class FieldInterpolator():
             # Locations for storage of solutions
             obsSelectionFunction = {}
 
+            # Field numbering to show progress
+            fieldN = 0
+            fieldL = len(field_list)
             for field in field_list:
+
+                sys.stdout.write("\rCurrent field in col-mag calculation: %s, %d/%d" % (str(field), fieldN, fieldL))
+                sys.stdout.flush()
 
                 obsSF_field, field = iterateField(self.stars, self.photo_path, field,
                                                 self.photo_tag, self.photo_coords, self.pointings.loc[field])
                 obsSelectionFunction[field] = obsSF_field
+
+                fieldN+=1
 
         return obsSelectionFunction
             
@@ -817,15 +842,15 @@ def iterateField(stars, photo_path, field, photo_tag, photo_coords, fieldpointin
     First use DataImport.reformatTmassFieldFiles to put files into correct format
 
     '''
-
-    sys.stdout.write("\rCurrent field in col-mag calculation: %s" % field)
-    sys.stdout.flush()
     
     database_coords = ['RA','DEC','J','K','H']
     df_coords = ['RA','Dec','appA','appB','appC']
 
     # Import photometric data and rename magnitude columns
-    photo_points = pd.read_csv(photo_path+str(field)+photo_tag)
+    try: photo_points = pd.read_csv(photo_path+str(field)+photo_tag, compression='gzip')
+    # Depends whether the stored files are gzip or not
+    except IOError: photo_points = pd.read_csv(photo_path+str(field)+photo_tag)
+
     coords = ['appA', 'appB', 'appC']
     photo_points=photo_points.rename(index=str, 
                                      columns=dict(zip(photo_coords[2:5], coords)))
@@ -1035,7 +1060,8 @@ def PoissonLikelihood(points,
         # Generate the model
         model = StatisticalModels.GaussianMM(x, y, nComponents, mag_range, col_range)
         model.optimizeParams()
-        model.testIntegral()
+        # Test integral if you want to see the value/error in the integral when calculated
+        # model.testIntegral()
 
     elif modelType == 'Grid':
 

@@ -101,7 +101,7 @@ class FieldUnion():
 		interp = info.agemhssf
 		try:
 		    sf = interp((age, mh, s))
-		except IndexError: 
+		except (ValueError, IndexError): 
 		    sf = 0.
 		    
 		return sf, fieldID

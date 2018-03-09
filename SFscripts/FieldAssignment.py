@@ -18,6 +18,7 @@ import cProfile
 import pstats
 import sys
 import time
+import gzip
 import ArrayMechanics
 
 
@@ -136,7 +137,7 @@ class FieldAssignment():
         
         # Take headers from source files (photometric catalogue)
         headers = pd.read_csv(self.allsky_directory+self.allsky_files[0], 
-                              compression='gzip', nrows = 1)[:0]
+                              compression='gzip', nrows = 1)[self.allsky_headers][:0]
         
         # Write all field files with the appropriate headers
         for field in self.pointings.fieldID:
@@ -146,7 +147,7 @@ class FieldAssignment():
         print('...done\n')
         
 
-    def RunAssignment(self, N_import=1e6, N_iterate=1000):
+    def RunAssignment(self, N_import=int(1e6), N_iterate=int(1e4)):
         
         '''
         RunAssignment(): - Runs shortcut method for calculating field assignments 
@@ -169,7 +170,7 @@ class FieldAssignment():
         # Open files for writing
         open_files = {}
         for field in self.pointings.fieldID:
-            open_files[field] = open(self.fieldpoint_directory+str(field)+'.csv', 'a+')
+            open_files[field] = gzip.open(self.fieldpoint_directory+str(field)+'.csv', 'a+')
 
         # Iterate over full directory files
         for filename in self.allsky_files:
@@ -278,7 +279,7 @@ class FieldAssignment():
                         data = df[Mbool[str(field)]]
 
                         data[self.allsky_headers].to_csv(open_files[field], compression='gzip',
-                                               index=False, header=False)
+                                                          index=False, header=False)
                         
     def RunAssignmentAPTPM(self, N_import=1000000, N_iterate=1000):
 
@@ -302,7 +303,7 @@ class FieldAssignment():
         # Open files for writing
         open_files = {}
         for field in self.pointings.fieldID:
-            open_files[field] = open(self.fieldpoint_directory+str(field)+'.csv', 'a+')
+            open_files[field] = gzip.open(self.fieldpoint_directory+str(field)+'.csv', 'a+')
 
         # Iterate over full directory files
         for filename in self.allsky_files:
@@ -318,7 +319,7 @@ class FieldAssignment():
             while Lfile == Nfile:
                 
                 # Updates of progress continuously output
-                perc = round((starsanalysed/self.allsky_total)*100, 3)
+                perc = round((starsanalysed/float(self.allsky_total))*100, 3)
                 duration = round((time.time() - start)/60., 3)
                 projected = round((time.time() - start)*self.allsky_total/((starsanalysed+1)*3600), 3)
                 sys.stdout.write('\r'+'allsky file: '+filename+'  '+\
@@ -351,7 +352,7 @@ class FieldAssignment():
                 
                 # Degrees to radians
                 if self.allsky_units == 'degrees':
-                    df_allsky[self.allsky_angles] *= np.pi/180
+                    df_allsky[['Phi', 'Th']] *= np.pi/180
                     
                 df_allsky = ArrayMechanics.\
                             AnglePointsToPointingsMatrix(df_allsky, self.pointings, Phi, Th, SA,
