@@ -762,6 +762,7 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, SA, IDtype = str, Nsamp
     # Iterate over portions of size, Nsample to constrain memory usage.
     for i in range(len(df)/Nsample + 1):
 
+        sys.stdout.write("\r"+str(i)+"..."+str(Nsample))
         dfi = df.iloc[i*Nsample:(i+1)*Nsample]
 
         pointings = pointings.reset_index(drop=True)

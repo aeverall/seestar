@@ -36,6 +36,8 @@ def bivariateGauss(params, x, y):
     # When the Series is empty, the data type goes to object so this is corrected:
     z = z.astype(np.float64)
     # Bivariate Gaussian
+    if 1-rho**2 == 0:
+        print(rho)
     Norm = (A/(2 * np.pi * np.abs(sigma1 * sigma2) * np.sqrt(1 - rho**2)))
     Exponent = numpy.exp(-z / (2 * (1 - rho**2)))
     BG = Norm*Exponent
@@ -134,20 +136,30 @@ def GMMParameters(nComponents, rngx, rngy):
     # Initial guess parameters for a bivariate Gaussian
     mux_i, muy_i = (rngx[0]+rngx[1])/2, (rngy[0]+rngy[1])/2
     sigmax_i, sigmay_i = 0.5, 0.5
-    A_i = 10.
+    A_i = 0.0001
     rho_i = 0.
-    p_list = [mux_i, sigmax_i, muy_i, sigmay_i, A_i, rho_i]
 
     mux_u, muy_u = rngx[0], rngy[0]
     sigmax_u, sigmay_u = 0, 0
     A_u = 0.
     rho_u = -1.
-    u_list = [mux_u, sigmax_u, muy_u, sigmay_u, A_u, rho_u]
 
     mux_o, muy_o = rngx[1], rngy[1]
     sigmax_o, sigmay_o = rngx[1]-rngx[0], rngy[1]-rngy[0]
     A_o = np.inf
     rho_o = 1.
+
+    smoothing = True
+    if smoothing:
+        dx = rngx[1]-rngx[0]
+        dy = rngy[1]-rngy[0]
+        sigmax_i, sigmay_i = (dx/10, dy/10)
+        sigmax_u, sigmay_u = (dx/15, dy/15)
+        rho_u = -1. + 1e-10
+        rho_o = 1. - 1e-10
+
+    p_list = [mux_i, sigmax_i, muy_i, sigmay_i, A_i, rho_i]
+    u_list = [mux_u, sigmax_u, muy_u, sigmay_u, A_u, rho_u]
     o_list = [mux_o, sigmax_o, muy_o, sigmay_o, A_o, rho_o]
 
     # Initial parameters for a Double bivariate Gaussian
@@ -206,6 +218,23 @@ def simpsonIntegrate(function, (rngx, rngy)):
 
     return integral
 
+def photoDFprior(photoDF, function, (rngx, rngy)):
+
+    N=100
+
+    x_coords = np.linspace(rngx[0], rngx[1], N)
+    y_coords = np.linspace(rngy[0], rngy[1], N)
+
+    x_2d = np.tile(x_coords, ( len(y_coords), 1 ))
+    y_2d = np.tile(y_coords, ( len(x_coords), 1 )).T
+
+    photo = photoDF((x_2d, y_2d))
+    spectro = function((x_2d, y_2d))
+
+    number = np.sum(spectro > photo)
+
+    if number==0: return True
+    else: return False
 
 
 class GaussianMM():
@@ -234,14 +263,18 @@ class GaussianMM():
         self.distribution = multiDistribution
 
         #Print out values of L as calculated
-        self.runningL = False
+        self.runningL = True
+
+        # Distribution from photometric survey for maximum prior
+        self.photoDF = None
+        self.priorDFbool = False
         
     def __call__(self, (x, y)):
         
         return self.distribution(self.params_f, x, y, self.nComponents)
         
         
-    def optimizeParams(self, method = "SLSQP"):
+    def optimizeParams(self, method = "Powell"):
 
         # nll is the negative lnlike distribution
         nll = lambda *args: -self.lnprob(*args)
@@ -285,10 +318,8 @@ class GaussianMM():
         lnL = contPoints - contInteg
 
         if self.runningL:
-            print(self.runningL)
             sys.stdout.write("\rlogL: %.2f, sum log(f(xi)): %.2f, integral: %.2f" % (lnL, contPoints, contInteg))
             sys.stdout.flush()
-
             
         return contPoints - contInteg
 
@@ -300,7 +331,13 @@ class GaussianMM():
             param_set.append( params[i*6:(i+1)*6] )
         prior = self.priorTest(param_set)
 
-        if prior:
+        # Prior on spectro distribution that it must be less than the photometric distribution
+        if self.priorDFbool:
+            function = lambda (a, b): self.distribution(param_set, a, b, self.nComponents)
+            prior_df = photoDFprior(self.photoDF, function, (self.rngx, self.rngy))
+        else: prior_df = True
+
+        if prior & prior_df:
             return 0.0
         else: 
 			return -np.inf
@@ -323,6 +360,8 @@ class GaussianMM():
         minBool = Val > minVal
         maxBool = Val < maxVal
         rngBool = minBool*maxBool
+
+        #if self.priorDFbool: print(Val)
         
         solution = np.sum(rngBool) - len(Val)
         if solution == 0:

@@ -150,14 +150,7 @@ class FieldInterpolator():
                                          Field_solidangle=False, solidangle=SA)
         pointings = pointings.set_index('fieldID', drop=False)
         pointings = pointings.drop_duplicates(subset = 'fieldID')
-
-        # Limit number of fields for testing the selection function
-        #if testbool: 
-        #    testfield = ['1758m28', '0051m27']
-        #    pointings = pointings[self.pointings.fieldID.isin(testfield)]
-        #pointings = pointings.iloc[3:6]
-        #print(len(pointings))
-
+        #pointings = pointings[pointings.fieldID==2001.0]
         self.pointings = pointings
         
         # surveysf_exists true if Selection Function has already been calculated
@@ -217,13 +210,16 @@ class FieldInterpolator():
             self.surveysf, self.agerng, self.mhrng, self.srng  = pickle.load(input)
         print("...done.\n")
 
-        if not overlapdata_exists:
-            # Create the field intersection database
-            database = FieldUnions.CreateIntersectionDatabase(5000, pointings, self.fieldlabel_type)
-            database.to_csv(file_info.overlap_path)
-        else: database = pd.read_csv(file_info.overlap_path)
-
-        self.FUInstance = FieldUnions.FieldUnion(database)
+        # Cannot construct overlapping field system if only one field
+        # This selection function doesn't currently work for a single field
+        if len(self.pointings)>1:
+            if not overlapdata_exists:
+                # Create the field intersection database
+                database = FieldUnions.CreateIntersectionDatabase(5000, pointings, self.fieldlabel_type)
+                database.to_csv(file_info.overlap_path)
+            else: database = pd.read_csv(file_info.overlap_path)
+            self.FUInstance = FieldUnions.FieldUnion(database)
+        else: raise ValueError('Cannot currently run this code with only one field, working on improving this!')
         
     def __call__(self, catalogue):
 
@@ -246,12 +242,20 @@ class FieldInterpolator():
                     - 'inion', 'field_info', 'points'
         '''
 
+        """ OLD REDUNDANT METHOD
+        print('points to pointings')
         # Every row in the dataframe receives a list of field pointings which overlap on 
         # the given galactic coordinates
         catalogue = self.PointsToPointings(catalogue, Phi='l', Th='b')
 
+        print('field info')
         # Every pointing is transformed to a tuple of SFprobability, and pointing l, b
         catalogue['field_info'] = catalogue.apply(lambda row: self.FUInstance.pointsListMap(self.surveysf, row) , axis=1)
+        """
+
+        # catalogue[points] - list of pointings which coordinates lie on
+        # catalogue[field_info] - list of tuples: (P(S|v), field)
+        catalogue = FieldUnions.GenerateMatrices(catalogue, self.pointings, 'l', 'b', 'SolidAngle', self.surveysf)
 
         # The SF probabilities and coordinates of overlapping fields are used to calculate
         # the field union.
@@ -366,6 +370,8 @@ class FieldInterpolator():
             #Save star results in the class variables
             self.mag_range = mag_range
             self.col_range = col_range
+
+            print(mag_range, col_range)
 
             return data
 
@@ -513,6 +519,8 @@ class FieldInterpolator():
             (smin,smax): tuple of floats
                     - s range of the selection function  
         '''
+
+        print('doing the age metallicity thing')
         
         # Copy variables locally
         fieldInfo = self.pointings
@@ -600,7 +608,9 @@ class FieldInterpolator():
 
         mag_conversion = 5*np.log10(smat*1000./10.)
         appCmat = mag_conversion + absCmat
+
         print('appHmat range of values:' + str((np.min(appCmat), np.max(appCmat))))
+        print('Colmat range of values:' + str((np.min(ABcolmat), np.max(ABcolmat))))
 
         age_mh = age_mh[['age', 'mh', 'isosize']]
         age_mh.set_index(['age','mh'], inplace=True)
@@ -894,11 +904,13 @@ def iterateField(stars, photo_path, field, photo_tag, photo_coords, fieldpointin
         else: mag_max = fieldpointing.muBound
         # colour uppper bound
         if fieldpointing.clBound == "NoLimit":
-            col_min = np.min(spectro_points.Colour) - 1
+            col_min = np.min(spectro_points.Colour) - 0.1
+            col_min = -0.155
         else: col_min = fieldpointing.clBound
         # colour lower bound
         if fieldpointing.cuBound == "NoLimit":
-            col_max = np.max(spectro_points.Colour) + 1
+            col_max = np.max(spectro_points.Colour) + 0.5
+            col_max = 1.019
         else: col_max = fieldpointing.cuBound
 
         # Chose only photometric survey points within the colour-magnitude region
@@ -915,7 +927,7 @@ def iterateField(stars, photo_path, field, photo_tag, photo_coords, fieldpointin
         # Interpolate for spectro data
         spectro_interpolant, spectro_gridarea, spectro_magrange, spectro_colrange = CreateInterpolant(spectro_points,
                                                                                                       (mag_min, mag_max), (col_min, col_max),
-                                                                                                      datatype = "spectro")
+                                                                                                      datatype = "spectro", photoDF=photo_interpolant)
 
         # Store information inside an observableSF instance where the selection function is calculated.
         instanceSF = observableSF(field)
@@ -942,7 +954,7 @@ def iterateField(stars, photo_path, field, photo_tag, photo_coords, fieldpointin
 def CreateInterpolant(points,
                       mag_range, col_range,
                       Grid = False, range_limited=False,
-                      datatype=""):
+                      datatype="", photoDF=None):
 
     '''
     CreateInterpolant - Creates an interpolant in colour-magnitude space for the given set
@@ -991,11 +1003,20 @@ def CreateInterpolant(points,
 
     # Optimum Poisson likelihood process
     if Process == "Poisson":
-        profile = PoissonLikelihood(points, mag_range, col_range,
-                                    'appC', 'Colour',
-                                    datatype=datatype)
+
+        if datatype == "photo":
+            profile = PoissonLikelihood(points, mag_range, col_range,
+                                        'appC', 'Colour',
+                                        datatype=datatype)
+        elif datatype == "spectro":
+            profile = PoissonLikelihood(points, mag_range, col_range,
+                                        'appC', 'Colour',
+                                        datatype=datatype, photoDF=photoDF)            
+
+
         grid_area = np.nan
         return profile, grid_area, mag_range, col_range
+
     # Ratio of number of stars in the field.
     elif Process == "Number":
 
@@ -1003,6 +1024,7 @@ def CreateInterpolant(points,
         profile = FlatRegion(len(points), mag_range, col_range)
 
         return profile, grid_area, mag_range, col_range
+
     # Histogram grid density process
     elif Process == "Grid":
         Nside_grid = 8
@@ -1023,7 +1045,7 @@ def CreateInterpolant(points,
 def PoissonLikelihood(points,
                      mag_range, col_range,
                      mag_label, col_label,
-                     datatype=""):
+                     datatype="", photoDF=None):
     '''
     PoissonLikelihood
 
@@ -1052,13 +1074,15 @@ def PoissonLikelihood(points,
     if modelType == 'GMM':
 
         # Number of Gaussian components
-        if datatype == "spectro":
-            nComponents = 1
-        elif datatype == "photo":
-            nComponents = 4
+        if datatype == "spectro": nComponents = 1
+        elif datatype == "photo": nComponents = 2
 
         # Generate the model
         model = StatisticalModels.GaussianMM(x, y, nComponents, mag_range, col_range)
+        # Add in SFxDF<DF constraint for the spectrograph distribution
+        if datatype == "spectro": 
+            model.photoDF, model.priorDFbool = (photoDF, True)
+        model.runningL = True
         model.optimizeParams()
         # Test integral if you want to see the value/error in the integral when calculated
         # model.testIntegral()
@@ -1303,7 +1327,8 @@ def fieldInterp(fieldInfo, agegrid, mhgrid, sgrid,
         sfgrid, sgrid = extendGrid(sfgrid, sgrid, axis=2,
                                        x_lbound=True, x_lb=0.)
 
-        sfinterpolant = RGI((agegrid,mhgrid,sgrid),sfgrid)
+        print('boundserror off')
+        sfinterpolant = RGI((agegrid,mhgrid,sgrid),sfgrid, bounds_error=False, fill_value=0.0)
 
     else:
         # For fields with no RAVE-TGAS stars - 0 value everywhere in field

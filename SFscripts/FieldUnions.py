@@ -34,7 +34,7 @@ import itertools
 import numpy as np
 import pandas as pd
 import ArrayMechanics
-import sys
+import sys, gc
 
 class FieldUnion():
 
@@ -46,6 +46,7 @@ class FieldUnion():
 	def pointsListMap(self, sf, row):
 
 		'''
+		NO LONGER USED
 		pointsListMap - Runs FieldToTuple for every item in the list of fields which are overlapping
 						on the point.
 
@@ -65,13 +66,13 @@ class FieldUnion():
 			list of tuples
 				- for every field in row["points"], the (SFprobability, Glongitude, Glatitude)
 		'''
-
 		return [self.FieldToTuple(sf, item, (row['age'], row['mh'], row['s'])) for item in row.points]
 
 
 	def FieldToTuple(self, selectionfunction, fieldID, (age, mh, s)):
 
 	 	'''
+	 	NO LONGER USED
 		FieldToTuple - Converts from a field and coordinates on the field to
 					   a selection probability and angular coordinates of the field.
 
@@ -104,6 +105,7 @@ class FieldUnion():
 		except (ValueError, IndexError): 
 		    sf = 0.
 		    
+		sys.stdout.write("\r"+str(sf)+'...'+str(fieldID))
 		return sf, fieldID
 
 
@@ -217,6 +219,7 @@ class FieldUnion():
 
 
 
+
 # Calculating field fractional overlaps
 
 def GenerateRandomPoints(N):
@@ -281,3 +284,143 @@ def CreateIntersectionDatabase(N, fields, IDtype):
     database = CalculateIntersections(coordsrand, fields, IDtype)
     
     return database
+
+
+
+class MatrixUnion():
+
+	def __init__(self, overlapdata):
+
+		self.Overlaps = overlapdata
+
+		
+def GenerateMatrices(df, pointings, Phi, Th, SA, surveysf, IDtype = str, Nsample = 10000):
+
+    '''
+    AnglePointsToPointingsMatrix - Adds a column to the df with the number of the field pointing
+                                 - Uses matrix algebra
+                                    - Fastest method for asigning field pointings
+                                    - Requires high memory usage to temporarily hold matrices
+
+    Parameters
+    ----------
+        df: pd.DataFrame
+            Contains Theta and Phi column corresponding to the coordinates of points on the contingent axes (RA,Dec)
+
+        pointings: pd.DataFrame
+            Contains an x, y, and r column corresponding to positions and radii of field pointings
+
+        Th: string
+            Column header for latitude coordinate (Dec or b)
+
+        Phi: string
+            Column header for longitude coordinate (RA or l)
+
+        SA: SolidAngle
+            Column header for solid angle of plate on sky
+
+        surveysf: Dictionary of interpolants
+        	Selection Function dictionary to be used to calculate selection function values for fields
+
+    kwargs
+    ------
+        IDtype: object
+            Type of python object used for field IDs 
+
+        Nsample: int
+            Number of stars to be assigned per iterations
+            Can't do too many at once due to computer memory constraints
+
+    Returns
+    -------
+        df: pd.DataFrame
+            Same as input df with:
+                - 'points': list of field IDs for fields which the coordinates lie on
+                - 'field_info': list of tuples - (P(S|v), fieldID) - (float, fieldIDtype)
+    '''
+
+	# Iterate over portions of size, Nsample to constrain memory usage.
+	for i in range(len(df)/Nsample + 1):
+
+		sys.stdout.write("\r"+str(i)+"..."+str(Nsample))
+		dfi = df.iloc[i*Nsample:(i+1)*Nsample]
+
+		pointings = pointings.reset_index(drop=True)
+		pointings = pointings.copy()
+
+		Mp_df = np.repeat([getattr(dfi,Phi)], 
+		                    len(pointings), 
+		                    axis=0)
+		Mt_df = np.repeat([getattr(dfi,Th)], 
+		                    len(pointings), 
+		                    axis=0)
+		Mp_point = np.transpose(np.repeat([getattr(pointings,Phi)],
+		                                    len(dfi), 
+		                                    axis=0))
+		Mt_point = np.transpose(np.repeat([getattr(pointings,Th)], 
+		                                    len(dfi), 
+		                                    axis=0))
+		Msa_point = np.transpose(np.repeat([getattr(pointings,SA)], 
+		                                    len(dfi), 
+		                                    axis=0))
+		Msa_point = np.sqrt(Msa_point/np.pi) * np.pi/180
+		# Boolean matrix specifying whether each point lies on that pointing
+		Mbool = ArrayMechanics.AngleSeparation(Mp_df,
+		                        Mt_df,
+		                        Mp_point,
+		                        Mt_point) < Msa_point
+		# Clear the matrices in order to conserve memory
+		del(Mt_df, Mp_df, Mp_point, Mt_point, Msa_point)
+		gc.collect()
+		# df column for number of overlapping fields per point
+		dfi['nOverlap'] = np.sum(Mbool, axis=0)
+
+		# Convert Mbool to a dataframe with Plates for headers
+		Plates = pointings.fieldID.astype(str).tolist()
+		Mbool = pd.DataFrame(np.transpose(Mbool), columns=Plates)
+		# Calculate the same matrix of selection function values
+		Msf = pd.DataFrame()
+		for field in pointings.fieldID:
+			yn = np.array(Mbool[str(field)])
+			Msf[str(field)] = np.zeros(len(dfi))-1.
+			Msf[str(field)][yn] = surveysf.agemhssf.loc[field]((dfi[yn].age, dfi[yn].mh, dfi[yn].s))
+			
+		# Create lists of fields per point
+		Mplates = pd.DataFrame(np.repeat([Plates,], len(dfi), axis=0), columns=Plates)
+		Mplates = Mplates*Mbool
+
+		# Remove "" entries from the lists
+		def filtering(x, remove):
+			x = filter(lambda a: a!=remove, x)
+			return x
+		# Do filtering for fields
+		field_listoflists = Mplates.values.tolist()
+		field_listoflists = [filtering(x, '') for x in field_listoflists]
+		# Do filtering for sf values
+		sf_listoflists = Msf.values.tolist()
+		sf_listoflists = [filtering(x, -1.0) for x in sf_listoflists]
+
+		# Convert type of all field IDs back to correct type
+		dtypeMap = lambda row: map(IDtype, row)
+		field_listoflists = map(dtypeMap, field_listoflists)
+
+		# Convert list to series then series to dataframe column
+		field_series = pd.Series(field_listoflists)
+		field_series = pd.DataFrame(field_series, columns=['points'])
+
+		# zip datatypes together - tupes of (sf, field)
+		sf_listoflists = map(zip, sf_listoflists, field_listoflists)
+		sf_series = pd.Series(sf_listoflists)
+
+		# Add lists of tuples to dataframe
+		field_series['field_info'] = sf_series
+
+		# Reset index to merge on position then bring index back
+		dfi = dfi.reset_index()
+		dfi = dfi.merge(field_series, how='inner', right_index=True, left_index=True)
+		dfi.index = dfi['index']
+
+		if i == 0: newdf = dfi
+		else: newdf = pd.concat((newdf, dfi))
+
+	return newdf
