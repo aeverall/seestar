@@ -55,6 +55,62 @@ class surveyInformation():
 		fieldlabel_type - obj - Data type used for names of fields in the pointings catalogue - e.g. str
 
 		iso_pickle_file - str - File name for pickled isochrones instances - e.g. "/evoTracks/isochrone_distributions_resampled.pickle" 
+
+	Example:
+	--------
+		Demo = surveyInformation()
+
+		# Location where spectrograph survey information is stored
+		Demo.data_path = '../../SFgithub/SFdata'
+
+		# Folder in .data_path which contains the file informatino
+		Demo.spectro = '/SpectroName'
+
+		# Filename of spectrograph star information
+		Demo.spectro_fname = '/Spectrograph_survey.csv'
+		# Column headers for spectrograph information
+		# [ fieldID, Phi, Th, magA, magB, magC]
+		# magA-magB = Colour, magC = m (for selection limits)
+		Demo.spectro_coords = ['fieldid', 'glon', 'glat', 'J', 'K', 'H']
+
+		# Filename (in Demo.spectro file) for field pointings
+		Demo.field_fname = '/Spectrograph_fieldinfo.csv'
+		# Column headers in field pointings
+		Demo.field_coords = (['fieldID', 'glon', 'glat', 'hmin', 'hmax', 'cmin', 'cmax'], 'Galactic')
+		# Solid angle area of fiels in deg^2
+		Demo.field_SA = 12.565
+		# Data type for field IDs
+		Demo.fieldlabel_type = np.float64
+
+		# Location where photometric datafiles are stored (require large storage space)
+		Demo.photo_path = '/photometricstorage/'
+		# Column headers in photometric data files
+		Demo.photo_coords = ['glon', 'glat', 'J', 'K', 'H']
+		# File types for photometric data
+		Demo.photo_tag = '.csv'
+
+		# pickled file locations which will store the selection function information
+		Demo.spectro_pickle_fname = '/Spectrograph_survey.pickle'
+		Demo.photo_pickle_fname = '/Spectrograph_full.pickle'
+		Demo.sf_pickle_fname = '/Spectrograph_SF.pickle'
+		Demo.obsSF_pickle_fname = '/Spectrograph_obsSF.pickle'
+
+		# File containing isochrone data
+		Demo.iso_pickle_file = "/evoTracks/isochrones.pickle" 
+		# File location for storing information on area overlap of individual fields
+		Demo.overlap_fname = '/Spectrograph_fieldoverlapdatabase'
+
+		# Run the __call__ routine to setup the file locations
+		Demo()
+		# testFiles checks whether the information given is accurate
+		# If this is the first time running, pickle files and overlap_fname shouldn't exist
+		Demo.testFiles()
+
+		# Location of pickle file which the file information will be stored in
+		pklfile = "../../SFgithub/SFdata/SpectroName/SpectrographFileInformation.pickle"
+		# Pickle the file information
+		Demo.pickleInformation(pklfile)
+
 	'''
 
 	def __init__(self):

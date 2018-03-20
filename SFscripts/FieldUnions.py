@@ -296,16 +296,16 @@ class MatrixUnion():
 		
 def GenerateMatrices(df, pointings, Phi, Th, SA, surveysf, IDtype = str, Nsample = 10000):
 
-    '''
-    AnglePointsToPointingsMatrix - Adds a column to the df with the number of the field pointing
-                                 - Uses matrix algebra
-                                    - Fastest method for asigning field pointings
-                                    - Requires high memory usage to temporarily hold matrices
+	'''
+	AnglePointsToPointingsMatrix - Adds a column to the df with the number of the field pointing
+	                             - Uses matrix algebra
+	                                - Fastest method for asigning field pointings
+	                                - Requires high memory usage to temporarily hold matrices
 
-    Parameters
-    ----------
-        df: pd.DataFrame
-            Contains Theta and Phi column corresponding to the coordinates of points on the contingent axes (RA,Dec)
+	Parameters
+	----------
+	    df: pd.DataFrame
+	        Contains Theta and Phi column corresponding to the coordinates of points on the contingent axes (RA,Dec)
 
         pointings: pd.DataFrame
             Contains an x, y, and r column corresponding to positions and radii of field pointings
