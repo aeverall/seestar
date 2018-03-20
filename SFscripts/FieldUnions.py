@@ -243,6 +243,7 @@ def CalculateIntersections(coordsrand, fields, IDtype):
     # Only consider points with field
     intersections = fields[fields.points.map(len)>0]
     # Column of string list required to group items
+    print(intersections.points.iloc[0])
     print(intersections.points.iloc[0][0])
     print(type(intersections.points.iloc[0][0]))
     intersections['strings'] = fields.points.astype(str)
