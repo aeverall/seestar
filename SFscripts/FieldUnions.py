@@ -287,7 +287,6 @@ def CreateIntersectionDatabase(N, fields, IDtype):
     return database
 
 
-
 class MatrixUnion():
 
 	def __init__(self, overlapdata):

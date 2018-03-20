@@ -293,7 +293,7 @@ class GaussianMM():
             # Prior on spectro distribution that it must be less than the photometric distribution
             if self.priorDFbool:
                 function = lambda (a, b): self.distribution(param_set, a, b, self.nComponents)
-                prior_df = photoDFprior(function, (self.rngx, self.rngy))
+                prior_df = SFprior(function, (self.rngx, self.rngy))
             else: prior_df = True
 
             if prior & prior_df:
@@ -376,23 +376,24 @@ class GaussianMM():
         return calc_val, real_val, err
 
 
-def photoDFprior(function, (rngx, rngy)):
+def SFprior(function, (rngx, rngy)):
 
     '''
-
+    SFprior - The selection function has to be between 0 and 1 everywhere.
 
     Parameters
     ----------
+        function - interp
+            - The selection function interpolant over the region, R.
 
-
-    **kwargs
-    --------
-
+        (rngx, rngy) - tuple of floats
+            - range of colours and magnitudes which limit the selection function region.
 
     Returns
     -------
-
-
+        prior - bool
+            - True if all points on GMM are less than 1.
+            - Otherwise False
     '''
 
     N=150
@@ -412,20 +413,21 @@ def photoDFprior(function, (rngx, rngy)):
 def bivariateGauss(params, x, y):
 
     '''
-
+    bivariateGauss - Calculates the value of the bivariate Gaussian defined by parameters
+                    at point x, y
 
     Parameters
     ----------
+        params - list of floats
+            - Values of parameters for the Gaussian.
 
-
-    **kwargs
-    --------
-
+        x, y - float or np.array of floats
+            - Coordinates at which the bivariate Gaussian is calculated.
 
     Returns
     -------
-
-
+        BG - float or np.array of floats
+            - Value of bivariate Gaussian at coordinates
     '''
 
     mu1, sigma1, mu2, sigma2, A, rho = params
@@ -445,20 +447,17 @@ def bivariateGauss(params, x, y):
 def bivariateIntegral(params):
 
     '''
-
+    bivariateIntegral - Analytic integral over the specified bivariate Gaussian.
 
     Parameters
     ----------
-
-
-    **kwargs
-    --------
-
+        params - list of floats
+            - Values of parameters for the Gaussian.
 
     Returns
     -------
-
-
+        contInteg - float
+            - Integral over the bivariate GAussian
     '''
 
     mux, sigmax, muy, sigmay, A, rho = params
@@ -469,20 +468,22 @@ def bivariateIntegral(params):
 def multiDistribution(params, x, y, nComponents):
 
     '''
-
+    multiDistribution - Value of GMM of bivariate Gaussians at coorindates x, y.
 
     Parameters
     ----------
+        params - list of floats
+            - Values of parameters for the Gaussian.
 
+        x, y - float or np.array of floats
+            - Coordinates at which the GMM is calculated.
 
-    **kwargs
-    --------
-
+        nComponents - int
+            - Number of components of the Gaussian Mixture Model
 
     Returns
     -------
-
-
+        p - Value of the GMM at coordinates x, y
     '''
 
     p = 0
@@ -493,20 +494,20 @@ def multiDistribution(params, x, y, nComponents):
 def multiIntegral(params, nComponents):
 
     '''
-
+    multiIntegral - Analytic integral over the specified bivariate Gaussian.
 
     Parameters
     ----------
+        params - list of floats
+            - Values of parameters for the Gaussian.
 
-
-    **kwargs
-    --------
-
+        nComponents - int
+            - Number of components of the Gaussian Mixture Model
 
     Returns
     -------
-
-
+        integral - float
+            - Integral over the Gaussian Mixture Model
     '''
 
     integral = 0
@@ -518,20 +519,25 @@ def multiIntegral(params, nComponents):
 def Gauss(x, mu=0, sigma=1):
 
     '''
-
+    Gauss - Calculates the value of the 1D Gaussian defined by parameters at point x
+    (used for recovering posterior distributions from burnt in Monte Carlo Markov Chains)
 
     Parameters
     ----------
-
+        x - float or np.array of floats
+            - Coordinate at which the Gaussian is calculated.
 
     **kwargs
     --------
-
+        mu = 0 - float
+            - Value of mean of Gaussian
+        sigma=1 - float
+            - Value of standard deviation of Gaussian
 
     Returns
     -------
-
-
+        G - float or np.array of floats
+            - Value of Gaussian at coordinate x.
     '''
 
     G = np.exp(-((x-mu)**2)/(2*sigma**2))
@@ -541,20 +547,26 @@ def Gauss(x, mu=0, sigma=1):
 def cdf(func, xmin, xmax, N, **kwargs):
 
     '''
-
+    cdf - Normalised cumulative distribution function of 1D dunction between limits.
 
     Parameters
     ----------
+        func - function or interpolant
+            - The 1D function which is being integrated over
 
+        xmin, xmax - float
+            - min and max values for the range of the distribution
+
+        N - int
+            - Number of steps to take in CDF.
 
     **kwargs
     --------
 
-
     Returns
     -------
-
-
+        value_interp - interp.interp1d
+            - Interpolant of the CDF over specified range.
     '''
 
     points = np.linspace(xmin, xmax, N)
@@ -585,20 +597,33 @@ def cdf(func, xmin, xmax, N, **kwargs):
 def integrationRoutine(function, param_set, nComponents, (rngx, rngy), integration = "trapezium"):
 
     '''
-
+    integrationRoutine - Chose the method by which the integrate the distribution over the specified region
+                        of space then perform the integral.
 
     Parameters
     ----------
+        function - function or interpolant
+            - The function to be integrated over the specified region of space
 
+        param_set - list of floats
+            - Set of parameters which define the GMM.
+
+        nComponents - int
+            - Number of components of the GMM.
+
+        (rngx, rngy) - tuple of floats
+            - Boundary of region of colour-magnitude space being calculated.
 
     **kwargs
     --------
-
+        integration='trapezium' - str
+            - The type of integration routine to be tested
+            - 'analytic', 'trapezium', 'simpson', 'cubature'    
 
     Returns
     -------
-
-
+        contInteg - float
+            - Value of the integral after calculation
     '''
 
     # analytic if we have analytic solution to the distribution - this is the fastest
@@ -617,7 +642,7 @@ def integrationRoutine(function, param_set, nComponents, (rngx, rngy), integrati
 def numericalIntegrate(function, (rngx, rngy), SFprior=False):
     
     '''
-
+    
 
     Parameters
     ----------

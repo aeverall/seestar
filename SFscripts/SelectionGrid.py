@@ -95,10 +95,7 @@ class FieldInterpolator():
     Dependencies
     ------------
         EquatToGal
-        
         AnglePointsToPointingsMatrix
-        
-
     '''
     def printTest(self, string, object):
         if self.testbool:
@@ -919,27 +916,27 @@ def iterateField(stars, photo_path, field, photo_tag, photo_coords, fieldpointin
                                     (photo_points.Colour > col_min)&\
                                     (photo_points.Colour < col_max)]
 
-        # Interpolate for photo data
-        photo_interpolant, photo_gridarea, photo_magrange, photo_colrange = CreateInterpolant(photo_points,
+        # Interpolate for photo data - Calculates the distribution function
+        DF_interpolant, DF_gridarea, DF_magrange, DF_colrange = CreateInterpolant(photo_points,
                                                                                              (mag_min, mag_max), (col_min, col_max),
                                                                                              range_limited=True,
                                                                                              datatype = "photo")
-        # Interpolate for spectro data
-        spectro_interpolant, spectro_gridarea, spectro_magrange, spectro_colrange = CreateInterpolant(spectro_points,
+        # Interpolate for spectro data - Calculates the selection function
+        SF_interpolant, SF_gridarea, SF_magrange, SF_colrange = CreateInterpolant(spectro_points,
                                                                                                       (mag_min, mag_max), (col_min, col_max),
-                                                                                                      datatype = "spectro", photoDF=photo_interpolant)
+                                                                                                      datatype = "spectro", photoDF=DF_interpolant)
 
         # Store information inside an observableSF instance where the selection function is calculated.
         instanceSF = observableSF(field)
         setattrs(instanceSF,
-                photo_interp = photo_interpolant,
-                photo_gridarea = photo_gridarea,
-                photo_magrange = photo_magrange,
-                photo_colrange = photo_colrange,
-                spectro_interp = spectro_interpolant,
-                spectro_gridarea = spectro_gridarea,
-                spectro_magrange = spectro_magrange,
-                spectro_colrange = spectro_colrange,
+                DF_interp = DF_interpolant,
+                DF_gridarea = DF_gridarea,
+                DF_magrange = DF_magrange,
+                DF_colrange = DF_colrange,
+                SF_interp = SF_interpolant,
+                SF_gridarea = SF_gridarea,
+                SF_magrange = SF_magrange,
+                SF_colrange = SF_colrange,
                 grid_points = True)
 
 
@@ -1300,8 +1297,8 @@ def fieldInterp(fieldInfo, agegrid, mhgrid, sgrid,
 
         # Make sure values fall within interpolant range for colour and magnitude
         # Any points outside the range will provide a 0 contribution
-        bools = (col>obsSF.spectro_colrange[0])&(col<obsSF.spectro_colrange[1])&\
-                (mag>obsSF.spectro_magrange[0])&(mag<obsSF.spectro_magrange[1])
+        bools = (col>obsSF.DF_colrange[0])&(col<obsSF.DF_colrange[1])&\
+                (mag>obsSF.DF_magrange[0])&(mag<obsSF.DF_magrange[1])
 
         sfprob[bools] = obsSF((mag[bools],col[bools]))
 
@@ -1413,29 +1410,29 @@ class observableSF():
         self.field = fieldID
 
         # mag_range, col_range are now the maximum and minimum values of grid centres used in the RGI.
-        self.photo_interp = None
-        self.photo_gridarea = None
-        self.photo_magrange = None
-        self.photo_colrange = None
-        self.photo_Nside = None
+        self.DF_interp = None
+        self.DF_gridarea = None
+        self.DF_magrange = None
+        self.DF_colrange = None
+        self.DF_Nside = None
         # mag_range, col_range are now the maximum and minimum values of grid centres used in the RGI.
-        self.spectro_interp = None
-        self.spectro_gridarea = None
-        self.spectro_magrange = None
-        self.spectro_colrange = None
-        self.spectro_Nside = None
+        self.SF_interp = None
+        self.SF_gridarea = None
+        self.SF_magrange = None
+        self.SF_colrange = None
+        self.SF_Nside = None
         
         self.grid_points = None
 
     def __call__(self, (x, y)):
 
-        photo = self.photo_interp((x, y))
-        spectro = self.spectro_interp((x, y))
+        SF = self.SF_interp((x, y))
 
-        return spectro/photo
+        return SF
 
     def normalise(self):
-        return self.spectro_gridarea/self.photo_gridarea
+        # Not sure what this is meant to do now that it's no longer calculated from spectro/photo
+        return self.SF_gridarea/self.DF_gridarea
 
 def setattrs(_self, **kwargs):
 
