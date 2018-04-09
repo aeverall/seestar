@@ -15,6 +15,7 @@ Dependancies
 '''
 
 import numpy as np
+import pandas as pd
 import numpy
 import scipy.interpolate as interp
 import scipy.integrate as integrate
@@ -97,6 +98,12 @@ class GaussianMM():
 
         # Print out likelihood values as calculated
         self.runningL = True
+
+        # Values of SD in rotated frame with rho' = 0 - to be used as constraints
+        self.sigxtilda = lambda sigx, sigy, r: np.sqrt( ( 2*(sigx**2)*(sigy**2) ) / \
+        ( sigx**2 + sigy**2 + np.sqrt((sigy**2 - sigx**2)**2 + (2*r*sigx*sigy)**2)) )
+        self.sigytilda = lambda sigx, sigy, r: np.sqrt( ( 2*(sigx**2)*(sigy**2) ) / \
+        ( sigx**2 + sigy**2 - np.sqrt((sigy**2 - sigx**2)**2 + (2*r*sigx*sigy)**2)) )
         
     def __call__(self, (x, y)):
 
@@ -114,7 +121,20 @@ class GaussianMM():
                 - The value of the GMM at coordinates x, y
         '''
         
-        return self.distribution(self.params_f, x, y, self.nComponents)
+        # Value of coordinates x, y in the Gaussian mixture model
+        GMMval = self.distribution(self.params_f, x, y, self.nComponents)
+        # Any values outside range - 0
+        constraint = (x>=self.rngx[0])&(x<=self.rngx[1])&(y>=self.rngy[0])&(y<=self.rngy[1])
+        if (type(GMMval) == np.array)|(type(GMMval) == np.ndarray)|(type(GMMval) == pd.Series): 
+            GMMval[~constraint] = 0.
+            GMMval[(np.isnan(x))|(np.isnan(y))] = np.nan
+        elif (type(GMMval) == float) | (type(GMMval) == np.float64):
+            if not constraint: 
+                if (np.isnan(x))|(np.isnan(y)): GMMval = np.nan
+                else: GMMval = 0.
+        else: raise TypeError('The type of the input variables is '+str(type(GMMval)))
+
+        return GMMval
         
         
     def optimizeParams(self, method = "Powell"):
@@ -170,9 +190,11 @@ class GaussianMM():
         # Initial guess parameters for a bivariate Gaussian
         mux_i, muy_i = (self.rngx[0]+self.rngx[1])/2, (self.rngy[0]+self.rngy[1])/2
         sigmax_i, sigmay_i = (self.rngx[1]-self.rngx[0])/10, (self.rngy[1]-self.rngy[0])/10
-        if self.priorDFbool: A_i = 0.01
-        else: A_i = 1.
         rho_i = 0.
+        # If calculating SF set initial value so that max = 0.1 at start
+        #normalisation = (2 * np.pi * np.abs(sigmax_i * sigmay_i) * np.sqrt(1 - rho_i**2))
+        if self.priorDFbool: A_i =  0.1 / self.nComponents 
+        else: A_i = 1.
 
         mux_u, muy_u = self.rngx[0], self.rngy[0]
         sigmax_u, sigmay_u = 0, 0
@@ -181,14 +203,18 @@ class GaussianMM():
 
         mux_o, muy_o = self.rngx[1], self.rngy[1]
         sigmax_o, sigmay_o = self.rngx[1]-self.rngx[0], self.rngy[1]-self.rngy[0]
-        A_o = np.inf
+        # If calculating SF, A_o cannot be larger than 1
+        if self.priorDFbool: A_o = 1.
+        else: A_o = np.inf
         rho_o = 1.
 
+        # If smoothing, set values of sigma so that gaussians are sufficiently broad
         smoothing = True
         if smoothing:
+            self.smoothFactor = 1/100.
             dx = self.rngx[1]-self.rngx[0]
             dy = self.rngy[1]-self.rngy[0]
-            sigmax_u, sigmay_u = (dx/15, dy/15)
+            sigmax_u, sigmay_u = (dx*self.smoothFactor, dy*self.smoothFactor)
 
         p_list = [mux_i, sigmax_i, muy_i, sigmay_i, A_i, rho_i]
         u_list = [mux_u, sigmax_u, muy_u, sigmay_u, A_u, rho_u]
@@ -260,7 +286,7 @@ class GaussianMM():
         lnL = contPoints - contInteg
 
         if self.runningL:
-            sys.stdout.write("\rlogL: %.2f, sum log(f(xi)): %.2f, integral: %.2f" % (lnL, contPoints, contInteg))
+            sys.stdout.write("\rlogL: %.2f, sum log(f(xi)): %.2f, integral: %.2f            " % (lnL, contPoints, contInteg))
             sys.stdout.flush()
             
         return contPoints - contInteg
@@ -286,7 +312,10 @@ class GaussianMM():
         param_set = []
         for i in range(self.nComponents):
             param_set.append( params[i*6:(i+1)*6] )
+        # Test parameters against boundary values
         prior = self.priorTest(param_set)
+        # Test parameters against variance
+        if prior: prior = prior & self.varTest(param_set)
 
         # Only calculate if prior is satisfied otherwise bad values of rho arise
         if prior:
@@ -335,6 +364,39 @@ class GaussianMM():
         if solution == 0:
             return True
         else: return False
+
+    def varTest(self, params):
+
+        '''
+        varTest - tests whether variance is constrained within prior limits
+
+        Parameters
+        ----------
+            params - list of floats
+                - Values of parameters in the Gaussian Mixture model
+        Returns
+        -------
+             - bool
+                - True if parameters satisfy constraints. False if not.
+        '''
+
+        sigmax, sigmay, rho = np.array(()), np.array(()), np.array(())
+        for arr in params:
+            sigmax = np.append(sigmax, arr[1])
+            sigmay = np.append(sigmay, arr[3])
+            rho = np.append(rho, arr[5])
+
+        dx = self.rngx[1]-self.rngx[0]
+        dy = self.rngy[1]-self.rngy[0]
+
+        sigxtil = self.sigxtilda(sigmax/dx, sigmay/dy, rho)
+        sigytil = self.sigytilda(sigmax/dx, sigmay/dy, rho)
+
+        result = np.sum(sigxtil<self.smoothFactor) + np.sum(sigytil<self.smoothFactor)
+
+        if result == 0: return True
+        else: return False
+
 
     def testIntegral(self, integration='trapezium'):
 
@@ -410,6 +472,7 @@ def SFprior(function, (rngx, rngy)):
 
     return prior
 
+
 def bivariateGauss(params, x, y):
 
     '''
@@ -439,7 +502,7 @@ def bivariateGauss(params, x, y):
     # Bivariate Gaussian
     if 1-rho**2 == 0:
         print("\nBad rho value:" +str(rho))
-    Norm = (A/(2 * np.pi * np.abs(sigma1 * sigma2) * np.sqrt(1 - rho**2)))
+    Norm = A#(A/(2 * np.pi * np.abs(sigma1 * sigma2) * np.sqrt(1 - rho**2)))
     Exponent = numpy.exp(-z / (2 * (1 - rho**2)))
     BG = Norm*Exponent
     return BG
@@ -589,7 +652,7 @@ def cdf(func, xmin, xmax, N, **kwargs):
     # Linear interpolation of cumulative distribution
     #interpolant = interp.interp1d(points[1:], cdf)
     # Inverse interpolate to allw generation of probability weighted distributions.
-    value_interp = interp.interp1d(cdf, points[1:])
+    value_interp = interp.interp1d(cdf, points[1:], bounds_error=False, fill_value=np.nan)
     
     return value_interp
 

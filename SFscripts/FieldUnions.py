@@ -168,7 +168,7 @@ class FieldUnion():
 		Parameters
 		----------
 			list_of_tuples - list of tuples of floats
-					- list of tuples of SFprob, l, b for each field which is in the
+					- list of tuples of SFprob, fieldID for each field which is in the
 					particular combination
 
 		Returns
@@ -242,10 +242,7 @@ def CalculateIntersections(coordsrand, fields, IDtype):
     
     # Only consider points with field
     intersections = fields[fields.points.map(len)>0]
-    # Column of string list required to group items
-    print(intersections.points.iloc[0])
-    print(intersections.points.iloc[0][0])
-    print(type(intersections.points.iloc[0][0]))
+
     intersections['strings'] = fields.points.astype(str)
     # Groupby field overlaps and count instances to measure area of region
     countseries = intersections.groupby(["strings"]).size()
@@ -258,20 +255,22 @@ def CalculateIntersections(coordsrand, fields, IDtype):
 
     # Reset index to keep track of progress
     intersections = intersections.reset_index(drop=True)
-    
-    def findregions(fieldid, index):
+    intersections['nIndex'] = intersections.index.astype(int)
+    nfields = len(intersections)
+
+    def findregions(fieldid, nIter):
         regionbool = intersections.apply(lambda row: any(i in row.points for i in fieldid), axis=1)
         # This can take a while so show counts as it goes along.
-        sys.stdout.write("%d / %d\r" % (index, len(intersections)))
+        sys.stdout.write("%d / %d\r" % (nIter+1, nfields))
         sys.stdout.flush()
         return np.sum(intersections.counts[regionbool])
     # For each overlap list, find the total area occupied by overlapping fields
-    intersections['fullregion'] = intersections.apply(lambda row: findregions(row.points, row['index']), axis=1)
+    intersections['fullregion'] = intersections.apply(lambda row: findregions(row.points, row.nIndex), axis=1)
     
     # Intersection fraction is the ratio of counts on region to counts across all overlapping fields
     intersections['fraction'] = intersections.counts/intersections.fullregion
     
-    print("...done")
+    print("\n...done")
 
     intersections = intersections.set_index("strings")
     
@@ -294,7 +293,8 @@ class MatrixUnion():
 		self.Overlaps = overlapdata
 
 		
-def GenerateMatrices(df, pointings, Phi, Th, SA, surveysf, IDtype = str, Nsample = 10000):
+def GenerateMatrices(df, pointings, Phi, Th, SA, SFcalc, 
+					IDtype = str, Nsample = 10000, basis='intrinsic'):
 
 	'''
 	AnglePointsToPointingsMatrix - Adds a column to the df with the number of the field pointing
@@ -338,6 +338,9 @@ def GenerateMatrices(df, pointings, Phi, Th, SA, surveysf, IDtype = str, Nsample
                 - 'points': list of field IDs for fields which the coordinates lie on
                 - 'field_info': list of tuples - (P(S|v), fieldID) - (float, fieldIDtype)
     '''
+
+	# Drop column which will be readded if this has been calculated before.
+	if 'field_info' in list(df): df = df.drop('field_info', axis=1)
 
 	# Iterate over portions of size, Nsample to constrain memory usage.
 	for i in range(len(df)/Nsample + 1):
@@ -383,8 +386,11 @@ def GenerateMatrices(df, pointings, Phi, Th, SA, surveysf, IDtype = str, Nsample
 		for field in pointings.fieldID:
 			yn = np.array(Mbool[str(field)])
 			Msf[str(field)] = np.zeros(len(dfi))-1.
-			Msf[str(field)][yn] = surveysf.agemhssf.loc[field]((dfi[yn].age, dfi[yn].mh, dfi[yn].s))
-			
+			# Calculate selection function values from different sources (intrinsic, observable, intrinsic with mass)
+			Msf[str(field)][yn] = np.array( SFcalc(field, dfi[yn]) )
+			#print(SFcalc(field, dfi[yn]))
+			#if basis=='intrinsic': Msf[str(field)][yn] = surveysf.agemhssf.loc[field]((dfi[yn].age, dfi[yn].mh, dfi[yn].s))
+
 		# Create lists of fields per point
 		Mplates = pd.DataFrame(np.repeat([Plates,], len(dfi), axis=0), columns=Plates)
 		Mplates = Mplates*Mbool
@@ -419,6 +425,7 @@ def GenerateMatrices(df, pointings, Phi, Th, SA, surveysf, IDtype = str, Nsample
 		dfi = dfi.reset_index()
 		dfi = dfi.merge(field_series, how='inner', right_index=True, left_index=True)
 		dfi.index = dfi['index']
+		dfi = dfi.drop(['index'], axis=1)
 
 		if i == 0: newdf = dfi
 		else: newdf = pd.concat((newdf, dfi))

@@ -1,6 +1,6 @@
 '''
 SelectionGrid - Contains tools for creating a selection function for a given
-                spectroscopic source which uses plate based obsevation techniques
+                SFscopic source which uses plate based obsevation techniques
 
 Classes
 -------
@@ -45,6 +45,7 @@ from itertools import product
 import re, dill, pickle, multiprocessing
 import cProfile, pstats
 import sys, os
+from scipy.interpolate import RegularGridInterpolator as RGI
 
 from matplotlib import pyplot as plt
 import matplotlib
@@ -52,10 +53,7 @@ import matplotlib.gridspec as gridspec
 from matplotlib.colors import LogNorm
 from matplotlib.ticker import LogFormatter
 
-from scipy.interpolate import RegularGridInterpolator as RGI
-
 import CoordTrans
-
 from ArrayMechanics import *
 from AngleDisks import *
 from PlotCoordinates import *
@@ -63,7 +61,7 @@ from DataImport import *
 import ComputerOps
 import StatisticalModels
 import FieldUnions
-
+import SFInstanceClasses
 
 
 class FieldInterpolator():
@@ -149,6 +147,17 @@ class FieldInterpolator():
         pointings = pointings.drop_duplicates(subset = 'fieldID')
         #pointings = pointings[pointings.fieldID==2001.0]
         self.pointings = pointings
+
+                
+        # Extract isochrones
+        print("Undilling isochrone interpolants...")
+        with open(iso_pickle, "rb") as input:
+            self.pi = dill.load(input)
+        print("...done.\n")
+        self.isoage = np.copy(self.pi['isoage']) 
+        self.isomh  = np.copy(self.pi['isomh'])
+        # Colour-Magnitude limit values to be used for limits on interpolation regions
+        self.cm_limits = (self.pi['Hmin'], self.pi['Hmax'], self.pi['JKmin'], self.pi['JKmax'])
         
         # surveysf_exists true if Selection Function has already been calculated
         if not surveysf_exists:
@@ -157,18 +166,16 @@ class FieldInterpolator():
             if not ColMagSF_exists:
                 
                 print('Importing data for Colour-Magnitude Field interpolants...')
-
                 self.stars = self.ImportDataframe(spectro_path, spectro_coords, 
                                                  angle_units='degrees')
-                print("...done.\n")     
-                
+                print("...done.\n")
             
                 print('Creating Colour-Magnitude Field interpolants...')
                 self.obsSF = self.iterateAllFields()
-                print("...done\n.")
-                
+                print('\nnow pickling them...')
                 with open(obsSF_pickle_path, 'wb') as handle:
                     pickle.dump(self.obsSF, handle)
+                print("...done\n.")
                     
             else:
                 # Once Colour Magnitude selection functions have been created
@@ -177,35 +184,32 @@ class FieldInterpolator():
                 with open(obsSF_pickle_path, "rb") as input:
                     self.obsSF = pickle.load(input)
                 print("...done.\n")
-                
-            # Extract isochrones
-            print("Undilling isochrone interpolants...")
-            with open(iso_pickle, "rb") as input:
-                self.pi = dill.load(input)
-            print("...done.\n")
 
-            self.isoage = np.copy(self.pi['isoage']) 
-            self.isomh  = np.copy(self.pi['isomh'])
 
             print('Creating Distance Age Metalicity interpolants...')
-            surveysf, agerng, mhrng, srng = self.createDistMhAgeInterp()
+             #surveysf, agerng, mhrng, srng = self.createDistMhAgeInterp()
+            instanceSF, instanceIMFSF, agerng, mhrng = self.createDistMhAgeInterp2()
             with open(sf_pickle_path, 'wb') as handle:
-                    pickle.dump((surveysf, agerng, mhrng, srng), handle)
-            print("...done.\n")
+                    pickle.dump((instanceSF, instanceIMFSF, agerng, mhrng), handle)
+            self.instanceSF=instanceSF
+            self.instanceIMFSF = instanceIMFSF
+            print("...done.\n") 
 
-        # Once Colour Magnitude selection functions have been created
-        # Unpickle colour-magnitude interpolants
-        print("Unpickling colour-magnitude interpolant dictionaries...")
-        with open(obsSF_pickle_path, "rb") as input:
-            self.obsSF = pickle.load(input)
-        print("...done.\n")
+        else:              
+
+            # Once Colour Magnitude selection functions have been created
+            # Unpickle colour-magnitude interpolants
+            print("Unpickling colour-magnitude interpolant dictionaries...")
+            with open(obsSF_pickle_path, "rb") as input:
+                self.obsSF = pickle.load(input)
+            print("...done.\n")
         
-        # Once full selection function has been created
-        # Unpickle survey selection function
-        print("Unpickling survey selection function...")
-        with open(sf_pickle_path, "rb") as input:
-            self.surveysf, self.agerng, self.mhrng, self.srng  = pickle.load(input)
-        print("...done.\n")
+            # Once full selection function has been created
+            # Unpickle survey selection function
+            print("Unpickling survey selection function...")
+            with open(sf_pickle_path, "rb") as input:
+                self.instanceSF, self.instanceIMFSF, self.agerng, self.mhrng = pickle.load(input)
+            print("...done.\n") 
 
         # Cannot construct overlapping field system if only one field
         # This selection function doesn't currently work for a single field
@@ -218,7 +222,7 @@ class FieldInterpolator():
             self.FUInstance = FieldUnions.FieldUnion(database)
         else: raise ValueError('Cannot currently run this code with only one field, working on improving this!')
         
-    def __call__(self, catalogue):
+    def __call__(self, catalogue, method='intrinsic', coords = ['age', 'mh', 's', 'mass']):
 
 
         '''
@@ -239,24 +243,26 @@ class FieldInterpolator():
                     - 'inion', 'field_info', 'points'
         '''
 
-        """ OLD REDUNDANT METHOD
-        print('points to pointings')
-        # Every row in the dataframe receives a list of field pointings which overlap on 
-        # the given galactic coordinates
-        catalogue = self.PointsToPointings(catalogue, Phi='l', Th='b')
+        if method=='observable': 
+            SFcalc = lambda field, df: np.array( self.obsSF[field]((df[coords[0]], df[coords[1]])) )
+        elif method=='IMFint':
+            SFcalc = lambda field, df: self.instanceIMFSF( (df[coords[0]], df[coords[1]], df[coords[2]]), self.obsSF[field] )
+        elif method=='int':
+            SFcalc = lambda field, df: self.instanceSF( (df[coords[0]], df[coords[1]], df[coords[3]], df[coords[2]]), self.obsSF[field] )
+        else: raise ValueError('Method is unknown')
 
-        print('field info')
-        # Every pointing is transformed to a tuple of SFprobability, and pointing l, b
-        catalogue['field_info'] = catalogue.apply(lambda row: self.FUInstance.pointsListMap(self.surveysf, row) , axis=1)
-        """
+        #print(SFcalc(2.0, catalogue[['Happ', 'Colour', 's', 'age', 'mh', 'mass']]))
 
         # catalogue[points] - list of pointings which coordinates lie on
         # catalogue[field_info] - list of tuples: (P(S|v), field)
-        catalogue = FieldUnions.GenerateMatrices(catalogue, self.pointings, 'l', 'b', 'SolidAngle', self.surveysf)
-
+        print('Calculating all SF values...')
+        catalogue = FieldUnions.GenerateMatrices(catalogue, self.pointings, 'l', 'b', 'SolidAngle', SFcalc)
+        print('...done')
         # The SF probabilities and coordinates of overlapping fields are used to calculate
         # the field union.
+        print('Calculating union contribution...')
         catalogue['union'] = catalogue.field_info.map(self.FUInstance.fieldUnion)
+        print('...done')
 
         return catalogue
         
@@ -404,6 +410,7 @@ class FieldInterpolator():
         if multiCore:
             # Create processor pools for multiprocessing
             nCores = multiprocessing.cpu_count() - 1
+            nCores = 2
             pool = multiprocessing.Pool( nCores )
 
             # List of fields in pointings database
@@ -426,7 +433,8 @@ class FieldInterpolator():
 
                 results.append(pool.apply_async(iterateField, 
                                                 args=(self.stars, self.photo_path, field,
-                                                    self.photo_tag, self.photo_coords, self.pointings.loc[field])))
+                                                    self.photo_tag, self.photo_coords, self.pointings.loc[field],
+                                                    self.cm_limits)))
                 fieldN+=1
 
             for r in results:
@@ -453,19 +461,18 @@ class FieldInterpolator():
                 sys.stdout.flush()
 
                 obsSF_field, field = iterateField(self.stars, self.photo_path, field,
-                                                self.photo_tag, self.photo_coords, self.pointings.loc[field])
+                                                self.photo_tag, self.photo_coords, self.pointings.loc[field],
+                                                self.cm_limits)
                 obsSelectionFunction[field] = obsSF_field
 
                 fieldN+=1
 
         return obsSelectionFunction
-            
-            
+
+
     def createDistMhAgeInterp(self,
                               agemin = 0,agemax = 13,
-                              mhmin=-2.5,mhmax=0.5,
-                              smin=0.001,smax=20.,ns=20,
-                              GoodMemory=False):
+                              mhmin=-2.5,mhmax=0.5):
 
         '''
         createDistMhAgeInterp - Creates a selection function in terms of age, mh, s
@@ -524,52 +531,40 @@ class FieldInterpolator():
         
         isoage    = np.copy(self.pi['isoage'])
         isomh     = np.copy(self.pi['isomh'])
+        isomass   = np.copy(self.pi['isomass_scaled'])
         isodict   = self.pi['isodict']
+        isomScale = self.pi['mScale']
+        isomUnscale = self.pi['mUnscale']
 
-        # Chose the portion of isochrones used based on memory available
-        if GoodMemory: # Construct age & metallicity grids with all available isochrones
-            # Construct age grid
-            jagemin    = max(0, 
-                             np.sum(isoage<agemin)-1)
-            jagemax     = min(len(isoage), 
-                              np.sum(isoage<agemax) +1)
-            agegrid = isoage[jagemin:jagemax]
+        # Delete the isochrone source to save memory
+        del(self.pi)
+        gc.collect()
 
-            # Construct metallicity grid
-            jmhmin     = max(0,
-                             np.sum(isomh<mhmin)-1)
-            jmhmax     = min(len(isomh),
-                             np.sum(isomh<mhmax)+1)
-            mhgrid  = isomh[jmhmin:jmhmax]
-        else: # If memory on the device is limitted, this only uses a reduced set of ages / metallicities
-            sizeage = 50
-            sizemh = 20
-            ageset = np.linspace(agemin, agemax, sizeage)
-            mhset = np.linspace(mhmin, mhmax, sizemh)
-            # Construct age grid
-            agegrid = []
-            for age in ageset:
-                isochrone_age = isoage[np.abs(isoage-age) == np.min(np.abs(isoage-age))]
-                agegrid.append(isochrone_age)
-            agegrid = np.unique(np.array(agegrid))
-
-            mhgrid = []
-            for mh in mhset:
-                isochrone_mh = isomh[np.abs(isomh-mh) == np.min(np.abs(isomh-mh))]
-                mhgrid.append(isochrone_mh)
-            mhgrid = np.unique(np.array(mhgrid))
-
+        # Grids are calculated between age and metallicity ranges
+        # Construct age grid
+        jagemin    = max(0, 
+                         np.sum(isoage<agemin)-1)
+        jagemax     = min(len(isoage), 
+                          np.sum(isoage<agemax) +1)
+        agegrid = isoage[jagemin:jagemax]
+        # Construct metallicity grid
+        jmhmin     = max(0,
+                         np.sum(isomh<mhmin)-1)
+        jmhmax     = min(len(isomh),
+                         np.sum(isomh<mhmax)+1)
+        mhgrid  = isomh[jmhmin:jmhmax]
+        # Construct limited mass grid
+        sizemass = 150
+        mass_sample = lambda x: x[0:: int( len(x)/sizemass )]
+        massgrid = mass_sample(isomass)
+        massgrid = isomass
+        # Size of grid in each dimension
         nage    = len(agegrid)
         nmh     = len(mhgrid)
-              
-        # Create grids for distances and selection function probabilities
-        sgrid    = np.logspace(np.log10(smin),np.log10(smax),ns)
+        nmass   = len(massgrid)
+        print("nage, nmh, nmass: %d, %d, %d" % (nage, nmh, nmass))
                    
         fieldInfo = fieldInfo.set_index('fieldID', drop=False)
-
-        # Create datagrids for selection function
-        nage, nmh, ns = len(agegrid), len(mhgrid), len(sgrid)
-        sfgrid  = np.zeros([nage,nmh,ns])
 
         # MultiIndex dataframe for applying transformations
         index = pd.MultiIndex.from_product([agegrid, mhgrid], names = ['age','mh'])
@@ -580,87 +575,58 @@ class FieldInterpolator():
 
         # Absolute magnitude arrays from isodict
         age_mh['absA'] = age_mh.isoname.map(lambda x: isodict[x].Jabs)
-        age_mh['absB'] = age_mh.isoname.map(lambda x: isodict[x].Habs)
-        age_mh['absC'] = age_mh.isoname.map(lambda x: isodict[x].Kabs)
-        age_mh['weight'] = age_mh.isoname.map(lambda x: isodict[x].weight)
+        age_mh['absB'] = age_mh.isoname.map(lambda x: isodict[x].Kabs)
+        age_mh['absC'] = age_mh.isoname.map(lambda x: isodict[x].Habs)
+        # Reduce number of masses to 
+        #mass_cols = ['absA', 'absB', 'absC']
+        #age_mh[mass_cols] = age_mh[mass_cols].applymap(mass_sample)
 
-        # Grids of apparent magnitudes varying with distance over sgrid
-        ns = len(sgrid)
-
-        age_mh['isosize'] = age_mh.absA.map(lambda x: len(x))
-        fulllength = max(age_mh.isosize)
-        smat = np.stack([[sgrid,]*fulllength,]*len(age_mh))
-
+        # Create colour column and extend masses to full length to include zero values for matrix purposes.
         age_mh['ABcol'] = age_mh.absA - age_mh.absB
-        age_mh[['absC', 'ABcol', 'weight']] = age_mh[['absC', 'ABcol', 'weight']].\
-                                            applymap(lambda x: np.concatenate((x, np.zeros(fulllength-len(x)))))
                 
-        absCmat = np.vstack(age_mh.absC)
-        ABcolmat = np.vstack(age_mh.ABcol)
-        weightmat = np.vstack(age_mh.weight)
-                
-        absCmat = np.stack([absCmat]*ns, axis=2)
-        ABcolmat = np.stack([ABcolmat]*ns, axis=2)
-        weightmat = np.stack([weightmat]*ns, axis=2)
-
-        mag_conversion = 5*np.log10(smat*1000./10.)
-        appCmat = mag_conversion + absCmat
-
-        print('appHmat range of values:' + str((np.min(appCmat), np.max(appCmat))))
-        print('Colmat range of values:' + str((np.min(ABcolmat), np.max(ABcolmat))))
-
-        age_mh = age_mh[['age', 'mh', 'isosize']]
+        # Restack age_mh to create matrices in colour and magnitude
         age_mh.set_index(['age','mh'], inplace=True)
+        absCmat = np.array(age_mh[['absC']].unstack()).tolist()
+        absCmat = np.array(absCmat)
+        ABcolmat = np.array(age_mh[['ABcol']].unstack()).tolist()
+        ABcolmat = np.array(ABcolmat)
 
-        # Clear out unused arrays for memory
-        del(smat, mag_conversion, absCmat)
-        gc.collect()
+        # Print out range of colour and magnitude values in the isochrones
+        print('Cabs magnitude matrix range of values:' + str((np.min(absCmat[~np.isnan(absCmat)]), 
+                                                np.max(absCmat[~np.isnan(absCmat)]))))
+        print('Colour matrix range of values:' + str((np.min(ABcolmat[~np.isnan(ABcolmat)]), 
+                                               np.max(ABcolmat[~np.isnan(ABcolmat)]))))
 
-        # True if we're running for efficiency
-        # False if we want to debug the code
-        multiCore = False
-        if multiCore:
-            # Create processor pools for multiprocessing
-            nCores = multiprocessing.cpu_count() - 1
-            pool = multiprocessing.Pool( nCores )
+        # Expand grids to account for central coordinates
+        ABcolmat, agegridCol = extendGrid(ABcolmat, agegrid, axis=0, x_lbound=True, x_lb=0.)
+        ABcolmat, mhgridCol = extendGrid(ABcolmat, mhgrid, axis=1)
+        ABcolmat, massgridCol = extendGrid(ABcolmat, massgrid, axis=2, x_lbound=True, x_lb=0., x_ubound=True, x_ub=1.)
+        absCmat, agegridMag = extendGrid(absCmat, agegrid, axis=0, x_lbound=True, x_lb=0.)
+        absCmat, mhgridMag = extendGrid(absCmat, mhgrid, axis=1)
+        absCmat, massgridMag = extendGrid(absCmat, massgrid, axis=2, x_lbound=True, x_lb=0., x_ubound=True, x_ub=1.)
 
-            # Build results into a full list of multiprocessing instances
-            print("\nmultiprocessing process for spectroscopic fields...")
-            results = []
-            field_list = fieldInfo["fieldID"].tolist()
-            for field in field_list:
-                results.append(pool.apply_async(fieldInterp, 
-                                                args=(fieldInfo.loc[field], agegrid, mhgrid, sgrid, age_mh, 
-                                                ABcolmat, appCmat, weightmat,
-                                                self.obsSF[field])))
-                                                #self.spectro_interp[field], self.photo_interp[field])))
+        # Interpolate over matrices to get col&mag as a function of age, metallicity, mass
+        #print(ABcolmat, absCmat)
+        print((np.min(agegridCol), np.max(agegridCol)), (np.min(mhgridCol), np.max(mhgridCol)), (np.min(massgridCol), np.max(massgridCol)))
+        col_interp = RGI((agegridCol, mhgridCol, massgridCol), ABcolmat, bounds_error=False, fill_value=np.nan)
+        mag_interp = RGI((agegridMag, mhgridMag, massgridMag), absCmat, bounds_error=False, fill_value=np.nan)
 
-            sfList = []
-            for r in results:
-                sf_field_interp, fieldID = r.get()
-                sfList.append([fieldID, sf_field_interp])
-            agemhssfDf = pd.DataFrame(sfList, columns=['fieldID', 'agemhssf'])
-            agemhssfDf = agemhssfDf.set_index('fieldID')
-            fieldInfo = pd.merge(fieldInfo, agemhssfDf, how='inner', left_index=True, right_index=True)
+        # Instance of class for creating mass dependent selection functions
+        intrinsicSF = SFInstanceClasses.intrinsicMassSF()
+        SFInstanceClasses.setattrs(intrinsicSF,
+                                    col_interp = col_interp,
+                                    mag_interp = mag_interp,
+                                    MassScaling = isomScale,
+                                    MassUnscaling = isomUnscale)
+        # Instance of class for creating mass independent selection functions
+        intrinsicIMFSF = SFInstanceClasses.intrinsicSF()
+        SFInstanceClasses.setattrs(intrinsicIMFSF,
+                                    col_interp = col_interp,
+                                    mag_interp = mag_interp,
+                                    MassScaling = isomScale,
+                                    MassUnscaling = isomUnscale)
 
-            # Exit the pools as they won't be used again
-            pool.close()
-            pool.join()
-        else:
-            # Undergo the same procedure without multiprocessing to debug the code
-            field_list = fieldInfo["fieldID"].tolist()
-            sfList = []
-            for field in field_list:
-                    sf_field_interp, fieldID = fieldInterp(fieldInfo.loc[field], agegrid, mhgrid, sgrid, age_mh, 
-                                                            ABcolmat, appCmat, weightmat,
-                                                            self.obsSF[field])
-                                                            #self.spectro_interp[field], self.photo_interp[field])))
-                    sfList.append([fieldID, sf_field_interp])
-            agemhssfDf = pd.DataFrame(sfList, columns=['fieldID', 'agemhssf'])
-            agemhssfDf = agemhssfDf.set_index('fieldID')
-            fieldInfo = pd.merge(fieldInfo, agemhssfDf, how='inner', left_index=True, right_index=True)
-
-        return fieldInfo, (agemin, agemax), (mhmin, mhmax), (smin, smax)
+        return intrinsicSF, intrinsicIMFSF, (agemin, agemax), (mhmin, mhmax)
     
             
     def ProjectGrid(self, field):
@@ -819,7 +785,7 @@ class FieldInterpolator():
             Phi, Th = GenerateCircle(PhiRad[i],ThRad[i],SA[i])
             PlotDisk(Phi, Th, ax)
     
-def iterateField(stars, photo_path, field, photo_tag, photo_coords, fieldpointing):
+def iterateField(stars, photo_path, field, photo_tag, photo_coords, fieldpointing, cm_limits):
 
     '''
     iteratephotoFields- Iterates over each field file of 2MASS star data and 
@@ -894,55 +860,62 @@ def iterateField(stars, photo_path, field, photo_tag, photo_coords, fieldpointin
         # apparent mag upper bound
         if fieldpointing.mlBound == "NoLimit":
             mag_min = np.min(spectro_points.appC) - 2
+            max_min = cm_limits[0]
         else: mag_min = fieldpointing.mlBound
         # apparent mag lower bound
         if fieldpointing.muBound == "NoLimit":
             mag_max = np.max(spectro_points.appC) + 2
+            mag_max = cm_limits[1]
         else: mag_max = fieldpointing.muBound
         # colour uppper bound
         if fieldpointing.clBound == "NoLimit":
             col_min = np.min(spectro_points.Colour) - 0.1
-            col_min = -0.155
+            col_min = cm_limits[2]
         else: col_min = fieldpointing.clBound
         # colour lower bound
         if fieldpointing.cuBound == "NoLimit":
-            col_max = np.max(spectro_points.Colour) + 0.5
-            col_max = 1.019
+            col_max = np.max(spectro_points.Colour) + 0.1
+            col_max = cm_limits[3]
         else: col_max = fieldpointing.cuBound
 
-        # Chose only photometric survey points within the colour-magnitude region
-        photo_points = photo_points[(photo_points.appC > mag_min)&\
-                                    (photo_points.appC < mag_max)&\
-                                    (photo_points.Colour > col_min)&\
-                                    (photo_points.Colour < col_max)]
+        # Chose only photometric survey points within the colour-magnitude region.
+        photo_points = photo_points[(photo_points.appC >= mag_min)&\
+                                    (photo_points.appC <= mag_max)&\
+                                    (photo_points.Colour >= col_min)&\
+                                    (photo_points.Colour <= col_max)]
+        # If spectro points haven't been chosen from the full region, limit to this subset.
+        spectro_points = spectro_points[(spectro_points.appC >= mag_min)&\
+                                    (spectro_points.appC <= mag_max)&\
+                                    (spectro_points.Colour >= col_min)&\
+                                    (spectro_points.Colour <= col_max)]
 
         # Interpolate for photo data - Calculates the distribution function
         DF_interpolant, DF_gridarea, DF_magrange, DF_colrange = CreateInterpolant(photo_points,
-                                                                                             (mag_min, mag_max), (col_min, col_max),
-                                                                                             range_limited=True,
-                                                                                             datatype = "photo")
+                                                                                 (mag_min, mag_max), (col_min, col_max),
+                                                                                 range_limited=True,
+                                                                                 datatype = "photo")
         # Interpolate for spectro data - Calculates the selection function
         SF_interpolant, SF_gridarea, SF_magrange, SF_colrange = CreateInterpolant(spectro_points,
-                                                                                                      (mag_min, mag_max), (col_min, col_max),
-                                                                                                      datatype = "spectro", photoDF=DF_interpolant)
+                                                                                  (mag_min, mag_max), (col_min, col_max),
+                                                                                  datatype = "spectro", photoDF=DF_interpolant)
 
-        # Store information inside an observableSF instance where the selection function is calculated.
-        instanceSF = observableSF(field)
-        setattrs(instanceSF,
-                DF_interp = DF_interpolant,
-                DF_gridarea = DF_gridarea,
-                DF_magrange = DF_magrange,
-                DF_colrange = DF_colrange,
-                SF_interp = SF_interpolant,
-                SF_gridarea = SF_gridarea,
-                SF_magrange = SF_magrange,
-                SF_colrange = SF_colrange,
-                grid_points = True)
+        # Store information inside an SFInstanceClasses.observableSF instance where the selection function is calculated.
+        instanceSF = SFInstanceClasses.observableSF(field)
+        SFInstanceClasses.setattrs(instanceSF,
+                                    DF_interp = DF_interpolant,
+                                    DF_gridarea = DF_gridarea,
+                                    DF_magrange = DF_magrange,
+                                    DF_colrange = DF_colrange,
+                                    SF_interp = SF_interpolant,
+                                    SF_gridarea = SF_gridarea,
+                                    SF_magrange = SF_magrange,
+                                    SF_colrange = SF_colrange,
+                                    grid_points = True)
 
 
     else:
         # There are no stars on the field plate
-        instanceSF = observableSF(field)
+        instanceSF = SFInstanceClasses.observableSF(field)
         instanceSF.grid_points = False
         
 
@@ -1079,7 +1052,7 @@ def PoissonLikelihood(points,
         # Add in SFxDF<DF constraint for the spectrograph distribution
         if datatype == "spectro": 
             model.photoDF, model.priorDFbool = (photoDF, True)
-        model.runningL = True
+        model.runningL = False
         model.optimizeParams()
         # Test integral if you want to see the value/error in the integral when calculated
         # model.testIntegral()
@@ -1234,7 +1207,9 @@ def IndexColourMagSG(points, N_2D,
     return interpolation, selection_grid, mag_centers, col_centers
 
 def fieldInterp(fieldInfo, agegrid, mhgrid, sgrid, 
-                age_mh, col, mag, weight, obsSF):
+                age_mh, col, mag, weight, obsSF,
+                mass_sf=False, massgrid=None,
+                fieldN=0, fieldL=0):
                 #spectro, photo):
 
     '''
@@ -1251,7 +1226,7 @@ def fieldInterp(fieldInfo, agegrid, mhgrid, sgrid,
                 - Distribution of coordinates over which the selection function
                   will be generated
 
-        sf: function instance from FieldInterpolator class
+        obsSF: function instance from FieldInterpolator class
                 sfFieldColMag - Converts survey interpolant and 2MASS interpolant into a selection grid
                                 in colour and magnitude space
 
@@ -1259,13 +1234,13 @@ def fieldInterp(fieldInfo, agegrid, mhgrid, sgrid,
                 - Contains all unique age-metalicity values as individual rows which are then unstacked to
                   a matrix to allow for efficient calculation of the selection function.
 
-        J_Kmat: array
+        col: array
                 - Matrix of colour values over the colour-magnitude space
 
-        appJmat: array
+        mag: array
                 - Matrix of H magnitude values over the colour-magnitude space
 
-        weightmat: array
+        weight: array
                 - Matrix of weightings of isochrone points so that the IMF is integrated over
 
     Dependencies
@@ -1279,35 +1254,49 @@ def fieldInterp(fieldInfo, agegrid, mhgrid, sgrid,
 
     else:
         RGI([], 0)
-
-    #### Make sure we find a better way of dealing with this so that its clear when
-    #### there are problems with fields not being in the database.
     '''
 
     # Import field data
     fieldID = fieldInfo['fieldID']
 
+
     # True if there were any stars in the field pointing
     if obsSF.grid_points:
         # For fields with RAVE-TGAS stars
-        sys.stdout.write("\rCurrent field being interpolated: %s" % fieldID)
+        sys.stdout.write("\rCurrent field being interpolated: %s, %d/%d" % (fieldID, fieldL, fieldN))
         sys.stdout.flush()
 
         sfprob = np.zeros_like(col)
 
         # Make sure values fall within interpolant range for colour and magnitude
         # Any points outside the range will provide a 0 contribution
-        bools = (col>obsSF.DF_colrange[0])&(col<obsSF.DF_colrange[1])&\
-                (mag>obsSF.DF_magrange[0])&(mag<obsSF.DF_magrange[1])
-
+        col[np.isnan(col)] = np.inf
+        mag[np.isnan(mag)] = np.inf
+        bools = (col>obsSF.DF_colrange[0])&\
+                (col<obsSF.DF_colrange[1])&\
+                (mag>obsSF.DF_magrange[0])&\
+                (mag<obsSF.DF_magrange[1])
+        # np.nan values provide a nan contribution
         sfprob[bools] = obsSF((mag[bools],col[bools]))
 
-        sfprob[sfprob==np.inf]=0.
-        sfprob[np.isnan(sfprob)] = 0.
+        # Transform to selection grid (age,mh,s) and interpolate to get plate selection function
+        age_mh['nonintegrand'] = sfprob.tolist()
+
+        sfgrid = np.array(age_mh[['nonintegrand']].unstack()).tolist()
+        sfgrid = np.array(sfgrid)
+
+        # Expand grids to account for central coordinates
+        sfgrid, age4grid = extendGrid(sfgrid, agegrid, axis=0, x_lbound=True, x_lb=0.)
+        sfgrid, mh4grid = extendGrid(sfgrid, mhgrid, axis=1)
+        sfgrid, mass4grid = extendGrid(sfgrid, massgrid, axis=2, x_lbound=True, x_lb=0.)
+        sfgrid, s4grid = extendGrid(sfgrid, sgrid, axis=3, x_lbound=True, x_lb=0.)
+
+        sf4interpolant = RGI((age4grid,mh4grid,mass4grid,s4grid),sfgrid, bounds_error=False, fill_value=0.0)
+        del(age4grid,mh4grid,mass4grid,s4grid,sfgrid)
+        gc.collect()
 
         # Include weight from IMF and density of mass points per isochrone
         sfprob *= weight
-                       
         # Integrating (sum) selection probabilities to get in terms of age,mh,s
         integrand = np.sum(sfprob, axis=1)
 
@@ -1318,21 +1307,20 @@ def fieldInterp(fieldInfo, agegrid, mhgrid, sgrid,
         sfgrid = np.array(sfgrid)
 
         # Expand grids to account for central coordinates
-        sfgrid, agegrid = extendGrid(sfgrid, agegrid, axis=0,
-                                         x_lbound=True, x_lb=0.)
-        sfgrid, mhgrid = extendGrid(sfgrid, mhgrid, axis=1)
-        sfgrid, sgrid = extendGrid(sfgrid, sgrid, axis=2,
-                                       x_lbound=True, x_lb=0.)
+        sfgrid, age3grid = extendGrid(sfgrid, agegrid, axis=0, x_lbound=True, x_lb=0.)
+        sfgrid, mh3grid = extendGrid(sfgrid, mhgrid, axis=1)
+        sfgrid, s3grid = extendGrid(sfgrid, sgrid, axis=2, x_lbound=True, x_lb=0.)
 
-        print('boundserror off')
-        sfinterpolant = RGI((agegrid,mhgrid,sgrid),sfgrid, bounds_error=False, fill_value=0.0)
+        sf3interpolant = RGI((age3grid,mh3grid,s3grid),sfgrid, bounds_error=False, fill_value=0.0)
+
 
     else:
         # For fields with no RAVE-TGAS stars - 0 value everywhere in field
         print('No stars in field: '+str(fieldID))
-        sfinterpolant = RGI([], 0)
+        sf3interpolant, sf4interpolant = (RGI([], 0), RGI([], 0))
 
-    return sfinterpolant, fieldID
+    return sf3interpolant, sf4interpolant, fieldID
+
 
 def sfFieldColMag(field, col, mag, weight, spectro, photo):
 
@@ -1385,7 +1373,6 @@ def sfFieldColMag(field, col, mag, weight, spectro, photo):
 
     return prob
 
-
 class observableSF():
 
     '''
@@ -1434,28 +1421,6 @@ class observableSF():
         # Not sure what this is meant to do now that it's no longer calculated from spectro/photo
         return self.SF_gridarea/self.DF_gridarea
 
-def setattrs(_self, **kwargs):
-
-    '''
-
-
-    Parameters
-    ----------
-
-
-    **kwargs
-    --------
-
-
-    Returns
-    -------
-
-
-    '''
-
-    for k,v in kwargs.items():
-        setattr(_self, k, v)
-
 
 def findNearestFields(anglelist, pointings, Phistr, Thstr):
 
@@ -1500,595 +1465,5 @@ def findNearestFields(anglelist, pointings, Phistr, Thstr):
         
     return fieldlist
 
-"""
-Functions for plotting the field distributions
-"""
 
-def plotObsSF(interp, realm='SF',
-            save=False, saven='', title='',
-            scat = False, scatdata=[], 
-            fig_given = False, ax = None, fig = None, 
-            view_contours = True, **kwargs):
-
-
-    options = {'col_range': interp.spectro_colrange,
-               'mag_range': interp.spectro_magrange}
-    options.update(kwargs)
-    
-    # Array for the coordinates in each dimension
-    colmin, colmax, ncol  = options['col_range'][0], options['col_range'][1], 100
-    magmin, magmax, nmag  = options['mag_range'][0], options['mag_range'][1], 120
-    
-    # Slight deviation inside boundaries to avoid going outside limits
-    colmod  = np.linspace(colmin+1e-4,colmax-1e-4,ncol)
-    magmod   = np.linspace(magmin+1e-4,magmax-1e-4,nmag)
-    
-    options = {'col': colmod,
-               'mag': magmod,
-               'pointings': []}
-    options.update(kwargs)
-    
-    colmod = options['col']
-    magmod = options['mag']
-
-    # Labels and ticks for the grid plots
-    axis_ticks = {'col': colmod, 'mag': magmod}
-    axis_labels = {'col': r"J - K",
-                  'mag': r"H"}
-    Tfont = {'fontname':'serif', 'weight': 100, 'fontsize':20}
-    Afont = {'fontname':'serif', 'weight': 700, 'fontsize':20}
-
-    # Create 3D grids to find values of interpolants over col, mag, s
-    col2d = np.transpose(np.stack([colmod,]*len(magmod)), (1,0))
-    mag2d = np.transpose(np.stack([magmod,]*len(colmod)), (0,1))
-    
-    if realm == 'SF': grid = interp((mag2d,col2d))
-    elif realm == 'spectro': grid = interp.spectro_interp((mag2d, col2d))
-    elif realm == 'photo': grid = interp.photo_interp((mag2d, col2d))
-    else: print('realm not correctly specified: SF or spectro or photo')
-
-    # Contourf takes the transpose of the matrix
-    grid = np.transpose(grid)
-    lvls = np.logspace(-10, np.log( np.max(grid)*10 ), 20 )
-    #lvls = np.logspace(-10, 8, 20 )
-    #lvls = np.logspace(np.log( np.min( grid ) ), np.log( np.max(grid) ), 20 )
-    print(np.max(grid))
-
-    if not fig_given:
-        # Set up figure with correct number of plots
-        fig = plt.figure(figsize=(10,10))
-        print("oldfig")
-
-    if view_contours:
-        # Plot the grid on the plotting instance at the given inde
-        im = plt.contourf(axis_ticks.get('col'),axis_ticks.get('mag'), grid,
-                         colormap='YlGnBu', levels=lvls, norm=LogNorm())
-
-        if not fig_given:
-            # Add a colour bar to show the variation over the seleciton function.
-            fig.colorbar(im)
-            formatter = LogFormatter(10, labelOnlyBase=False) 
-            fig.colorbar(im, ticks=[1,5,10,20,50], format=formatter)
-        else:
-            #formatter = LogFormatter(10, labelOnlyBase=False) 
-            cb = fig.colorbar(im, ax=ax, ticks=[1e-10, 1E-5, 1E0, 1E5, 1E10], format='%.0E')# ticks=tks, format=formatter)
-            cb.ax.set_yticklabels([r'$10^{-10}$', r'$10^{-5}$', r'$10^{0}$', r'$10^{5}$', r'$10^{10}$'], fontsize=25)
-
-    plt.xlabel(r'$J-K$')
-    plt.ylabel(r'$m_H$')
-    plt.title(title)
-
-    if scat:
-        plt.scatter(scatdata[1], scatdata[0], zorder = 1)
-
-    # If the fig can be saved
-    if save: fig.savefig(saven, bbox_inches='tight')
-
-
-def plotSpectroscopicSF(fieldInts, field,
-                        srange = (0.01, 20.), mh = -0.2,
-                        continuous=False, nlevels=10, title='',
-                        save=False, fname='', **kwargs):
-
-    '''
-    plotSFInterpolants - Plots the selection function in any combination of age, mh, s coordinates.
-                         Can chose what the conditions on individual plots are (3rd coord, Field...)
-
-    Parameters
-    ----------
-        fieldInts: DataFrame
-                - Database of selection function interpolants for each field in the survey
-
-    **kwargs
-    --------
-        age, mh, s: 1D array
-                - arrays of values which the coordinates will vary over
-
-        fields: list
-                - field IDs which the plots will use selection functions from
-
-        Phi, Th: 1D array
-                - If var1, var2 == 'l', 'b' - the positions of plates will vary over this range
-                - My not be exactly right positions as this depends on the plate position
-
-        pointings: list
-                - Database of field pointings - only contains pointings where a selection function
-                  interpolant has correctly been produced (photo_bool==True)
-
-    Dependencies
-    ------------
-        findNearestFields - Returns the nearest field for each point in the given list
-                            in angles (smallest angle displacement)
-
-    Returns
-    -------
-        None
-
-        Plots an axis-shared multi-plot of the specified fields/coordinates selection functions.
-    '''
-
-    # Array for the coordinates in each dimension
-    smin, smax, ns = srange[0], srange[1], 80
-    agemin, agemax, nage = 0.0001, 13, 100
-    
-    smod    = np.logspace(np.log10(smin),np.log10(smax),ns)
-    agemod  = np.linspace(agemin,agemax,nage)
-    agemod    = np.logspace(np.log10(agemin),np.log10(agemax),nage)
-
-    # Labels and ticks for the grid plots
-    axis_ticks = {'s': smod, 'age': agemod}
-    axis_labels = {'s': r"$s$ (kpc)",
-                  'age': r"$\tau$ (Gyr)",
-                  'mh': r"[M/H]"}
-    Tfont = {'fontname':'serif', 'weight': 100, 'fontsize':20}
-    Afont = {'fontname':'serif', 'weight': 700, 'fontsize':20}
-
-    # Create 3D grids to find values of interpolants over age, mh, s
-    s2d = np.stack([smod,]*len(agemod))
-    age2d = np.transpose(np.stack([agemod,]*len(smod)))
-    sf2d = fieldInts.agemhssf.loc[field]((age2d, mh, s2d))
-
-    # Normalise contour levels to see the full range of contours
-    gridmax = np.max(sf2d)
-    levels = np.linspace(0, gridmax, nlevels)
-    
-    # Create figure
-    fig = plt.figure(figsize=(15, 15))
-    im = plt.contourf(age2d,s2d,sf2d,
-                     levels=levels,colormap='YlGnBu')    
-    plt.yscale('log')
-    plt.xlabel(r'$\tau (Gyr)$')
-    plt.ylabel(r'$s (kpc)$')
-    plt.title(title)#r"$\mathrm{P}(\mathrm{S}|\mathrm{[M/H] = -0.2},\, s,\, \tau)$")
-    plt.colorbar(im, format="%.3f")
-
-    if save:
-        print(fname)
-        plt.savefig(fname, bbox_inches='tight')
-
-    """
-    if not fig_given:
-        # Set up figure with correct number of plots
-        fig = plt.figure(figsize=(10,10))
-
-    # Plot the grid on the plotting instance at the given inde
-    im = plt.contourf(age2d,s2d,sf2d,
-                     colormap='YlGnBu', levels=lvls, norm=LogNorm())
-
-    if not fig_given:
-        # Add a colour bar to show the variation over the seleciton function.
-        fig.colorbar(im)
-        formatter = LogFormatter(10, labelOnlyBase=False) 
-        fig.colorbar(im, ticks=[1,5,10,20,50], format=formatter)
-    else:
-        #formatter = LogFormatter(10, labelOnlyBase=False) 
-        cb = fig.colorbar(im, ax=ax, ticks=np.linspace(0.01, 0.1, 10), format='%.0E')# ticks=tks, format=formatter)
-        #cb.ax.set_yticklabels([r'$10^{-2}$', r'$10^{-1.5}$', r'$10^{0}$', r'$10^{1}$', r'$10^{2}$'], fontsize=25)
-
-    plt.yscale('log')
-    plt.xlabel(r'$\tau (Gyr)$')
-    plt.ylabel(r'$s (kpc)$')
-    plt.title(title)
-
-    # If the fig can be saved
-    if save: fig.savefig(fname, bbox_inches='tight')
-    """
-
-def plotSFInterpolants(fieldInts, (varx, vary), var1, var2, 
-                        srange = (0.01, 20.), 
-                        continuous=False, nlevels=10, title='',
-                        save=False, fname='', **kwargs):
-
-    '''
-    plotSFInterpolants - Plots the selection function in any combination of age, mh, s coordinates.
-                         Can chose what the conditions on individual plots are (3rd coord, Field...)
-
-    Parameters
-    ----------
-        fieldInts: DataFrame
-                - Database of selection function interpolants for each field in the survey
-
-        (varx, vary): tuple of strings
-                - Must be any combination of 'age', 'mh', 's'
-                - Determines the variables for the x and y axes of the plots respectively
-
-        var1: string
-                - Variable which changes over different columns of plots
-                - 'age', 'mh', 's', 'fields', 'l', 'b'
-
-        var2: string
-                - Variable which changes over different rows of plots
-                - 'age', 'mh', 's', 'fields', 'l', 'b'
-
-    **kwargs
-    --------
-        age, mh, s: 1D array
-                - arrays of values which the coordinates will vary over
-
-        fields: list
-                - field IDs which the plots will use selection functions from
-
-        Phi, Th: 1D array
-                - If var1, var2 == 'l', 'b' - the positions of plates will vary over this range
-                - My not be exactly right positions as this depends on the plate position
-
-        pointings: list
-                - Database of field pointings - only contains pointings where a selection function
-                  interpolant has correctly been produced (photo_bool==True)
-
-    Dependencies
-    ------------
-        findNearestFields - Returns the nearest field for each point in the given list
-                            in angles (smallest angle displacement)
-
-    Returns
-    -------
-        None
-
-        Plots an axis-shared multi-plot of the specified fields/coordinates selection functions.
-    '''
-
-    # Array for the coordinates in each dimension
-    smin, smax, ns        = srange[0], srange[1], 30
-    agemin, agemax, nage      = 0.0001, 13, 50
-    mhmin, mhmax, nmh       = -2.15, 0.4, 25
-    
-    smod    = np.logspace(np.log10(smin),np.log10(smax),ns)
-    agemod  = np.linspace(agemin,agemax,nage)
-    agemod    = np.logspace(np.log10(agemin),np.log10(agemax),nage)
-    print(agemod)
-    mhmod   = np.linspace(mhmin,mhmax,nmh)
-    fields = [4120.0]
-    Phi = np.linspace(0, 2*np.pi, 5)
-    Th = np.linspace(-np.pi/2, np.pi/2, 5)
-    
-    options = {'age': agemod,
-               'mh': mhmod,
-               's': smod,
-               'fields': fields,
-               'Phi': Phi,
-               'Th': Th,
-               'pointings': []}
-    options.update(kwargs)
-    
-    agemod = options['age']
-    mhmod = options['mh']
-    smod = options['s']
-    
-    # Create list of fields which correspond to given array coordinates
-    if (var1, var2) == ('l', 'b'):
-        pointings = options['pointings']
-        Phi = np.array(options['Phi']).repeat(len(options['Th']))
-        Th = np.tile(options['Th'], len(options['Phi']))
-        fields = findNearestFields((Phi,Th), pointings, var1, var2)
-    else: fields = options['fields']
-
-
-    # Labels and ticks for the grid plots
-    axis_ticks = {'s': smod, 'age': agemod, 'mh': mhmod,
-                  'fields': fields, 'l': options['Phi'], 'b': options['Th']}
-    axis_labels = {'s': r"$s$ (kpc)",
-                  'age': r"$\tau$ (Gyr)",
-                  'mh': r"[M/H]",
-                  'fields': 'Field ID'}
-    Tfont = {'fontname':'serif', 'weight': 100, 'fontsize':20}
-    Afont = {'fontname':'serif', 'weight': 700, 'fontsize':20}
-
-    # Create 3D grids to find values of interpolants over age, mh, s
-    s3d = np.transpose(np.stack([[smod,]*len(agemod)]*len(mhmod)), (1,0,2))
-    age3d = np.transpose(np.stack([[agemod,]*len(smod)]*len(mhmod)), (2,0,1))
-    mh3d = np.transpose(np.stack([[mhmod,]*len(smod)]*len(agemod)), (0,2,1))
-    
-    # Transposes grids to [x, y, z] = [varx, vary, varz]
-    coordinates = {'age':0,'mh':1,'s':2,'fields':3}
-    a, b =coordinates[varx], coordinates[vary]
-    c = 3-(a+b)
-    sf3d = {}
-    for fieldID in fields:
-        grid = fieldInts.agemhssf.loc[fieldID]((age3d, mh3d, s3d))
-        sf3d[fieldID] = grid.transpose((a,b,c))
-
-    # Normalise contour levels to see the full range of contours
-    gridmax = np.max([sf3d[x] for x in sf3d])
-    levels = np.linspace(0, gridmax, nlevels)
-    #levels = np.linspace(0, 1, 10)
-    print(gridmax)
-    
-    # Set up figure with correct number of plots
-    nxplots = len(axis_ticks[var1])
-    nyplots = len(axis_ticks[var2])
-    fig = plt.figure(figsize=(nxplots*8, nyplots*8))
-    gs1 = gridspec.GridSpec(nyplots, nxplots)
-    gs1.update(wspace=0.0, hspace=0.0) 
-    # Dictionary to hold subplot instances so that they can be indexed
-    plotdict = {}
-
-    for index in range(nxplots*nyplots):
-        x = index%nxplots
-        y = index/nxplots
-        #Correct gs_index so that we're counting from bottom left, not top left
-        gs_index = index+ nxplots*(nyplots-1-2*(index/nxplots))
-        
-        # For the coordinate systems being plotted, generate grids and plot labels
-        if var1 == 'fields':
-            # Therefore var2 is age, mh or s
-            selgrid = sf3d[fields[x]][:,:,y]
-            v1text = 'Field =  '+str(fields[x])
-            v2text = axis_labels[var2]+' =  '+str(options[var2][y])
-            figtext = v1text+'\n'+v2text
-        elif var1 in ('age', 'mh', 's'):
-            # Therefore var2 is field
-            selgrid = sf3d[fields[y]][:,:,x]
-            v1text = axis_labels[var1]+' =  '+str(options[var1][x])
-            v2text = 'Field =  '+str(fields[y])
-            figtext = v1text+'\n'+v2text
-        elif (var1, var2) == ('l','b'):
-            selgrid = sf3d[fields[index]][:,:,0]
-            l = pointings.loc[fields[index]].l
-            b = pointings.loc[fields[index]].b
-            v1text = 'l =  '+str.format('{0:.1f}',l*180/np.pi)
-            v2text = 'b =  '+str.format('{0:.1f}',b*180/np.pi)
-            fieldtext = 'Field =  '+str(fields[index])
-            # Print value of static variable
-            static = list(set(('age','s','mh'))-set((varx,vary)))[0]
-            vtext = axis_labels[static]+' = '+str.format('{0:.1f}',options[static][0])
-            figtext = v1text+'\n'+v2text+'\n'+fieldtext+'\n'+vtext
-        
-        # Contourf takes the transpose of the matrix
-        selgrid = np.transpose(selgrid)
-        # Normalise the plot so that features are still clearly seen compared with others
-        #selgrid = selgrid/selgrid.max()
-        
-        # List which will contain the ticklabels which will be made invisible on the plot
-        ticklabels = []
-        
-        # If index==0 - both x and y axes should be visible
-        if index==0: 
-            plotdict[0] = plt.subplot(gs1[gs_index])
-            plt.xlabel(axis_labels[varx], **Afont)
-            plt.ylabel(axis_labels[vary], **Afont)
-        # If only x==0 - y-axis should be shared with index:0
-        elif x==0: 
-            plotdict[index] = plt.subplot(gs1[gs_index], sharex=plotdict[0])
-            ticklabels = plotdict[index].get_xticklabels()
-            plt.ylabel(axis_labels[vary], **Afont)
-        # If only y==0 - x-axis should be shared with index:0
-        elif y==0: 
-            plotdict[index] = plt.subplot(gs1[gs_index], sharey=plotdict[0])
-            ticklabels = plotdict[index].get_yticklabels()
-            plt.xlabel(axis_labels[varx], **Afont)
-        # If neither x,y==0 - both axes should be shared with x=0,y[0 plots]
-        else:
-            sharex = plotdict[x]
-            sharey = plotdict[y*nxplots]
-            plotdict[index] = plt.subplot(gs1[gs_index], sharex=sharex,
-                                                         sharey=sharey)
-            ticklabels = plotdict[index].get_yticklabels() + plotdict[index].get_xticklabels() 
-        
-        # Plot the grid on the plotting instance at the given index
-        ax = plotdict[index]
-
-        if continuous:
-            im = ax.imshow(selgrid, vmin = levels.min(), vmax = levels.max(),
-                             extent = [axis_ticks.get(varx).min(), axis_ticks.get(varx).max(),
-                                       axis_ticks.get(vary).min(), axis_ticks.get(vary).max()])  
-        else:  
-            im = ax.contourf(axis_ticks.get(varx),axis_ticks.get(vary), selgrid,
-                             levels=levels,colormap='YlGnBu')    
-        # Add text to the plot to show the position of the field and other information
-        ax.annotate(figtext, xy=(ax.get_xlim()[1]*0.1, ax.get_ylim()[0]*2), 
-                    color='orange', **Afont)
-        # Distance scale is set to log space
-        if varx == 's': ax.set_xscale('log')
-        if vary == 's': ax.set_yscale('log')
-        #if varx == 'age': ax.set_xscale('log')
-        # Make any labels on plots sharing axes invisible to make the plots more clear
-        plt.setp(ticklabels, visible=False)
-
-    fig.suptitle(title)
-    # Add a colour bar to show the variation over the seleciton function.
-    cbar_ax = fig.add_axes([0.95, 0.15, 0.05, 0.7])
-    fig.colorbar(im, cax=cbar_ax)
-
-    if save:
-        print(fname)
-        plt.savefig(fname, bbox_inches='tight')
-
-
-
-
-
-"""
-Not sure if these functions are any use any more
-"""
-
-def plot1DSF(fieldInts, var, scale = 'lin', **kwargs):
-
-    # Array for the coordinates in each dimension
-    smin, smax, ns        = 0.01, 20., 50
-    agemin, agemax, nage      = 1, 13, 50
-    mhmin, mhmax, nmh       = -2.15, 0.4, 50
-    
-    if scale == 'log': smod = np.logspace(np.log10(smin),np.log10(smax),ns)
-    else: smod = np.linspace(smin,smax,ns)
-    agemod  = np.linspace(agemin,agemax,nage)
-    mhmod   = np.linspace(mhmin,mhmax,nmh)
-    fieldID = 4120.0
-    Phi = np.linspace(0, 2*np.pi, 5)
-    Th = np.linspace(-np.pi/2, np.pi/2, 5)
-    
-    options = {'age': agemod,
-               'mh': mhmod,
-               's': smod,
-               'fieldID': fieldID,
-               'Phi': Phi,
-               'Th': Th,
-               'pointings': []}
-    options.update(kwargs)
-    
-    agemod = options['age']
-    mhmod = options['mh']
-    smod = options['s']
-
-
-    # Labels and ticks for the grid plots
-    axis_ticks = {'s': smod, 'age': agemod, 'mh': mhmod,
-                  'fieldID': fieldID, 'l': options['Phi'], 'b': options['Th']}
-    axis_labels = {'s': r"$s$ (kpc)",
-                  'age': r"$\tau$ (Gyr)",
-                  'mh': r"[M/H]",
-                  'fieldID': 'Field ID'}
-    Tfont = {'fontname':'serif', 'weight': 100, 'fontsize':20}
-    Afont = {'fontname':'serif', 'weight': 700, 'fontsize':20}
-
-    # Create 3D grids to find values of interpolants over age, mh, s
-    s3d = np.transpose(np.stack([[smod,]*len(agemod)]*len(mhmod)), (1,0,2))
-    age3d = np.transpose(np.stack([[agemod,]*len(smod)]*len(mhmod)), (2,0,1))
-    mh3d = np.transpose(np.stack([[mhmod,]*len(smod)]*len(agemod)), (0,2,1))
-
-    sf3d = fieldInts.agemhssf.loc[fieldID]((age3d, mh3d, s3d))
-        
-    # Transposes grids to [x, y, z] = [varx, vary, varz]
-    coordinates = {'age':0,'mh':1,'s':2}
-    a=coordinates[var]
-    if a==1: b=2
-    else: b = 3-(a+1)
-    c = 3-(a+b)
-    sf3d = sf3d.transpose(b,c,a)
-    
-    # Set up figure with correct number of plots
-    fig = plt.figure(figsize=(10,10))
-
-    plt.plot(axis_ticks[var], sf3d[0,0,:])
-    if scale == 'log': plt.xscale('log')
-    plt.xlabel(axis_labels[var])
-    
-    return sf3d[0,0,:]
-
-def plotSumSF(fieldInts, var, scale = 'lin', **kwargs):
-
-    # Array for the coordinates in each dimension
-    smin, smax, ns        = 0.001, 20., 50
-    agemin, agemax, nage      = 1, 13, 50
-    mhmin, mhmax, nmh       = -2.15, 0.4, 50
-    
-    if scale == 'log': smod = np.logspace(np.log10(smin),np.log10(smax),ns)
-    else: smod = np.linspace(smin,smax,ns)
-    agemod  = np.linspace(agemin,agemax,nage)
-    mhmod   = np.linspace(mhmin,mhmax,nmh)
-    fieldID = 4120.0
-    Phi = np.linspace(0, 2*np.pi, 5)
-    Th = np.linspace(-np.pi/2, np.pi/2, 5)
-    
-    options = {'age': agemod,
-               'mh': mhmod,
-               's': smod,
-               'fieldID': fieldID,
-               'Phi': Phi,
-               'Th': Th,
-               'pointings': []}
-    options.update(kwargs)
-    
-    agemod = options['age']
-    mhmod = options['mh']
-    smod = options['s']
-
-
-    # Labels and ticks for the grid plots
-    axis_ticks = {'s': smod, 'age': agemod, 'mh': mhmod,
-                  'fieldID': fieldID, 'l': options['Phi'], 'b': options['Th']}
-    axis_labels = {'s': r"$s$ (kpc)",
-                  'age': r"$\tau$ (Gyr)",
-                  'mh': r"[M/H]",
-                  'fieldID': 'Field ID'}
-    Tfont = {'fontname':'serif', 'weight': 100, 'fontsize':20}
-    Afont = {'fontname':'serif', 'weight': 700, 'fontsize':20}
-
-    # Create 3D grids to find values of interpolants over age, mh, s
-    s3d = np.transpose(np.stack([[smod,]*len(agemod)]*len(mhmod)), (1,0,2))
-    age3d = np.transpose(np.stack([[agemod,]*len(smod)]*len(mhmod)), (2,0,1))
-    mh3d = np.transpose(np.stack([[mhmod,]*len(smod)]*len(agemod)), (0,2,1))
-
-    sf3d = fieldInts.agemhssf.loc[fieldID]((age3d, mh3d, s3d))
-        
-    # Transposes grids to [x, y, z] = [varx, vary, varz]
-    coordinates = {'age':0,'mh':1,'s':2}
-    a=coordinates[var]
-    if a==1: b=2
-    else: b = 3-(a+1)
-    c = 3-(a+b)
-    sf3d = sf3d.transpose(b,c,a)
-    
-    sf = sf3d.sum(axis=0).sum(axis=0)
-    
-    
-    # Set up figure with correct number of plots
-    fig = plt.figure(figsize=(10,10))
-
-    plt.plot(axis_ticks[var], sf)
-    if scale == 'log': plt.xscale('log')
-    plt.xlabel(axis_labels[var])
-    
-    return sf
-
-
-def PointDataSample(df, pointings, plate):
-
-    '''
-    PointDataSample - Creates sample of points which correspond to a field from spectroscopic catalogue
-
-    Parameters
-    ----------
-        df: DataFrame
-                - Data from the RAVE catalogue with a 'plate' field
-
-        pointings: DataFrame
-                - Dataframe of plate coordinates from Wojno's work
-
-        plate: string
-                - Id of plate
-
-    Returns
-    -------
-        points: DataFrame
-                - Data about stars on plate including the Theta, Phi coordinates from z-axis
-
-        plate_coord: tuple of floats (radians)
-                - Galactic coordinates of centre of the observation plate
-
-    '''
-
-    points = df[df.plate == plate]
-    plate_coords = pointings[pointings.plate == plate]
-    plate_coords['RArad'], plate_coords['DErad'] = plate_coords.RAdeg*np.pi/180, plate_coords.DEdeg*np.pi/180
-    plate_coords['l'], plate_coords['b'] = EquatToGal(plate_coords.RArad, plate_coords.DErad)
-
-    lc, bc = plate_coords.l.iloc[0], plate_coords.b.iloc[0]
-    points['Phi'], points['Theta'] = InverseRotation(points.l, points.b, lc, bc)
-    points['Th_zero'] = AngleShift(points.Theta)
-    plate_coord = (lc,bc)
-
-    points['J_K'] = points.Jmag_2MASS - points.Kmag_2MASS
-
-    return points, plate_coord
 

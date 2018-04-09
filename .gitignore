@@ -1,2 +1,11 @@
 SFdata/
+Presentation/
 
+SFscripts/AngleDisks.py
+SFscripts/ComputerOps.py
+SFscripts/CoordTrans.py
+SFscripts/DataImport.py
+SFscripts/PlotCoordinates.py
+SFscripts/Optimizers.py
+
+SFgithub.sublime-workspace

@@ -963,6 +963,23 @@ def extendGrid(grid, x,
                 x_lb = 0., x_ub = 0.,
                 axis=0):
 
+    '''
+
+
+    Parameters
+    ----------
+
+
+    **kwargs
+    --------
+
+
+    Returns
+    -------
+
+
+    '''
+
     nx = len(x)
     dx = (x[nx-1]-x[0])/(nx-1)
     nD = len(np.shape(grid))

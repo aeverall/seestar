@@ -487,6 +487,17 @@ def PlotPlate(Phi, Th, SolidAngle, save = False, saven = '', title = ''):
     EquatorialFields - Plots all plates in catalogue as circles of points in Equatorial coordinates
                      - Plots are on a mollweide projection
 
+    Parameters
+    ----------
+        Phi_coord: np.array of floats (radians [0,2pi])
+                - Longitude of the position
+
+        Th_coord: np.array of float (radians [0, pi])
+                - Latitude of the position
+
+        SolidAngle: float (deg^2)
+                - Solid angle contained within generated circle
+
     **kwargs
     --------
         save: bool - False
@@ -505,7 +516,7 @@ def PlotPlate(Phi, Th, SolidAngle, save = False, saven = '', title = ''):
     '''
 
     fig = plt.figure(figsize=(20,10))
-    ax = fig.add_subplot(111, projection='mollweide')
+    ax = plt.subplot(111, projection='mollweide')
 
     for i in range(len(Phi)):
         #print(Phi[i],Th[i])
@@ -517,3 +528,5 @@ def PlotPlate(Phi, Th, SolidAngle, save = False, saven = '', title = ''):
     ax.set_title(title)
 
     if save: fig.savefig('../Figures/'+saven+'.png')
+
+    return ax
