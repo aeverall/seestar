@@ -11,8 +11,7 @@ Contains tools for:
 setup(
     name="selfun",
     version="1.0",
-	packages=['selfun'],
-
+    
     # Project uses reStructuredText, so ensure that the docutils get
     # installed or upgraded on the target machine
     install_requires=['numpy', 'pandas', 'matplotlib', 'scipy'],
