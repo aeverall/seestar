@@ -1,21 +1,25 @@
-# SeeMost
-(SElEction function for Multi-Object SpecTrographs)
+# selfun
+SELection FUNction for spectroscopic stellar surveys)
 =======
 
 
-SeeMost is a package for creating and using selection functions for multi-fibre spectroscopic surveys.
+seefun is a Python package for creating and using selection functions for spectroscopic stellar surveys.
 
 The full theory and design of the selection function can be found in Everall & Das (in prep.).
 
-Here we explain how to download and use this resource. We also provide prebuilt selection functions for RAVE, APOGEE, Gaia-ESO, GALAH, LAMOST and SEGUE.
+Here we explain how to install and use this resource. 
+We also provide prebuilt selection functions for various surveys.
+Future surveys to include will be: RAVE, APOGEE, Gaia-ESO, GALAH, LAMOST and SEGUE.
 
 
-## Download
+## Download and install
 
 Go to the location where you would like to store the repository.
 
 ```
-$ git clone https://github.com/AndrewEverall/SFgenerator.git
+$ git clone https://github.com/aeverall/selfun.git
+$ cd selfun
+$ python setup install
 ```
 
 Download larger scale datasets into separate files for each survey.
