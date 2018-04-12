@@ -188,7 +188,7 @@ class FieldInterpolator():
 
             print('Creating Distance Age Metalicity interpolants...')
              #surveysf, agerng, mhrng, srng = self.createDistMhAgeInterp()
-            instanceSF, instanceIMFSF, agerng, mhrng = self.createDistMhAgeInterp2()
+            instanceSF, instanceIMFSF, agerng, mhrng = self.createDistMhAgeInterp()
             with open(sf_pickle_path, 'wb') as handle:
                     pickle.dump((instanceSF, instanceIMFSF, agerng, mhrng), handle)
             self.instanceSF=instanceSF

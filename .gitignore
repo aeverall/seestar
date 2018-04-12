@@ -7,5 +7,6 @@ SFscripts/CoordTrans.py
 SFscripts/DataImport.py
 SFscripts/PlotCoordinates.py
 SFscripts/Optimizers.py
+SFscripts/*.pyc
 
 SFgithub.sublime-workspace

@@ -30,7 +30,19 @@ Required for constructing selection function from scratch:
 \- List of field pointings from the spectrograph.
 
 
-## Setup files
+## Download files
+
+
+## Reformatting files
+
+
+## Separate photometric data into fields
+
+
+## Using Isochrones
+
+
+## Create database of filenames & descriptions
 
 For each survey, a class containing the description of file locations and datatypes is required.
 
@@ -51,7 +63,10 @@ SFscripts/___.py
 ## Run selection function
 
 
-## Use selection function in code
+## Calculate selection probabilities
+
+
+## Generate selection function plots
 
 
 ## Shortcuts to generate selection function
