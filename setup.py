@@ -24,7 +24,7 @@ setup(
         #'hello': ['*.msg'],
     },
 
-    packages = ['selfun']
+    packages = ['selfun'],
 
     # metadata for upload to PyPI
     author="Andrew Everall",
