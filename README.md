@@ -1,8 +1,6 @@
 # selfun
-SELection FUNction for spectroscopic stellar surveys
 
-
-seefun is a Python package for creating and using selection functions for spectroscopic stellar surveys.
+selfun is a Python package for creating and using **sel**ection **fun**ctions for spectroscopic stellar surveys.
 
 The full theory and design of the selection function can be found in Everall & Das (in prep.).
 
@@ -10,6 +8,17 @@ Here we explain how to install and use this resource.
 We also provide prebuilt selection functions for various surveys.
 Future surveys to include will be: RAVE, APOGEE, Gaia-ESO, GALAH, LAMOST and SEGUE.
 
+## Contents:
+1. [Download and install]
+2. [Download data files]
+3. [Reformatting files]
+4. [Separating photometric data into fields]
+5. [Using Isochrones]
+6. [Create database of filenames & descriptions]
+7. [Run selection function]
+8. [Calculate selection probabilities]
+9. [Generate selection function plots]
+10. [Shortcuts to generate selection function]
 
 
 ## Download and install
@@ -36,7 +45,7 @@ This will be improved soon!
 For those unfamiliar with pandas, it is a package structured around numpy which provides some facilities for data table manipulation which are more convenient and easier to use. Where possible instructions on how to manipulate and reformat pandas dataframes (similar to a numpy array) are given.
 
 
-## Download files
+## Download data files
 
 The files required to run selfun are too large to store on GitHub so they are kept separately.
 
@@ -61,7 +70,7 @@ Information held within the database:
 2. Demo dataset from Galaxia as presented in the paper, Everall & Das (in prep.)
 3. Folders for several different isochrone datasets:
 	* Database of the isochrones
-	* Pickle file of interpolation of isochrones used for fast calculation
+	* Pickle file of interpolation of isochrones used for fast calculation	
 
 
 
