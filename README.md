@@ -15,7 +15,7 @@ Future surveys to include will be: RAVE, APOGEE, Gaia-ESO, GALAH, LAMOST and SEG
 	2. [Reformatting files](#Download & install)
 	3. [Separating photometric data into fields](#Photometric data)
 	4. [Create database of filenames & descriptions](#Creating databases)
-3. [Using Isochrones](#Isochrones)
+3. [Isochrones](#Using Isochrones)
 4. [Calculating SF probabilities](#Calculate something)
 	1. [Run selection function](#Runnning the selection function)
 	2. [Calculate selection probabilities](#Calculating probabilities)
