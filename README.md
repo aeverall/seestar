@@ -9,16 +9,18 @@ We also provide prebuilt selection functions for various surveys.
 Future surveys to include will be: RAVE, APOGEE, Gaia-ESO, GALAH, LAMOST and SEGUE.
 
 ## Contents:
-1. [Download and install]
-2. [Download data files]
-3. [Reformatting files]
-4. [Separating photometric data into fields]
-5. [Using Isochrones]
-6. [Create database of filenames & descriptions]
-7. [Run selection function]
-8. [Calculate selection probabilities]
-9. [Generate selection function plots]
-10. [Shortcuts to generate selection function]
+1. [Download and install](#Download & install)
+2. [Data files](#The Data)
+	1. [Download data files](#Download data files)
+	2. [Reformatting files](#Download & install)
+	3. [Separating photometric data into fields](#Photometric data)
+	4. [Create database of filenames & descriptions](#Creating databases)
+3. [Using Isochrones](#Isochrones)
+4. [Calculating SF probabilities](#Calculate something)
+	1. [Run selection function](#Runnning the selection function)
+	2. [Calculate selection probabilities](#Calculating probabilities)
+	3. [Generate selection function plots](#Generating plots)
+5. [Shortcuts to generate selection function](#Shortcuts and tricks)
 
 
 ## Download and install
@@ -45,7 +47,9 @@ This will be improved soon!
 For those unfamiliar with pandas, it is a package structured around numpy which provides some facilities for data table manipulation which are more convenient and easier to use. Where possible instructions on how to manipulate and reformat pandas dataframes (similar to a numpy array) are given.
 
 
-## Download data files
+## Data files
+
+### Download data files
 
 The files required to run selfun are too large to store on GitHub so they are kept separately.
 
@@ -74,16 +78,12 @@ Information held within the database:
 
 
 
-## Reformatting files
+### Reformatting files
 
 
-## Separate photometric data into fields
+### Separate photometric data into fields
 
-
-## Using Isochrones
-
-
-## Create database of filenames & descriptions
+### Create database of filenames & descriptions
 
 For each survey, a class containing the description of file locations and datatypes is required.
 
@@ -101,13 +101,17 @@ SFscripts/___.py
 ```
 
 
-## Run selection function
+## Using Isochrones
 
 
-## Calculate selection probabilities
+## Calculating SF probabilities
+### Run selection function
 
 
-## Generate selection function plots
+### Calculate selection probabilities
+
+
+### Generate selection function plots
 
 
 ## Shortcuts to generate selection function
