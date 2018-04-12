@@ -9,8 +9,8 @@ We also provide prebuilt selection functions for various surveys.
 Future surveys to include will be: RAVE, APOGEE, Gaia-ESO, GALAH, LAMOST and SEGUE.
 
 ## Contents:
-1. [Download and install](#Download & install)
-2. [Data files](#The Data)
+1. [Download and install](#install)
+2. [Data files](#Data)
 	1. [Download data files](#Download data files)
 	2. [Reformatting files](#Download & install)
 	3. [Separating photometric data into fields](#Photometric data)
@@ -23,7 +23,7 @@ Future surveys to include will be: RAVE, APOGEE, Gaia-ESO, GALAH, LAMOST and SEG
 5. [Shortcuts to generate selection function](#Shortcuts and tricks)
 
 
-## Download and install
+## Download and install <a name="install"></a>
 
 Go to the location where you would like to store the repository.
 
@@ -47,7 +47,7 @@ This will be improved soon!
 For those unfamiliar with pandas, it is a package structured around numpy which provides some facilities for data table manipulation which are more convenient and easier to use. Where possible instructions on how to manipulate and reformat pandas dataframes (similar to a numpy array) are given.
 
 
-## Data files
+## Data files <a name="Data"></a>
 
 ### Download data files
 
