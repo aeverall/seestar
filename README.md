@@ -1,6 +1,6 @@
 # selfun
 
-selfun is a Python package for creating and using **sel**ection **fun**ctions for spectroscopic stellar surveys.
+**selfun** is a Python package for creating and using **sel**ection **fun**ctions for spectroscopic stellar surveys.
 
 The full theory and design of the selection function can be found in Everall & Das (in prep.).
 
@@ -12,7 +12,7 @@ Future surveys to include will be: RAVE, APOGEE, Gaia-ESO, GALAH, LAMOST and SEG
 ## Contents:
 1. [Citation](#cite)
 1. [Getting started](#start)
-1. [Download and install](#install)
+1. [Install package](#install)
 2. [Data files](#data)
 	1. [Download data files](#download)
 	2. [Reformatting files](#reformat)
@@ -60,7 +60,7 @@ Here is a quick guide of the steps to take depending what your initial aims are:
 
 
 ***
-## Download and install <a name="install"></a>
+## Download and install code package <a name="install"></a>
 
 Go to the location where you would like to store the repository.
 
@@ -86,13 +86,13 @@ This will be improved soon!
 ***
 ## Data files <a name="data"></a>
 
-Here we give a detailed explanation on how to download the available, correctly formatted data as well as how to reformat new datasets to be used with the selfun code.
+Here we give a detailed explanation on how to download the available, correctly formatted data as well as how to reformat new datasets to be used with **selfun**.
 
 ### Download data files <a name="download"></a>
 
-The files required to run selfun are too large to store on GitHub so they are kept separately.
+The files required to run **selfun** are too large to store on GitHub so they are kept separately.
 
-Data we provide can be found at ___.
+Data we provide can be found at ```diff - Add location of publicly available data```.
 
 To download the data enter the following commands.
 ```diff
@@ -119,7 +119,19 @@ Information held within the database:
 ### File formatting <a name="reformat"></a>
 
 
+
 ### Separate photometric data into fields <a name="assignfields"></a>
+
+If starting from the full photometric catalogue, stars can be selected to into individual field files using:
+```python
+from selfun import FieldAssignment
+```
+
+An example which runs on the Galaxia data is given in the examples folder. 
+Use by running:
+```
+$ python examples/example_FieldAssigment.py
+```
 
 
 ### Create database of filenames & descriptions <a name="infofile"></a>
@@ -131,12 +143,9 @@ A jupyter notebook with a couple of examples of generating this file:
 examples/FileLocations.ipynb
 ```
 
-If starting from the full photometric catalogue, stars can be selected to into individual field files using:
+A normal python file example is given for Galaxia in:
 ```
-SFscripts/___.py
-```
-```diff
-- script for assigning stars to fields will be added soon.
+examples/GalaxiaFileLocations.py
 ```
 
 
@@ -144,9 +153,15 @@ SFscripts/___.py
 ## Using Isochrones <a name="isochrones"></a>
 
 
+
 ***
 ## Calculating SF probabilities <a name="sf"></a>
+
+Here we demonstrate how to use **selfun** to generate a selection function and use it on data. 
+All examples given are using Galaxia data. Folling the steps and example files should enable you to recreate the results published in Everall & Das (in prep.).
+
 ### Run selection function <a name="runsf"></a>
+
 
 
 ### Calculate selection probabilities <a name="calcsf"></a>
