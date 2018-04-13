@@ -1,10 +1,29 @@
+import pickle, os
+
 def replaceNames(directory):
-	
+
 	print(directory)
 
-if __name__ == '__main__':
+	# Scan through datafolders in directory
+	for folder in os.listdir(directory):
+		# Scan through files in each folder
+		print(folder)
+		for file in os.listdir( os.join(directory, folder) ):
+			print(file, os.join(directory, folder))
+			# Search for info files
+			if file.endswith('FileInfo.pickle'):
+				# Load infofile
+				with open(file, "rb") as input:
+					file_info  = pickle.load(input)
 
-	from selfun import surveyInfoPickler
+				# Replace directory with the correct one
+				file_info.data_path = directory
+
+				# Repickle file
+				file_info.pickleInformation(file)
+
+
+if __name__ == '__main__':
 
 	directory = raw_input("Location of data directory: ")
 

@@ -92,14 +92,12 @@ Here we give a detailed explanation on how to download the available, correctly 
 
 The files required to run **selfun** are too large to store on GitHub so they are kept separately.
 
-Data we provide can be found at ```diff - Add location of publicly available data```.
+Data we provide can be found at ````- Add location of publicly available data```.
 
-To download the data enter the following commands.
+To download the data enter the following into the command line:
 ```diff
 - File containing data resources will be added soon.
 ```
-
-To add the location of the data to the database, enter the following commands into the command line:
 
 To alter the location of your database in the directory, do one of the following:
 * In command line:
@@ -108,7 +106,7 @@ To alter the location of your database in the directory, do one of the following
 	```
 	Then, when prompted, type in the directory location.
 * In a python shell:
-	```
+	```python
 	from selfun import setdatalocation
 	setdatalocation.replaceNames([directory])
 	```
