@@ -8,12 +8,14 @@ Here we explain how to install and use this resource.
 We also provide prebuilt selection functions for various surveys.
 Future surveys to include will be: RAVE, APOGEE, Gaia-ESO, GALAH, LAMOST and SEGUE.
 
+***
 ## Contents:
 1. [Citation](#cite)
+1. [Getting started](#start)
 1. [Download and install](#install)
-2. [Data files](#Data)
-	1. [Download data files](#Download)
-	2. [Reformatting files](#Reformat)
+2. [Data files](#data)
+	1. [Download data files](#download)
+	2. [Reformatting files](#reformat)
 	3. [Separating photometric data into fields](#assignfields)
 	4. [Create database of filenames & descriptions](#infofile)
 3. [Isochrones](#isochrones)
@@ -28,6 +30,33 @@ Future surveys to include will be: RAVE, APOGEE, Gaia-ESO, GALAH, LAMOST and SEG
 ## Cite code <a name="cite"></a>
 
 When using this code please cite Everall & Das (in prep.).
+
+***
+## How to get started <a name="start"></a>
+
+We have tried to construct the code so that it is as easy as possible to get up and running depending on what you want to do with it.
+
+Here is a quick guide of the steps to take depending what your initial aims are:
+
+
+* If you want to get the selection function up and running with the availble data straight away:
+	* Install the code following the [instructions](#install).
+	* Follow instructions in the [first subsection on data files](#Download).
+	* For a quick build and run of the selection function for available surveys, go to the [quick run section](#shortcuts).
+
+* If you're looking to construct new selection functions from scratch:
+	* Install the code following the [instructions](#install).
+	* Follow instructions in the first subsection on [downloading data files](#Download).
+	* Create a new folder for your selection function data.
+	* Save files in this folder as in the [formatting section](#reformat).
+	* Generate photometric field files with code outlined in [this section](#assignfields)
+	* Create a reference file for the data, explained in the [database section](#infofile).
+	* Methods for running the selection function and plotting results are detailed [here](#sf).
+
+* If you just want to use the Isochrones to calculate colours and magnitudes for stars:
+	* Install the code following the [instructions](#install).
+	* Follow instructions in the first subsection on [downloading data files](#Download) however you only need the "evoTracks" folder from the database.
+	* For calculations using isochrones, go to the [isochrones section](#isochrones).
 
 
 ***
@@ -55,9 +84,11 @@ This will be improved soon!
 
 
 ***
-## Data files <a name="Data"></a>
+## Data files <a name="data"></a>
 
-### Download data files <a name="Download"></a>
+Here we give a detailed explanation on how to download the available, correctly formatted data as well as how to reformat new datasets to be used with the selfun code.
+
+### Download data files <a name="download"></a>
 
 The files required to run selfun are too large to store on GitHub so they are kept separately.
 
@@ -85,10 +116,11 @@ Information held within the database:
 	* Pickle file of interpolation of isochrones used for fast calculation	
 
 
-### Reformatting files <a name="Reformat"></>
+### File formatting <a name="reformat"></a>
 
 
 ### Separate photometric data into fields <a name="assignfields"></a>
+
 
 ### Create database of filenames & descriptions <a name="infofile"></a>
 
