@@ -29,7 +29,7 @@ Future surveys to include will be: RAVE, APOGEE, Gaia-ESO, GALAH, LAMOST and SEG
 ***
 ## Cite code <a name="cite"></a>
 
-When using this code please cite Everall & Das (in prep.).
+When using this code or it's results please cite Everall & Das (in prep.).
 
 ***
 ## How to get started <a name="start"></a>
@@ -100,9 +100,18 @@ To download the data enter the following commands.
 ```
 
 To add the location of the data to the database, enter the following commands into the command line:
-```diff
-- Instructions for adding data locations.
-```
+
+To alter the location of your database in the directory, do one of the following:
+* In command line:
+	```
+	$ python selfun/setdatalocation.py
+	```
+	Then, when prompted, type in the directory location.
+* In a python shell:
+	```
+	from selfun import setdatalocation
+	setdatalocation.replaceNames([directory])
+	```
 
 Information held within the database:
 1. Data for each survey computed:
