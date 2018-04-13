@@ -2,7 +2,7 @@ import pickle, os
 
 def replaceNames(directory):
 
-	print(directory)
+	directories = []
 
 	# Scan through datafolders in directory
 	for folder in os.listdir(directory):
@@ -12,6 +12,7 @@ def replaceNames(directory):
 			print(file, os.path.join(directory, folder))
 			# Search for info files
 			if file.endswith('Information.pickle'):
+
 				# Load infofile
 				with open(os.path.join(directory, folder, file), "rb") as input:
 					file_info  = pickle.load(input)
@@ -24,7 +25,10 @@ def replaceNames(directory):
 				# Repickle file
 				file_info.pickleInformation(file)
 
-		print("")
+				directories.append(os.path.join(directory, folder, file))
+
+	print("New data_path ("+directory+") set for the following files : ")
+	for file in directories: print(file)
 
 
 if __name__ == '__main__':
