@@ -9,16 +9,21 @@ def replaceNames(directory):
 		# Scan through files in each folder
 		print(folder)
 		for file in os.listdir( os.join(directory, folder) ):
-			print(file, os.join(directory, folder))
+			print(file, os.path.join(directory, folder))
 			# Search for info files
 			if file.endswith('FileInfo.pickle'):
 				# Load infofile
 				with open(file, "rb") as input:
 					file_info  = pickle.load(input)
 
+
+				print(file_info.data_path)
+
 				# Replace directory with the correct one
 				file_info.data_path = directory
 
+
+				print(file_info.data_path)
 				# Repickle file
 				#file_info.pickleInformation(file)
 
