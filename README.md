@@ -35,6 +35,7 @@ $ python setup.py install
 The package requires the following dependencies:
 * numpy
 * pandas
+	* For those unfamiliar with pandas, it is a package structured around numpy which provides some facilities for data table manipulation which are more convenient and easier to use. Where possible instructions on how to manipulate and reformat pandas dataframes (similar to a numpy array) are given.
 * scipy
 * re
 * matplotlib
@@ -43,8 +44,6 @@ The package requires the following dependencies:
 
 The code is built for Python 2.7 so currently does not work for Python 3.
 This will be improved soon!
-
-For those unfamiliar with pandas, it is a package structured around numpy which provides some facilities for data table manipulation which are more convenient and easier to use. Where possible instructions on how to manipulate and reformat pandas dataframes (similar to a numpy array) are given.
 
 
 ## Data files <a name="Data"></a>
