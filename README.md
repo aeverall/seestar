@@ -33,14 +33,14 @@ $ cd selfun
 $ python setup.py install
 ```
 The package requires the following dependencies:
-* `NumPy<http://www.numpy.org/>`
-* `pandas<https://docs.python.org/2/library/pickle.html>`
+* [NumPy](http://www.numpy.org/)
+* [pandas](https://docs.python.org/2/library/pickle.html)
 	* For those unfamiliar with pandas, it is a package structured around numpy which provides some facilities for data table manipulation which are more convenient and easier to use. Where possible instructions on how to manipulate and reformat pandas dataframes (similar to a numpy array) are given.
-* `scipy<https://www.scipy.org/>`
-* re<https://docs.python.org/2/library/re.html>
-* `matplotlib<https://matplotlib.org/>`
-* `seaborn<https://seaborn.pydata.org/>`
-* pickle<https://docs.python.org/2/library/pickle.html>, dill<https://pypi.python.org/pypi/dill>
+* [SciPy](https://www.scipy.org/)
+* [re](https://docs.python.org/2/library/re.html)
+* [matplotlib](https://matplotlib.org/)
+* [seaborn](https://seaborn.pydata.org/)
+* [pickle](https://docs.python.org/2/library/pickle.html), [dill](https://pypi.python.org/pypi/dill)
 
 The code is built for Python 2.7 so currently does not work for Python 3.
 This will be improved soon!
