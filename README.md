@@ -11,16 +11,16 @@ Future surveys to include will be: RAVE, APOGEE, Gaia-ESO, GALAH, LAMOST and SEG
 ## Contents:
 1. [Download and install](#install)
 2. [Data files](#Data)
-	1. [Download data files](#Download data files)
-	2. [Reformatting files](#Download & install)
-	3. [Separating photometric data into fields](#Photometric data)
-	4. [Create database of filenames & descriptions](#Creating databases)
-3. [Isochrones](#Using Isochrones)
-4. [Calculating SF probabilities](#Calculate something)
-	1. [Run selection function](#Runnning the selection function)
-	2. [Calculate selection probabilities](#Calculating probabilities)
-	3. [Generate selection function plots](#Generating plots)
-5. [Shortcuts to generate selection function](#Shortcuts and tricks)
+	1. [Download data files](#Download)
+	2. [Reformatting files](#Reformat)
+	3. [Separating photometric data into fields](#assignfields)
+	4. [Create database of filenames & descriptions](#infofile)
+3. [Isochrones](#isochrones)
+4. [Calculating SF probabilities](#sf)
+	1. [Run selection function](#runsf)
+	2. [Calculate selection probabilities](#calcsf)
+	3. [Generate selection function plots](#plotsf)
+5. [Shortcuts to generate selection function](#shortcuts)
 
 
 ## Download and install <a name="install"></a>
@@ -49,7 +49,7 @@ For those unfamiliar with pandas, it is a package structured around numpy which 
 
 ## Data files <a name="Data"></a>
 
-### Download data files
+### Download data files <a name="Download"></a>
 
 The files required to run selfun are too large to store on GitHub so they are kept separately.
 
@@ -78,12 +78,12 @@ Information held within the database:
 
 
 
-### Reformatting files
+### Reformatting files <a name="Reformat"></>
 
 
-### Separate photometric data into fields
+### Separate photometric data into fields <a name="assignfields"></a>
 
-### Create database of filenames & descriptions
+### Create database of filenames & descriptions <a name="infofile"></a>
 
 For each survey, a class containing the description of file locations and datatypes is required.
 
@@ -101,17 +101,20 @@ SFscripts/___.py
 ```
 
 
-## Using Isochrones
+## Using Isochrones <a name="isochrones"></a>
 
 
-## Calculating SF probabilities
-### Run selection function
+## Calculating SF probabilities <a name="sf"></a>
+### Run selection function <a name="runsf"></a>
 
 
-### Calculate selection probabilities
+### Calculate selection probabilities <a name="calcsf"></a>
 
 
-### Generate selection function plots
+### Generate selection function plots <a name="plotsf"></a>
 
 
-## Shortcuts to generate selection function
+## Shortcuts to generate selection function <a name="shortcuts"></a>
+
+
+
