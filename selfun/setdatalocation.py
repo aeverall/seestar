@@ -8,7 +8,7 @@ def replaceNames(directory):
 	for folder in os.listdir(directory):
 		# Scan through files in each folder
 		print(folder)
-		for file in os.listdir( os.join(directory, folder) ):
+		for file in os.listdir( os.path.join(directory, folder) ):
 			print(file, os.path.join(directory, folder))
 			# Search for info files
 			if file.endswith('FileInfo.pickle'):
@@ -26,6 +26,7 @@ def replaceNames(directory):
 				print(file_info.data_path)
 				# Repickle file
 				#file_info.pickleInformation(file)
+		print("")
 
 
 if __name__ == '__main__':
