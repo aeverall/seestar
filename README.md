@@ -9,6 +9,7 @@ We also provide prebuilt selection functions for various surveys.
 Future surveys to include will be: RAVE, APOGEE, Gaia-ESO, GALAH, LAMOST and SEGUE.
 
 ## Contents:
+1. [Citation](#cite)
 1. [Download and install](#install)
 2. [Data files](#Data)
 	1. [Download data files](#Download)
@@ -23,6 +24,13 @@ Future surveys to include will be: RAVE, APOGEE, Gaia-ESO, GALAH, LAMOST and SEG
 5. [Shortcuts to generate selection function](#shortcuts)
 
 
+***
+## Cite code <a name="cite"></a>
+
+When using this code please cite Everall & Das (in prep.).
+
+
+***
 ## Download and install <a name="install"></a>
 
 Go to the location where you would like to store the repository.
@@ -34,10 +42,10 @@ $ python setup.py install
 ```
 The package requires the following dependencies:
 * [NumPy](http://www.numpy.org/)
-* [pandas](https://docs.python.org/2/library/pickle.html)
+* [pandas](https://pandas.pydata.org/)
 	* For those unfamiliar with pandas, it is a package structured around numpy which provides some facilities for data table manipulation which are more convenient and easier to use. Where possible instructions on how to manipulate and reformat pandas dataframes (similar to a numpy array) are given.
 * [SciPy](https://www.scipy.org/)
-* [re](https://docs.python.org/2/library/re.html)
+* [re (regex for python)](https://docs.python.org/2/library/re.html)
 * [matplotlib](https://matplotlib.org/)
 * [seaborn](https://seaborn.pydata.org/)
 * [pickle](https://docs.python.org/2/library/pickle.html), [dill](https://pypi.python.org/pypi/dill)
@@ -46,6 +54,7 @@ The code is built for Python 2.7 so currently does not work for Python 3.
 This will be improved soon!
 
 
+***
 ## Data files <a name="Data"></a>
 
 ### Download data files <a name="Download"></a>
@@ -76,7 +85,6 @@ Information held within the database:
 	* Pickle file of interpolation of isochrones used for fast calculation	
 
 
-
 ### Reformatting files <a name="Reformat"></>
 
 
@@ -100,9 +108,11 @@ SFscripts/___.py
 ```
 
 
+***
 ## Using Isochrones <a name="isochrones"></a>
 
 
+***
 ## Calculating SF probabilities <a name="sf"></a>
 ### Run selection function <a name="runsf"></a>
 
@@ -113,6 +123,7 @@ SFscripts/___.py
 ### Generate selection function plots <a name="plotsf"></a>
 
 
+***
 ## Shortcuts to generate selection function <a name="shortcuts"></a>
 
 
