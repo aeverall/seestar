@@ -20,7 +20,7 @@ def replaceNames(directory):
 				file_info.data_path = directory
 
 				# Repickle file
-				file_info.pickleInformation(file)
+				#file_info.pickleInformation(file)
 
 
 if __name__ == '__main__':
