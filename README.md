@@ -92,7 +92,7 @@ Here we give a detailed explanation on how to download the available, correctly 
 
 The files required to run **selfun** are too large to store on GitHub so they are kept separately.
 
-Data we provide can be found at ````- Add location of publicly available data```.
+Data we provide can be found at ```- Add location of publicly available data```.
 
 To download the data enter the following into the command line:
 ```diff
@@ -144,16 +144,50 @@ $ python examples/example_FieldAssigment.py
 ### Create database of filenames & descriptions <a name="infofile"></a>
 
 For each survey, a class containing the description of file locations and datatypes is required.
+This has already been done and saved in the database as described in the [download](#download) section so this is only required for calculating *new* selection functions or if you chose to change the file names which we advise against.
 
-A jupyter notebook with a couple of examples of generating this file:
-```
-examples/FileLocations.ipynb
+A folder in the data directory can be created by doing one of the following:
+* In command line:
+	```
+	$ python selfun/createNew.py
+	```
+* In a python shell:
+	```python
+	from selfun import createNew
+	createNew.create()
+	```
+
+When prompted: 
+	* Type in the directory location.
+	* Add the survey name which will be used as the name of the folder and for content files.
+
+
+To change the names of the files and the column headers in tables, do the following in a python shell:
+```python
+import pickle
+
+# Load infofile (survey name is "surveyname")
+path = 'directory/surveyname/surveyname_FileInformation.pickle'
+with open(path, "rb") as input:
+    file_info  = pickle.load(input)
+
+# To view a docstring which has example code on how to set each of the features
+file_info?
+
+# To test the file names are set correctly and the data structures are correct/
+file_info.test()
+
+# Print out all attributes and their current values:
+file_info.printValues()
+
+# Change the values of some attributes
+file_info.attribute = "value of attribute"
+
+# Repickle the class instance
+file_inf.pickleInformation()
 ```
 
-A normal python file example is given for Galaxia in:
-```
-examples/GalaxiaFileLocations.py
-```
+Once the above steps have been taken successfully, generating a selection function from the data is much easier as you don't need to worry about file locations, they all update one another.
 
 
 ***

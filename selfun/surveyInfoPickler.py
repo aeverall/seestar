@@ -158,60 +158,61 @@ class surveyInformation():
 		self.iso_pickle_path = os.path.join(self.data_path, self.iso_pickle_file)
 
 		self.example_string = \
-		"""
-        # Get file names and coordinates from pickled file
-        pickleFile = '{directory}/{label}/{label}_FileInformation.pickle'
-        with open(pickleFile, "rb") as input:
-            {label}  = pickle.load(input)
+"""
+# Get file names and coordinates from pickled file
+pickleFile = '{directory}/{label}/{label}_FileInformation.pickle'
+with open(pickleFile, "rb") as input:
+    {label}  = pickle.load(input)
 
-		# Location where spectrograph survey information is stored
-		{label}.data_path = '../../SFgithub/SFdata'
+# Location where spectrograph survey information is stored
+{label}.data_path = '../../SFgithub/SFdata'
 
-		# Folder in .data_path which contains the file informatino
-		{label}.spectro = '{label}'
+# Folder in .data_path which contains the file informatino
+{label}.spectro = '{label}'
 
-		# Filename of spectrograph star information
-		{label}.spectro_fname = '{label}_survey.csv'
-		# Column headers for spectrograph information
-		# [ fieldID, Phi, Th, magA, magB, magC]
-		# magA-magB = Colour, magC = m (for selection limits)
-		{label}.spectro_coords = ['fieldid', 'glon', 'glat', 'J', 'K', 'H']
+# Filename of spectrograph star information
+{label}.spectro_fname = '{label}_survey.csv'
+# Column headers for spectrograph information
+# [ fieldID, Phi, Th, magA, magB, magC]
+# magA-magB = Colour, magC = m (for selection limits)
+{label}.spectro_coords = ['fieldid', 'glon', 'glat', 'J', 'K', 'H']
 
-		# Filename (in {label}.spectro file) for field pointings
-		{label}.field_fname = '{label}_fieldinfo.csv'
-		# Column headers in field pointings
-		{label}.field_coords = (['fieldID', 'glon', 'glat', 'hmin', 'hmax', 'cmin', 'cmax'], 'Galactic')
-		# Solid angle area of fiels in deg^2
-		{label}.field_SA = 1.
-		# Data type for field IDs
-		{label}.fieldlabel_type = str
+# Filename (in {label}.spectro file) for field pointings
+{label}.field_fname = '{label}_fieldinfo.csv'
+# Column headers in field pointings
+{label}.field_coords = (['fieldID', 'glon', 'glat', 'hmin', 'hmax', 'cmin', 'cmax'], 'Galactic')
+# Solid angle area of fiels in deg^2
+{label}.field_SA = 1.
+# Data type for field IDs
+{label}.fieldlabel_type = str
 
-		# Location where photometric datafiles are stored (require large storage space)
-		{label}.photo_path = '{label}'
-		# Column headers in photometric data files
-		{label}.photo_coords = ['glon', 'glat', 'J', 'K', 'H']
-		# File types for photometric data
-		{label}.photo_tag = '.csv'
+# Location where photometric datafiles are stored (require large storage space)
+{label}.photo_path = '{label}'
+# Column headers in photometric data files
+{label}.photo_coords = ['glon', 'glat', 'J', 'K', 'H']
+# File types for photometric data
+{label}.photo_tag = '.csv'
 
-		# pickled file locations which will store the selection function information
-		{label}.sf_pickle_fname = '/Spectrograph_SF.pickle'
-		{label}.obsSF_pickle_fname = '/Spectrograph_obsSF.pickle'
+# pickled file locations which will store the selection function information
+{label}.sf_pickle_fname = '/Spectrograph_SF.pickle'
+{label}.obsSF_pickle_fname = '/Spectrograph_obsSF.pickle'
 
-		# File containing isochrone data
-		{label}.iso_pickle_file = "evoTracks/isochrones.pickle" 
-		# File location for storing information on area overlap of individual fields
-		{label}.overlap_fname = '{label}_fieldoverlapdatabase'
+# File containing isochrone data
+{label}.iso_pickle_file = "evoTracks/isochrones.pickle" 
+# File location for storing information on area overlap of individual fields
+{label}.overlap_fname = '{label}_fieldoverlapdatabase'
 
-		# Run the __call__ routine to setup the file locations
-		{label}()
-		# testFiles checks whether the information given is accurate
-		# If this is the first time running, pickle files and overlap_fname shouldn't exist
-		{label}.testFiles()
+# Run the __call__ routine to setup the file locations
+{label}()
+# testFiles checks whether the information given is accurate
+# If this is the first time running, pickle files and overlap_fname shouldn't exist
+{label}.testFiles()
 
-		# Pickle the file information
-		{label}.pickleInformation(pklfile)
-		""".format(label=self.spectro, directory=self.data_path)
+# Pickle the file information
+{label}.pickleInformation(pklfile)
+""".format(label=self.spectro, directory=self.data_path)
 
+		# Set the class instance doc string as a coding example
 		self.__doc__ = self.example_string
 
 	def pickleInformation(self, filename):
