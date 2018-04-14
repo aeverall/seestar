@@ -132,10 +132,6 @@ class surveyInformation():
 
 		self.field_SA = 0.0
 
-		self.photo_pickle_fname = '' 
-		self.photo_pickle_path = os.path.join(self.spectro_folder self.photo_pickle_fname)
-		self.spectro_pickle_fname = ''
-		self.spectro_pickle_path = os.path.join(self.spectro_folder, self.spectro_pickle_fname)
 		self.sf_pickle_fname = ''
 		self.sf_pickle_path = os.path.join(self.spectro_folder, self.sf_pickle_fname)
 		self.obsSF_pickle_fname = ''
@@ -156,8 +152,6 @@ class surveyInformation():
 
 		self.field_path = os.path.join(self.spectro_folder, self.field_fname)
 
-		self.photo_pickle_path = os.path.join(self.spectro_folder, self.photo_pickle_fname)
-		self.spectro_pickle_path = os.path.join(self.spectro_folder, self.spectro_pickle_fname)
 		self.sf_pickle_path = os.path.join(self.spectro_folder, self.sf_pickle_fname)
 		self.obsSF_pickle_path = os.path.join(self.spectro_folder, self.obsSF_pickle_fname)
 		self.overlap_path = os.path.join(self.spectro_folder, self.overlap_fname)
@@ -208,10 +202,6 @@ class surveyInformation():
 			print("\nThe path to your field coordinates, field_path, does not exist: %s" % self.field_path)
 
 		# 4) photo_pickle_path, spectro_pickle_path, sf_pickle_path, obsSF_pickle_path, overlap_path
-		if not os.path.exists(self.photo_pickle_path):
-			print("\nThe path to your photometric pickled instance, photo_pickle_path, does not exist: %s" % self.photo_pickle_path)
-		if not os.path.exists(self.spectro_pickle_path):
-			print("\nThe path to your spectroscopic pickled instance, spectro_pickle_path, does not exist: %s" % self.spectro_pickle_path)
 		if not os.path.exists(self.sf_pickle_path):
 			print("\nThe path to your selection function pickled instance, sf_pickle_path, does not exist: %s" % self.sf_pickle_path)
 		if not os.path.exists(self.obsSF_pickle_path):
@@ -267,10 +257,6 @@ class surveyInformation():
 		print("\nfield_SA: " + str(self.field_SA))
 
 		print("""pickled file locations which will store the selection function information""")
-		print("\nphoto_pickle_fname: " + self.photo_pickle_fname)
-		print("\nphoto_pickle_path: " + self.photo_pickle_path)
-		print("\nspectro_pickle_fname: " + self.spectro_pickle_fname)
-		print("\nspectro_pickle_path: " + self.spectro_pickle_path)
 		print("\nsf_pickle_fname: " + self.sf_pickle_fname)
 		print("\nsf_pickle_path: " + self.sf_pickle_path)
 		print("\nobsSF_pickle_path: " + self.obsSF_pickle_path)
@@ -288,11 +274,11 @@ class surveyInformation():
 	def pythonCodeExample(self):
 
 		example_string = \
-		"""		
+		"""python	
         # Get file names and coordinates from pickled file
         pickleFile = '{directory}/{label}/{label}_FileInformation.pickle'
         with open(pickleFile, "rb") as input:
-            {label}  = pickle.load(input) 
+            {label}  = pickle.load(input)
 
 		# Location where spectrograph survey information is stored
 		{label}.data_path = '../../SFgithub/SFdata'
@@ -324,8 +310,6 @@ class surveyInformation():
 		{label}.photo_tag = '.csv'
 
 		# pickled file locations which will store the selection function information
-		{label}.spectro_pickle_fname = '/Spectrograph_survey.pickle'
-		{label}.photo_pickle_fname = '/Spectrograph_full.pickle'
 		{label}.sf_pickle_fname = '/Spectrograph_SF.pickle'
 		{label}.obsSF_pickle_fname = '/Spectrograph_obsSF.pickle'
 
