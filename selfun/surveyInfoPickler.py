@@ -120,11 +120,11 @@ class surveyInformation():
 
 		self.spectro = ''
 		self.spectro_fname = ''
-		self.spectro_folder = self.data_path + self.spectro
-		self.spectro_path = self.spectro_folder + self.spectro_fname
+		self.spectro_folder = os.path.join(self.data_path, self.spectro)
+		self.spectro_path = os.path.join(self.spectro_folder, self.spectro_fname)
 
 		self.field_fname = ''
-		self.field_path = self.spectro_folder + self.field_fname
+		self.field_path = os.path.join(self.spectro_folder, self.field_fname)
 
 		self.spectro_coords = None
 		self.field_coords = None
@@ -133,36 +133,42 @@ class surveyInformation():
 		self.field_SA = 0.0
 
 		self.photo_pickle_fname = '' 
-		self.photo_pickle_path = self.spectro_folder + self.photo_pickle_fname
+		self.photo_pickle_path = os.path.join(self.spectro_folder self.photo_pickle_fname)
 		self.spectro_pickle_fname = ''
-		self.spectro_pickle_path = self.spectro_folder + self.spectro_pickle_fname
+		self.spectro_pickle_path = os.path.join(self.spectro_folder, self.spectro_pickle_fname)
 		self.sf_pickle_fname = ''
-		self.sf_pickle_path = self.spectro_folder + self.sf_pickle_fname
+		self.sf_pickle_path = os.path.join(self.spectro_folder, self.sf_pickle_fname)
 		self.obsSF_pickle_fname = ''
-		self.obsSF_pickle_path = self.spectro_folder + self.obsSF_pickle_fname
+		self.obsSF_pickle_path = os.path.join(self.spectro_folder, self.obsSF_pickle_fname)
 
 		self.photo_tag = None
 		self.fieldlabel_type = None # str 
 
 		self.iso_pickle_file = ''
-		self.iso_pickle_path = self.data_path + self.iso_pickle_file
+		self.iso_pickle_path = os.path.join(self.data_path, self.iso_pickle_file)
 
 		self.overlap_fname = ''
 
 	def __call__(self):
 
-		self.spectro_folder = self.data_path + self.spectro
-		self.spectro_path = self.spectro_folder + self.spectro_fname
+		self.spectro_folder = os.path.join(self.data_path, self.spectro)
+		self.spectro_path = os.path.join(self.spectro_folder, self.spectro_fname)
 
-		self.field_path = self.spectro_folder + self.field_fname
+		self.field_path = os.path.join(self.spectro_folder, self.field_fname)
 
-		self.photo_pickle_path = self.spectro_folder + self.photo_pickle_fname
-		self.spectro_pickle_path = self.spectro_folder + self.spectro_pickle_fname
-		self.sf_pickle_path = self.spectro_folder + self.sf_pickle_fname
-		self.obsSF_pickle_path = self.spectro_folder + self.obsSF_pickle_fname
-		self.overlap_path = self.spectro_folder + self.overlap_fname
+		self.photo_pickle_path = os.path.join(self.spectro_folder, self.photo_pickle_fname)
+		self.spectro_pickle_path = os.path.join(self.spectro_folder, self.spectro_pickle_fname)
+		self.sf_pickle_path = os.path.join(self.spectro_folder, self.sf_pickle_fname)
+		self.obsSF_pickle_path = os.path.join(self.spectro_folder, self.obsSF_pickle_fname)
+		self.overlap_path = os.path.join(self.spectro_folder, self.overlap_fname)
 
-		self.iso_pickle_path = self.data_path + self.iso_pickle_file
+		self.iso_pickle_path = os.path.join(self.data_path, self.iso_pickle_file)
+
+	def pickleInformation(self, filename):
+
+		# Can you pickle a class from inside the class?
+		with open(filename, 'wb') as handle:
+			pickle.dump(self, handle)
 
 	def testFiles(self):
 
@@ -232,23 +238,35 @@ class surveyInformation():
 
 	def printValues(self):
 
+		print("""Location where spectrograph survey information is stored""")
 		print("\ndata_path: " + self.data_path)
+		print("""Location where photometric datafiles are stored (require large storage space)""")
 		print("\nphoto_path: " + self.photo_path)
 
+		print("""Folder in .data_path which contains the file informatino""")
 		print("\nspectro: " + self.spectro)
+		print("""Filename of spectrograph star information""")
 		print("\nspectro_fname: " + self.spectro_fname)
 		print("\nspectro_folder: " + self.spectro_folder)
 		print("\nspectro_path: " + self.spectro_path)
 
+		print("""Filename (in Demo.spectro file) for field pointings""")
 		print("\nfield_fname: " + self.field_fname)
 		print("\nfield_path: " + self.field_path)
 
+		print("""Column headers for spectrograph information
+				[ fieldID, Phi, Th, magA, magB, magC]
+				magA-magB = Colour, magC = m (for selection limits)""")
 		print("\nspectro_coords: " + str(self.spectro_coords))
+		print("""Column headers in field pointings""")
 		print("\nfield_coords: " + str(self.field_coords))
+		print("""Column headers in photometric data files""")
 		print("\nphoto_coords: " + str(self.photo_coords))
 
+		print("""Solid angle area of fiels in deg^2""")
 		print("\nfield_SA: " + str(self.field_SA))
 
+		print("""pickled file locations which will store the selection function information""")
 		print("\nphoto_pickle_fname: " + self.photo_pickle_fname)
 		print("\nphoto_pickle_path: " + self.photo_pickle_path)
 		print("\nspectro_pickle_fname: " + self.spectro_pickle_fname)
@@ -257,65 +275,75 @@ class surveyInformation():
 		print("\nsf_pickle_path: " + self.sf_pickle_path)
 		print("\nobsSF_pickle_path: " + self.obsSF_pickle_path)
 
+		print("""File types for photometric data""")
 		print("\nphoto_tag: " + str(self.photo_tag))
+		print("""Data type for field IDs""")
 		print("\nfieldlabel_type: " + str(self.fieldlabel_type))
 
+		print("""File containing isochrone data""")
 		print("iso_pickle_file: " + self.iso_pickle_file)
+		print("""File location for storing information on area overlap of individual fields""")
 		print("iso_pickle_path: " + self.iso_pickle_path)
 
-	def pickleInformation(self, filename):
+	def pythonCodeExample(self):
 
-		# Can you pickle a class from inside the class?
-		with open(filename, 'wb') as handle:
-			pickle.dump(self, handle)
+		example_string = \
+		"""		
+        # Get file names and coordinates from pickled file
+        pickleFile = '{directory}/{label}/{label}_FileInformation.pickle'
+        with open(pickleFile, "rb") as input:
+            {label}  = pickle.load(input) 
 
+		# Location where spectrograph survey information is stored
+		{label}.data_path = '../../SFgithub/SFdata'
 
+		# Folder in .data_path which contains the file informatino
+		{label}.spectro = '/SpectroName'
 
+		# Filename of spectrograph star information
+		{label}.spectro_fname = '/Spectrograph_survey.csv'
+		# Column headers for spectrograph information
+		# [ fieldID, Phi, Th, magA, magB, magC]
+		# magA-magB = Colour, magC = m (for selection limits)
+		{label}.spectro_coords = ['fieldid', 'glon', 'glat', 'J', 'K', 'H']
 
-"""
-Example of the inputs to fields for RAVE and APOGEE
+		# Filename (in {label}.spectro file) for field pointings
+		{label}.field_fname = '/Spectrograph_fieldinfo.csv'
+		# Column headers in field pointings
+		{label}.field_coords = (['fieldID', 'glon', 'glat', 'hmin', 'hmax', 'cmin', 'cmax'], 'Galactic')
+		# Solid angle area of fiels in deg^2
+		{label}.field_SA = 12.565
+		# Data type for field IDs
+		{label}.fieldlabel_type = np.float64
 
-		        # RAVE column headers and file names:
-        if survey=='RAVE':
-            rave_path = data_path + "/RAVE"
+		# Location where photometric datafiles are stored (require large storage space)
+		{label}.photo_path = '/photometricstorage/'
+		# Column headers in photometric data files
+		{label}.photo_coords = ['glon', 'glat', 'J', 'K', 'H']
+		# File types for photometric data
+		{label}.photo_tag = '.csv'
 
-            star_coords = ['FieldName', 'RA_TGAS', 'DE_TGAS', 'Jmag_2MASS', 'Kmag_2MASS', 'Hmag_2MASS']
-            star_path = rave_path + '/RAVE_wPlateIDs.csv'
-            field_coords = (['RAVE_FIELD', 'RAdeg', 'DEdeg'], 'Equatorial')
-            field_path = rave_path + '/RAVE_FIELDS_wFieldIDs.csv'
-            self.tmass_coords = ['RA', 'Dec', 'j', 'h', 'k']
+		# pickled file locations which will store the selection function information
+		{label}.spectro_pickle_fname = '/Spectrograph_survey.pickle'
+		{label}.photo_pickle_fname = '/Spectrograph_full.pickle'
+		{label}.sf_pickle_fname = '/Spectrograph_SF.pickle'
+		{label}.obsSF_pickle_fname = '/Spectrograph_obsSF.pickle'
 
-            tmass_path = tmass_path + '/RAVE-2MASS_fieldbyfield_29-11/RAVEfield_'
+		# File containing isochrone data
+		{label}.iso_pickle_file = "/evoTracks/isochrones.pickle" 
+		# File location for storing information on area overlap of individual fields
+		{label}.overlap_fname = '/Spectrograph_fieldoverlapdatabase'
 
-            SA = 28.3
-            tmass_pickle = rave_path + '/2massdata_RAVEfields.pickle'
-            survey_pickle = rave_path + '/surveydata_RAVEfields.pickle'
-            sf_pickle = rave_path + '/sf_RAVEfields.pickle'
-            self.tmasstag = '.csv'
-            self.fieldlabel_type = str
+		# Run the __call__ routine to setup the file locations
+		{label}()
+		# testFiles checks whether the information given is accurate
+		# If this is the first time running, pickle files and overlap_fname shouldn't exist
+		{label}.testFiles()
 
-            if testbool:
-                tmass_pickle = rave_path + '/2massdata_RAVEfields_test.pickle'
-                survey_pickle = rave_path + '/surveydata_RAVEfields_test.pickle'
-                sf_pickle = rave_path + '/sf_RAVEfields_test.pickle'
+		# Location of pickle file which the file information will be stored in
+		pklfile = "../../SFgithub/SFdata/SpectroName/SpectrographFileInformation.pickle"
+		# Pickle the file information
+		{label}.pickleInformation(pklfile)
+		""".format(label=self.spectro, directory=self.data_path)
 
-        # Apogee column headers and file names:
-        if survey=='Apogee':
-            apg_path = data_path + "/Apogee"
-
-            star_coords = ['# location_id', 'ra', 'dec', 'j', 'k', 'h']
-            field_coords = (['FieldName', 'RA', 'Dec'], 'Equatorial')
-            star_path = apg_path + '/TGAS_APOGEE_supp_keplercannon_masses_ages.csv'
-            field_path = apg_path + '/apogeetgasdr14_fieldinfo.csv'
-            self.tmass_coords = ['RA', 'Dec', 'j', 'h', 'k']
-            
-            tmass_path = tmass_path + '/Apogee-2MASS/APOGEEfield_'
-            self.tmasstag = '.csv'
-
-            SA = 7
-            tmass_pickle = apg_path + '/2massdata_apogeeFields_test.pickle'
-            survey_pickle = apg_path + '/surveydata_apogeeFields_test.pickle'
-            sf_pickle = apg_path + '/sf_apogeefields.pickle'
-
-            self.fieldlabel_type = float
-"""
+		print(example_string)
