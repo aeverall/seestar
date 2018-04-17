@@ -24,7 +24,7 @@ def replaceNames(directory):
 				file_info.photo_path = os.path.join(directory,folder)
 				
 				# Repickle file
-				file_info.pickleInformation(file)
+				file_info.pickleInformation( os.path.join(directory, folder, file) )
 
 				directories.append(os.path.join(directory, folder, file))
 
