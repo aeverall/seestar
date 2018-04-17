@@ -1,12 +1,12 @@
 SFdata/
 Presentation/
 
-SFscripts/AngleDisks.py
-SFscripts/ComputerOps.py
-SFscripts/CoordTrans.py
-SFscripts/DataImport.py
-SFscripts/PlotCoordinates.py
-SFscripts/Optimizers.py
-SFscripts/*.pyc
+selfun/AngleDisks.py
+selfun/ComputerOps.py
+selfun/CoordTrans.py
+selfun/DataImport.py
+selfun/PlotCoordinates.py
+selfun/Optimizers.py
+*.pyc
 
 SFgithub.sublime-workspace

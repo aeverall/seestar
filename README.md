@@ -221,8 +221,8 @@ Data for the isochrones is provided in two formats:
 1. Isochrone track files
 	These provide the values of absolute magnitude bands given mass of the star on each isochrone. To access the data of an isochrone:
 	```python
-	file_name = [directory]/evoTracks/stellarprop_parsecdefault_currentmass.dill
-	iso_pickle = '/media/andy/UUI/ExternalData/SFProject/stellarprop_parsecdefault_currentmass.dill'
+	import dill
+	iso_pickle = '[directory]/evoTracks/stellarprop_parsecdefault_currentmass.dill'
 	
 	with open(iso_pickle, "rb") as input:
 	    pi = dill.load(input)
@@ -253,18 +253,18 @@ Data for the isochrones is provided in two formats:
 	
 	from selfun import IsochroneScaling
 	
-	isoCalculator = IsochroneScaling.InstrinsictoObservable()
+	isoCalculator = IsochroneScaling.IntrinsicToObservable()
 	
 	# If just calculating H-absolute and colour(J-K):
 	isoCalculator.LoadColMag("[directory]/evoTracks/isochrone_interpolantinstances.pickle")
-	colour, Habs = isoCalculator.ColMabs(dataframe.age, dataframe.mh, dataframe.mass)
+	colour, Habs = isoCalculator.ColourMabs(dataframe.age, dataframe.mh, dataframe.mass)
 	# For calculating apparent magnitude
-	colour, Happ = isoCalculator.ColMapp(dataframe.age, dataframe.mh, dataframe.mass, dataframe.s)
+	colour, Happ = isoCalculator.ColourMapp(dataframe.age, dataframe.mh, dataframe.mass, dataframe.s)
 	
 	# If calculating all magnitudes:
-	isoCalculator.LoadColMag("[directory]/evoTracks/isochrone_interpolantinstances.pickle")
-	Habs, Jabs, Kabs = isoCalculator.ColMabs(dataframe.age, dataframe.mh, dataframe.mass)
-	Happ, Japp, Kapp = isoCalculator.ColMabs(dataframe.age, dataframe.mh, dataframe.mass, dataframe.s)
+	isoCalculator.LoadMagnitudes("[directory]/evoTracks/isochrone_magnitudes.pickle")
+	Habs, Jabs, Kabs = isoCalculator.AbsMags(dataframe.age, dataframe.mh, dataframe.mass)
+	Happ, Japp, Kapp = isoCalculator.AppMags(dataframe.age, dataframe.mh, dataframe.mass, dataframe.s)
 	```
 
 As with all modules in the package, docstrings have been constructed for the module and all internal functions so if you're unsure about the parameters, outputs or contents of a function, class or module, running help on the object should provide more information.
