@@ -23,7 +23,6 @@ Future surveys to include will be: RAVE, APOGEE, Gaia-ESO, GALAH, LAMOST and SEG
 	1. [Run selection function](#runsf)
 	2. [Calculate selection probabilities](#calcsf)
 	3. [Generate selection function plots](#plotsf)
-5. [Shortcuts to generate selection function](#shortcuts)
 
 
 ***
@@ -42,7 +41,7 @@ Here is a quick guide of the steps to take depending what your initial aims are:
 * If you want to get the selection function up and running with the availble data straight away:
 	* Install the code following the [instructions](#install).
 	* Follow instructions in the [first subsection on data files](#Download).
-	* For a quick build and run of the selection function for available surveys, go to the [quick run section](#shortcuts).
+	* For a quick build and run of the selection function, try the prebuilt method in [the SF calculation section](#sf).
 
 * If you're looking to construct new selection functions from scratch:
 	* Install the code following the [instructions](#install).
@@ -269,16 +268,88 @@ All examples given are using Galaxia data. Folling the steps and example files s
 
 ### Run selection function <a name="runsf"></a>
 
+We generate the selection function for the Galaxia data in the folder [directory]/Galaxia/.
+
+To see an example of the contents of the information file (as explained [here](#infofile)), run this in your python shell:
+```python
+# Load infofile (survey name is "surveyname")
+path = '[directory]/Galaxia/Galaxia_FileInformation.pickle'
+with open(path, "rb") as input:
+    file_info  = pickle.load(input)
+
+file_info.printValues()
+```
+
+To create the selection function:
+```python
+from selfun import SelectionGrid
+
+# To initialise the prebuilt selection function:
+Galaxia_sf = SeletionGrid.FieldInterpolator('[directory]/Galaxia/Galaxia_FileInformation.pickle')
+
+# To create a selection function from scratch (takes a few minutes due to calculating optimal Gaussian mixture models)
+Galaxia_sf = SeletionGrid.FieldInterpolator('[directory]/Galaxia/Galaxia_FileInformation.pickle', ColMagSF_exists=False)
+```
 
 
 ### Calculate selection probabilities <a name="calcsf"></a>
 
+Having created the selection function instance for Galaxia, we now wish to calculate selection probabilities of stars:
+
+Example1: You have a comma separated txt file with 6 columns: galactic longitude (glon), galactic latitude (glat), distance (s), age, metallicity (mh), mass ([as used here](#reformat)).
+You want to know the probability of each star in the dataset being included in the survey.
+```
+import numpy as np
+import pandas as pd
+
+file_path = # Enter the location of the txt file here (should end in .txt)
+array = np.loadtxt(file_path)
+
+dataframe = pd.DataFrame(array, columns=['glon', 'glat', 's', 'age', 'mh', 'mass'])
+
+# Calculation of selection function - the dataframe is returned with columns for the fields of the stars and selection probability.
+dataframe = Galaxia_sf(dataframe, coords=['age', 'mh', 's', 'mass'], angles=['glon', 'glat'], method='int')
+# Method='int' means calculating the selection function using intrinsic properties (i.e. age, metallicity and mass).
+
+dataframe.union # The column of selection function probabilities
+```
+
+Example2: You have a comma separated txt file with 6 columns: galactic longitude (glon), galactic latitude (glat), apparent H magnitude (Happ), J-K colour (colour).
+You want to know the probability of each star in the dataset being included in the survey.
+```
+import numpy as np
+import pandas as pd
+
+file_path = # Enter the location of the txt file here (should end in .txt)
+array = np.loadtxt(file_path)
+
+dataframe = pd.DataFrame(array, columns=['glon', 'glat', 'Happ', 'colour])
+
+# Calculation of selection function - the dataframe is returned with columns for the fields of the stars and selection probability.
+dataframe = Galaxia_sf(dataframe, coords=['Happ', 'colour'], angles=['glon', 'glat'], method='observable')
+# Method='observable' means calculating the selection function using observable properties (i.e. apparent magnitude and colour).
+
+dataframe.union # The column of selection function probabilities
+```
+
 
 ### Generate selection function plots <a name="plotsf"></a>
 
+We also include several methods for plotting out selection function probabilities in various coordinate systems.
 
-***
-## Shortcuts to generate selection function <a name="shortcuts"></a>
+```python
+# Contour plot of selection function in distance vs age plane for metallicity=0. and integrating over the Kroupa IMF.
+field = 1.0
+DistributionPlots.plotSpectroscopicSF2(Galaxia_sf.instanceIMFSF, G3_sf.obsSF, field, nlevels=18, mh=0.0
+                                  	title=r"$\mathrm{P}(\mathrm{S}|\mathrm{[M/H] = -0.2},\, s,\, \tau)$")
 
+# Plot circles of points for the fields.
+fields = pd.read_csv('[directory]/Galaxia/Galaxia_fieldinfo.csv')
+fields.glon *= np.pi/180
+fields.glat *= np.pi/180
+ax = AngleDisks.PlotPlate(fields.glon, fields.glat, 12.56)
 
+```
+
+For more information on the [Kroupa IMF](#https://ui.adsabs.harvard.edu/#abs/2001MNRAS.322..231K/abstract).
 

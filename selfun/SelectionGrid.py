@@ -222,7 +222,7 @@ class FieldInterpolator():
             self.FUInstance = FieldUnions.FieldUnion(database)
         else: raise ValueError('Cannot currently run this code with only one field, working on improving this!')
         
-    def __call__(self, catalogue, method='intrinsic', coords = ['age', 'mh', 's', 'mass']):
+    def __call__(self, catalogue, method='intrinsic', coords = ['age', 'mh', 's', 'mass'], angles=['l','b']):
 
 
         '''
@@ -256,7 +256,7 @@ class FieldInterpolator():
         # catalogue[points] - list of pointings which coordinates lie on
         # catalogue[field_info] - list of tuples: (P(S|v), field)
         print('Calculating all SF values...')
-        catalogue = FieldUnions.GenerateMatrices(catalogue, self.pointings, 'l', 'b', 'SolidAngle', SFcalc)
+        catalogue = FieldUnions.GenerateMatrices(catalogue, self.pointings, angles[0], angles[1], 'SolidAngle', SFcalc)
         print('...done')
         # The SF probabilities and coordinates of overlapping fields are used to calculate
         # the field union.
