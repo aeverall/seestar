@@ -96,6 +96,8 @@ Data we provide can be found [here](#https://drive.google.com/drive/folders/1mz0
 To download the data, go to the directory in which you wish to store the data and enter the following into the command line:
 ```
 $ wget https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing
+$
+$ tar -zxvf SFdata.tar.gz # Unzip the file into the current directory
 ```
 
 The code repository now doesn't know where the data is stored. To give the repository the location, run the following in a Python shell:
@@ -105,15 +107,19 @@ setdatalocation.replaceNames([directory])
 ```
 
 Information held within the database:
-1. Data for each survey computed:
+1. Data for each survey computed (including the Galaxia mock example used in Everall & Das (in prep.):
 	* Spectrograph catalogue including crossmatch with photometric survey
 	* Photometric survey data for each field in the spectrograph catalogue
 	* Pickle files for the selection function in each coordinate system
 	* Pickle "fieldInfo" file which stores the information on all other files for each survey
-2. Demo dataset from Galaxia as presented in the paper, Everall & Das (in prep.)
-3. Folders for several different isochrone datasets:
-	* Database of the isochrones
-	* Pickle file of interpolation of isochrones used for fast calculation	
+2. Folders for several different isochrone datasets:
+	* Database of isochrone files.
+	* Pickle file of interpolation of isochrone magnitudes.
+	* Pickle file of interpolation of isochrone colour and magnitude.
+
+Files to be added in future:
+* Survey folders for more surveys: APOGEE, RAVE, GALAH, LAMOST, GaiaESO, SEGUE...
+* Isochrone files from different sources: PARSEC, PADOVA, BASTI...
 
 
 ### File formatting <a name="reformat"></a>
@@ -125,12 +131,12 @@ Example: You have a comma separated txt file with 6 columns: galactic longitude 
 import numpy as np
 import pandas as pd
 
-file_path = # Enter the location of the txt file here (should end in .txt)
+file_path = '[directory]/examples/ex_intrinsicdata.txt' # Enter the location of the txt file here (should end in .txt)
 array = np.loadtxt(file_path)
 
-dataframe = pd.DataFrame(array, columns=['glon', 'glat', 's', 'age', 'mh', 'mass'])
+dataframe = pd.DataFrame(array, columns=['glon', 'glat', 'age', 'mh', 'mass', 's'])
 
-new_file_path = # File path for new csv file (should end in .csv)
+new_file_path = '[directory]/examples/ex_intrinsicdata.csv' # File path for new csv file (should end in .csv)
 dataframe.to_csv(new_file_path)
 ```
 
