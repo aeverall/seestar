@@ -54,7 +54,7 @@ Here is a quick guide of the steps to take depending what your initial aims are:
 
 * If you just want to use the Isochrones to calculate colours and magnitudes for stars:
 	* Install the code following the [instructions](#install).
-	* Follow instructions in the first subsection on [downloading data files](#sownload) however you only need the "evoTracks" folder from the database.
+	* Follow instructions in the first subsection on [downloading data files](#download) however you only need the "evoTracks" folder from the database.
 	* For calculations using isochrones, go to the [isochrones section](#isochrones).
 
 
