@@ -40,12 +40,12 @@ Here is a quick guide of the steps to take depending what your initial aims are:
 
 * If you want to get the selection function up and running with the availble data straight away:
 	* Install the code following the [instructions](#install).
-	* Follow instructions in the [first subsection on data files](#Download).
+	* Follow instructions in the [first subsection on data files](#download).
 	* For a quick build and run of the selection function, try the prebuilt method in [the SF calculation section](#sf).
 
 * If you're looking to construct new selection functions from scratch:
 	* Install the code following the [instructions](#install).
-	* Follow instructions in the first subsection on [downloading data files](#Download).
+	* Follow instructions in the first subsection on [downloading data files](#download).
 	* Create a new folder for your selection function data.
 	* Save files in this folder as in the [formatting section](#reformat).
 	* Generate photometric field files with code outlined in [this section](#assignfields)
@@ -54,7 +54,7 @@ Here is a quick guide of the steps to take depending what your initial aims are:
 
 * If you just want to use the Isochrones to calculate colours and magnitudes for stars:
 	* Install the code following the [instructions](#install).
-	* Follow instructions in the first subsection on [downloading data files](#Download) however you only need the "evoTracks" folder from the database.
+	* Follow instructions in the first subsection on [downloading data files](#sownload) however you only need the "evoTracks" folder from the database.
 	* For calculations using isochrones, go to the [isochrones section](#isochrones).
 
 
@@ -219,17 +219,17 @@ Data for the isochrones is provided in two formats:
 	```python
 	file_name = [directory]/evoTracks/stellarprop_parsecdefault_currentmass.dill
 	iso_pickle = '/media/andy/UUI/ExternalData/SFProject/stellarprop_parsecdefault_currentmass.dill'
-
+	
 	with open(iso_pickle, "rb") as input:
 	    pi = dill.load(input)
-
+	
 	interpname  = "age"+str(pi.isoage)+"mh"+str(pi.isomh)
-        isochrone   = pi.isodict[interpname] # NumPy array of datapoints along the isochrone
-        
-        Mi = isochrone[:,2] # Initial mass
-        J = isochrone[:,13]
-        H = isochrone[:,14]
-        K = isochrone[:,15]
+	isochrone   = pi.isodict[interpname] # NumPy array of datapoints along the isochrone
+	
+	Mi = isochrone[:,2] # Initial mass
+	J = isochrone[:,13]
+	H = isochrone[:,14]
+	K = isochrone[:,15]
 	```
 
 2. Isochrone interpolants
@@ -240,23 +240,23 @@ Data for the isochrones is provided in two formats:
 	```python
 	import numpy as np
 	import pandas as pd
-
+	
 	file_path = # Enter the location of the txt file here (should end in .txt)
 	array = np.loadtxt(file_path)
-
+	
 	dataframe = pd.DataFrame(array, columns=['glon', 'glat', 's', 'age', 'mh', 'mass'])
-
-
+	
+	
 	from selfun import IsochroneScaling
-
+	
 	isoCalculator = IsochroneScaling.InstrinsictoObservable()
-
+	
 	# If just calculating H-absolute and colour(J-K):
 	isoCalculator.LoadColMag("[directory]/evoTracks/isochrone_interpolantinstances.pickle")
 	colour, Habs = isoCalculator.ColMabs(dataframe.age, dataframe.mh, dataframe.mass)
 	# For calculating apparent magnitude
 	colour, Happ = isoCalculator.ColMapp(dataframe.age, dataframe.mh, dataframe.mass, dataframe.s)
-
+	
 	# If calculating all magnitudes:
 	isoCalculator.LoadColMag("[directory]/evoTracks/isochrone_interpolantinstances.pickle")
 	Habs, Jabs, Kabs = isoCalculator.ColMabs(dataframe.age, dataframe.mh, dataframe.mass)
@@ -272,27 +272,22 @@ As with all modules in the package, docstrings have been constructed for the mod
 Here we demonstrate how to use **selfun** to generate a selection function and use it on data. 
 All examples given are using Galaxia data. Folling the steps and example files should enable you to recreate the results published in Everall & Das (in prep.).
 
+
 ### Run selection function <a name="runsf"></a>
 
 We generate the selection function for the Galaxia data in the folder [directory]/Galaxia/.
+The contents of the information file, [directory]/Galaxia/Galaxia_InformationFile.pickle, can be viewed. [Look here](#infofile).
 
-To see an example of the contents of the information file (as explained [here](#infofile)), run this in your python shell:
-```python
-# Load infofile (survey name is "surveyname")
-path = '[directory]/Galaxia/Galaxia_FileInformation.pickle'
-with open(path, "rb") as input:
-    file_info  = pickle.load(input)
-
-file_info.printValues()
-```
-
-To create the selection function:
+To create the prebuilt selection function (**for a quick run/test**):
 ```python
 from selfun import SelectionGrid
-
 # To initialise the prebuilt selection function:
 Galaxia_sf = SeletionGrid.FieldInterpolator('[directory]/Galaxia/Galaxia_FileInformation.pickle')
+```
 
+To generate the selection function from scratch using the survey and photometric data files:
+```python
+from selfun import SelectionGrid
 # To create a selection function from scratch (takes a few minutes due to calculating optimal Gaussian mixture models)
 Galaxia_sf = SeletionGrid.FieldInterpolator('[directory]/Galaxia/Galaxia_FileInformation.pickle', ColMagSF_exists=False)
 ```
@@ -304,7 +299,7 @@ Having created the selection function instance for Galaxia, we now wish to calcu
 
 Example1: You have a comma separated txt file with 6 columns: galactic longitude (glon), galactic latitude (glat), distance (s), age, metallicity (mh), mass ([as used here](#reformat)).
 You want to know the probability of each star in the dataset being included in the survey.
-```
+```python
 import numpy as np
 import pandas as pd
 
@@ -322,7 +317,7 @@ dataframe.union # The column of selection function probabilities
 
 Example2: You have a comma separated txt file with 6 columns: galactic longitude (glon), galactic latitude (glat), apparent H magnitude (Happ), J-K colour (colour).
 You want to know the probability of each star in the dataset being included in the survey.
-```
+```python
 import numpy as np
 import pandas as pd
 
@@ -336,6 +331,18 @@ dataframe = Galaxia_sf(dataframe, coords=['Happ', 'colour'], angles=['glon', 'gl
 # Method='observable' means calculating the selection function using observable properties (i.e. apparent magnitude and colour).
 
 dataframe.union # The column of selection function probabilities
+```
+
+Example3: Calculate selection probabilities of stars in a Galaxia selection limited catalogue:
+```python
+dataframe = pd.read_csv('[directory]/Galaxia/Galaxia_survey.csv')
+
+# Observable coordinates
+dataframe['colour'] = dataframe.ubv_j - dataframe.ubv_k
+dataframe = Galaxia_sf(dataframe, coords=['Happ', 'colour'], angles=['glon', 'glat'], method='observable')
+
+# Or intrinsic coordinates
+dataframe = Galaxia_sf(dataframe, coords=['age', 'feh', 'rad', 'smass'], angles=['glon', 'glat'], method='int')
 ```
 
 
@@ -357,5 +364,5 @@ ax = AngleDisks.PlotPlate(fields.glon, fields.glat, 12.56)
 
 ```
 
-For more information on the [Kroupa IMF](#https://ui.adsabs.harvard.edu/#abs/2001MNRAS.322..231K/abstract).
+For more information on the [Kroupa IMF](https://ui.adsabs.harvard.edu/#abs/2001MNRAS.322..231K/abstract).
 
