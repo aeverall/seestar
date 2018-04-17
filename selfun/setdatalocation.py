@@ -1,11 +1,14 @@
 import pickle, os
+from selfun import surveyInfoPickler
 
 def replaceNames(directory):
 
 	directories = []
 
+	folders = [x for x in os.listdir(directory) if os.path.isdir( os.path.join(directory, x) )]
+
 	# Scan through datafolders in directory
-	for folder in os.listdir(directory):
+	for folder in folders:
 		# Scan through files in each folder
 		for file in os.listdir( os.path.join(directory, folder) ):
 			# Search for info files

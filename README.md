@@ -99,10 +99,14 @@ $ wget https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?
 $
 $ tar -zxvf SFdata.tar.gz # Unzip the file into the current directory
 ```
+**or**
+Download directly from https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing.
+Then extract the file to the location where you wish to store the data.
 
 The code repository now doesn't know where the data is stored. To give the repository the location, run the following in a Python shell:
 ```python
 from selfun import setdatalocation
+# [directory] is the folder which has been extracted: [directory] = ..pathtofolder../SFdata
 setdatalocation.replaceNames([directory])
 ```
 
