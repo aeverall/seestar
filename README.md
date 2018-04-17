@@ -92,24 +92,18 @@ Here we give a detailed explanation on how to download the available, correctly 
 
 The files required to run **selfun** are too large to store on GitHub so they are kept separately.
 
-Data we provide can be found at ```- Add location of publicly available data```.
+Data we provide can be found [here](#https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing).
 
-To download the data enter the following into the command line:
-```diff
-- File containing data resources will be added soon.
+To download the data, go to the directory in which you wish to store the data and enter the following into the command line:
+```
+$ wget https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing
 ```
 
-To alter the location of your database in the directory, do one of the following:
-* In command line:
-	```
-	$ python selfun/setdatalocation.py
-	```
-	Then, when prompted, type in the directory location.
-* In a python shell:
-	```python
-	from selfun import setdatalocation
-	setdatalocation.replaceNames([directory])
-	```
+The code repository now doesn't know where the data is stored. To give the repository the location, run the following in a Python shell:
+```python
+from selfun import setdatalocation
+setdatalocation.replaceNames([directory])
+```
 
 Information held within the database:
 1. Data for each survey computed:
@@ -125,6 +119,24 @@ Information held within the database:
 
 ### File formatting <a name="reformat"></a>
 
+The repository is largely designed to run csv files with well defined headers. Therefore when adding new surveys to the selection function, any files need to be converted into the correct format.
+
+Example: You have a comma separated txt file with 6 columns: galactic longitude (glon), galactic latitude (glat), distance (s), age, metallicity (mh), mass.
+```python
+import numpy as np
+import pandas as pd
+
+file_path = # Enter the location of the txt file here (should end in .txt)
+array = np.loadtxt(file_path)
+
+dataframe = pd.DataFrame(array, columns=['glon', 'glat', 's', 'age', 'mh', 'mass'])
+
+new_file_path = # File path for new csv file (should end in .csv)
+dataframe.to_csv(new_file_path)
+```
+
+This also demonstrates how to create a pandas dataframe, the main tool in pandas. I would highly recommend playing around with the dataframes to find out how useful they are (especially if you usually use numpy arrays for handling data tables).
+In the repository /examples/ex_pandas.py contains some basic examples of how to use dataframes. 
 
 
 ### Separate photometric data into fields <a name="assignfields"></a>
@@ -170,6 +182,7 @@ import pickle
 path = 'directory/surveyname/surveyname_FileInformation.pickle'
 with open(path, "rb") as input:
     file_info  = pickle.load(input)
+# file_info is an instance of a class for containing all the file locations and data structures.
 
 # To view a docstring which has example code on how to set each of the features
 file_info?
@@ -188,6 +201,7 @@ file_inf.pickleInformation()
 ```
 
 Once the above steps have been taken successfully, generating a selection function from the data is much easier as you don't need to worry about file locations, they all update one another.
+
 
 
 ***
