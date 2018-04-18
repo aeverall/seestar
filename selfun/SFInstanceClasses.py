@@ -182,6 +182,111 @@ class intrinsicMassSF():
 
         return SF
 
+class intSF_isocalc():
+
+    '''
+
+
+    Parameters
+    ----------
+
+
+    **kwargs
+    --------
+
+
+    Returns
+    -------
+
+
+    '''
+
+    def __init__(self):
+
+        # Calculator for getting col, mag from age, mh, s
+        self.IsoCalculator = None
+
+        # Range inside which the interpolants give non-nan values
+        self.agerng=None
+        self.mhrng=None
+
+        # List of masses to integrate over
+        self.mass_scaled = np.linspace(0.01, 0.99, 500)
+
+    def __call__(self, (age, mh, s), obsSF):
+
+        self.mass_scaled = np.linspace(0.01, 0.99, 500)
+
+        # Convert values into grids expanded over mass values
+        agegrid = np.repeat([age,], len(self.mass_scaled), axis=0)
+        mhgrid = np.repeat([mh,], len(self.mass_scaled), axis=0)
+        sgrid = np.repeat([s,], len(self.mass_scaled), axis=0)
+
+        massgrid = self.mass_scaled
+        Ndim = len(np.shape(age))
+        for i in range( Ndim ):
+            index = Ndim - (i+1)
+            massgrid = np.repeat([massgrid,], np.shape(age)[index], axis=0)
+        gridDim = len( np.shape(agegrid) )
+        axes = np.linspace(0, gridDim-1, gridDim).astype(int)
+        axes[0] = axes[len(axes)-1]
+        axes[1:] -= 1
+        massgrid = np.transpose( massgrid, axes=axes )
+
+        # Unscale the mass and calculate the IMF contribution
+        Mmingrid = self.IsoCalculator.Mmin_interp((agegrid, mhgrid))
+        Mmaxgrid = self.IsoCalculator.Mmax_interp((agegrid, mhgrid))
+        m_scaledgrid = self.IsoCalculator.unscaling( massgrid, Mmaxgrid, Mmingrid )
+        weightgrid = functionIMFKoupra( massgrid )
+
+        # Find colour and apparent magnitude values for age, mh, m_scaled, s
+        col, mag = self.IsoCalculator(agegrid, mhgrid, m_scaledgrid, sgrid)
+
+        # Integrate over IMF
+        SF = np.sum( obsSF((mag, col)) * weightgrid , axis=0 )
+        # Normalisation factors for IMF
+        Norm = np.sum( weightgrid , axis=0 )
+        SF = SF/Norm
+
+        return SF
+
+class intMassSF_isocalc():
+
+    '''
+
+
+    Parameters
+    ----------
+
+
+    **kwargs
+    --------
+
+
+    Returns
+    -------
+
+
+    '''
+
+    def __init__(self):
+
+        # Calculator for getting col, mag from age, mh, s
+        self.IsoCalculator = None
+
+        # Range inside which the interpolants give non-nan values
+        self.agerng=None
+        self.mhrng=None
+
+    def __call__(self, (age, mh, mass, s), obsSF):
+
+        # Calculate colour and absolute magnitude from interpolants
+        col, mag = self.IsoCalculator(age, mh, mass, s)
+        # Selection function from SF in observed coordinates
+        SF = obsSF((mag, col))
+
+        return SF
+
 def setattrs(_self, **kwargs):
 
     '''

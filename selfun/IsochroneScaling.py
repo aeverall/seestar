@@ -1,16 +1,20 @@
 '''
+IsochroneScaling - Module for calculation of colours and magnitudes of stars
+                   given intrinsic properties of stars (age, metallicity, mass, distance)
+                   using the stellar Isochrones.
 
-
-Parameters
-----------
-
-
-**kwargs
---------
-
-
-Returns
+Classes
 -------
+IntrinsicToObservable - Class for creating a calculator which can determine the colours
+                        absolute and apparent magnitudes of stars given their intrinsic
+                        properties.
+
+Functions
+---------
+
+
+Requirements
+------------
 
 
 '''
@@ -23,26 +27,51 @@ from itertools import  product
 import scipy
 from scipy.interpolate import RegularGridInterpolator as RGI
 
-import SelectionGrid
 from ArrayMechanics import extendGrid
 
 class IntrinsicToObservable():
 
     '''
-
+    IntrinsicToObservable - Class for creating a calculator which can determine the colours
+                            absolute and apparent magnitudes of stars given their intrinsic
+                            properties.
 
     Parameters
     ----------
+        age - array or float (same size array as mh, mass, s)
+            ages of objects to be calculated
+        mh - array or float
+            metallicity of objects to be calculated
+        mass - array or float
+            mass of objects to be calculated
+        s - array or float
+            distance of objects to be calculated
 
+    Functions
+    ---------
+        __init__
 
-    **kwargs
-    --------
+        __call__ - Runs ColourMapp
+                - Calculates the colour and apparent magnitude of objects
+                    given their age, metallicity, mass and distance.
 
+        CreateFromIsochrones - Generates a scaled mass regime, colour and magnitude
+                            interpolants from the raw stellar isochrones chosen.
+
+        pickleColMag - Save pickle files of the colour and magnitude interpolants
+
+        pickleMagnitudes - Save pickle files of the magnitude interpolants
 
     Returns
     -------
+        Colour - array or float
+            Colour of objects being calculated in bands A-B
+        Mapp - array or float
+            Apparent magnitude of objects being calculated in band C
 
-
+    Dependencies
+    ------------
+        dill, pickle
     '''
     
     def __init__(self):
@@ -70,48 +99,93 @@ class IntrinsicToObservable():
         # Column for initial mass in iso_pickle file
         self.columnMi = 2
         
-    def __call__(self):
+        # Maximum age and metallicity ranges
+        self.agerng = (0, 13)
+        self.mhrng = (-2.5, 0.5)
+
+        # magnitude and colour ranges
+        self.magrng = None
+        self.colrng = None
+
+    def __call__(self, age, mh, mass, s):
 
         '''
-
+        __call__ - Runs ColourMapp
+                - Calculates the colour and apparent magnitude of objects
+                    given their age, metallicity, mass and distance.
 
         Parameters
         ----------
-
-
-        **kwargs
-        --------
-
+            age - array or float (same size array as mh, mass, s)
+                ages of objects to be calculated
+            mh - array or float
+                metallicity of objects to be calculated
+            mass - array or float
+                mass of objects to be calculated
+            s - array or float
+                distance of objects to be calculated
 
         Returns
         -------
-
-
+            Colour - array or float
+                Colour of objects being calculated in bands A-B
+            Mapp - array or float
+                Apparent magnitude of objects being calculated in band C
         '''
 
-        pass
+        Colour, Mapp = self.ColourMapp(age, mh, mass, s)
+
+        return Colour, Mapp
     
-    def Initialise(self):
+    def CreateFromIsochrones(self):
 
         '''
-
+        CreateFromIsochrones - Generates a scaled mass regime, colour and magnitude
+                            interpolants from the raw stellar isochrones chosen.
 
         Parameters
         ----------
-
-
-        **kwargs
-        --------
-
+            None
 
         Returns
         -------
+            None
+
+        Inherited
+        ---------
+            self.iso_pickle - str
+                    File containing the isochrones
+
+        Bequeathed
+        ----------
+            self.isoage - 1D array
+                    - Ages used in isochrones
+
+            self.isomh - 1D array
+                    - metallicities used in isochrones
+
+            self.isodict - dictionary
+                    - Contains all isochrone arrays
+
+            self.Mmin_interp - RegularGridInterpolator
+                    - Minimum mass interpolants over isochrones ((age, mh))
+            self.Mmax_interp - RegularGridInterpolator
+                    - Maximum mass interpolants over isochrones ((age, mh))
+
+            self.m_scaled - 1D array
+                    - scaled masses used in interpolation grid
+
+            self.iso_info - dict
+                Dictionary of isochrones after being calculated for scaled mass distribution.
+
+            self.magAinterp, self.magBinterp, self.magCinterp - RegularGridInterpolator
+                    - Absolute magnitude interpolants for each magnitude band ((age, mh, scaled mass))
+                    - Interpolants over grid of: isoage, isomh, m_scaled
 
 
         '''
         
         # Import isochrone dictionaries and generate isoage, isomh and isodict entries
-        
         isoage, isomh, isodict = ImportIsochrones(self.iso_pickle)
         self.isoage, self.isomh, self.isodict = isoage, isomh, isodict
         
@@ -131,52 +205,53 @@ class IntrinsicToObservable():
         self.iso_info = iso_info
         
         # Calculate colour and magnitude interpolants in terms of age, mh, mass scaled
-        magA_interp, magB_interp, magC_interp, col_interp = cmInterpolation(isoage, isomh, iso_info, m_scaled)
+        magA_interp, magB_interp, magC_interp, col_interp, agerng, mhrng, magrng, colrng = \
+                cmInterpolation(isoage, isomh, iso_info, m_scaled, agerng=self.agerng, mhrng=self.mhrng)
         self.magA_interp = magA_interp
         self.magB_interp = magB_interp
         self.magC_interp = magC_interp
         self.col_interp = col_interp
+
+        # update age and metallicity ranges
+        self.agerng = agerng
+        self.mhrng = mhrng
+        # Return the colour and magnitude ranges
+        self.magrng = magrng
+        self.colrng = colrng
     
     def pickleColMag(self, pickle_path):
 
         '''
-
+        pickleColMag - Save pickle files of the colour and magnitude interpolants
 
         Parameters
         ----------
-
-
-        **kwargs
-        --------
-
+            pickle_path - str
+                File location for saving pickled instance
 
         Returns
         -------
-
-
+            None
         '''
         
         with open(pickle_path, 'wb') as handle:
             pickle.dump((self.Mmax_interp, self.Mmin_interp, 
-                         self.col_interp, self.magC_interp), handle)
+                         self.col_interp, self.magC_interp,
+                         self.magrng, self.colrng), handle)
 
     def pickleMagnitudes(self, pickle_path):
 
         '''
-
+        pickleMagnitudes - Save pickle files of the magnitude interpolants
 
         Parameters
         ----------
-
-
-        **kwargs
-        --------
-
+            pickle_path - str
+                File location for saving pickled instance
 
         Returns
         -------
-
-
+            None
         '''
         
         with open(pickle_path, 'wb') as handle:
@@ -203,12 +278,14 @@ class IntrinsicToObservable():
         '''
         
         with open(pickle_path, "rb") as input:
-            Mmax_interp, Mmin_interp, col_interp, magC_interp = pickle.load(input)
+            Mmax_interp, Mmin_interp, col_interp, magC_interp, magrng, colrng = pickle.load(input)
             
         self.Mmin_interp = Mmin_interp
         self.Mmax_interp = Mmax_interp
         self.magC_interp = magC_interp
         self.col_interp = col_interp
+        self.magrng = magrng
+        self.colrng = colrng
 
     def LoadMagnitudes(self, pickle_path):
 
@@ -296,22 +373,28 @@ class IntrinsicToObservable():
     def ColourMapp(self, age, mh, mass, s):
 
         '''
-
+        ColourMapp - Calculates the colour and apparent magnitude of objects
+                    given their age, metallicity, mass and distance.
 
         Parameters
         ----------
-
-
-        **kwargs
-        --------
-
+            age - array or float (same size array as mh, mass, s)
+                ages of objects to be calculated
+            mh - array or float
+                metallicity of objects to be calculated
+            mass - array or float
+                mass of objects to be calculated
+            s - array or float
+                distance of objects to be calculated
 
         Returns
         -------
-
-
+            Colour - array or float
+                Colour of objects being calculated in bands A-B
+            Mapp - array or float
+                Apparent magnitude of objects being calculated in band C
         '''
-        
+
         Colour, Mabs = self.ColourMabs(age, mh, mass)
         
         Mapp = self.appmag(Mabs, s)
@@ -562,20 +645,41 @@ def Redistribution(isoage, isomh, isodict,
                    columnABC=(13, 15, 14), columnMi=2):
 
     '''
-
+    Redistribution - Recalculates values along the isochrones based on
+                    the distribution of m_scaled values
 
     Parameters
     ----------
+        isoage - 1D array
+            Set of age values in isochrones.
 
+        isomh  - 1D array
+            Set of metallicity values in isochrones.
+
+        isodict - dict
+            Dictionary containing all isochrones.
+
+        m_scaled - 1D array
+            Set of scaled mass values to be used in new isochrone distribution.
+
+        scaling - lambda/function instance
+            Function for scaling mass (Mi, Mmax, Mmon)
+
+        unscaling - lambda/function instance
+            Function for unscaling mass (Mi, Mmax, Mmin)
 
     **kwargs
     --------
+        columnABC - 3-tuple of ints
+            Columns of magnitude bands in isochrones
 
+        columnMi - int
+            Column of initial mass in isochrones
 
     Returns
     -------
-
-
+        iso_info - dict
+            Dictionary of isochrones after being calculated for scaled mass distribution.
     '''
 
     iso_info = {}
@@ -627,7 +731,7 @@ def Redistribution(isoage, isomh, isodict,
     return iso_info
 
 def cmInterpolation(isoage, isomh, iso_info, m_scaled, 
-                    agemin = 0,agemax = 13, mhmin=-2.5,mhmax=0.5):
+                    agerng= (0,13), mhrng=(-2.5, 0.5)):
 
     '''
 
@@ -652,16 +756,16 @@ def cmInterpolation(isoage, isomh, iso_info, m_scaled,
     # Grids are calculated between age and metallicity ranges
     # Construct age grid
     jagemin    = max(0, 
-                     np.sum(isoage<agemin)-1)
+                     np.sum(isoage<agerng[0])-1)
     jagemax     = min(len(isoage), 
-                      np.sum(isoage<agemax) +1)
+                      np.sum(isoage<agerng[1]) +1)
     agegrid = isoage[jagemin:jagemax]
 
     # Construct metallicity grid
     jmhmin     = max(0,
-                     np.sum(isomh<mhmin)-1)
+                     np.sum(isomh<mhrng[0])-1)
     jmhmax     = min(len(isomh),
-                     np.sum(isomh<mhmax)+1)
+                     np.sum(isomh<mhrng[1])+1)
     mhgrid  = isomh[jmhmin:jmhmax]
 
     # Size of grid in each dimension
@@ -669,6 +773,10 @@ def cmInterpolation(isoage, isomh, iso_info, m_scaled,
     nmh     = len(mhgrid)
     nmass   = len(massgrid)
     print("nage, nmh, nmass: %d, %d, %d" % (nage, nmh, nmass))
+
+    # Redetermine age and metallicity ranges based on available isochrones
+    agerng = (np.min(agegrid), np.max(agegrid))
+    mhrng = (np.min(mhgrid), np.max(mhgrid))
 
     # MultiIndex dataframe for applying transformations
     index = pd.MultiIndex.from_product([agegrid, mhgrid], names = ['age','mh'])
@@ -728,7 +836,10 @@ def cmInterpolation(isoage, isomh, iso_info, m_scaled,
     magC_interp = RGI((agegridCabs, mhgridCabs, massgridCabs), absCmat, bounds_error=False, fill_value=np.nan)
     col_interp = RGI((agegridCol, mhgridCol, massgridCol), ABcolmat, bounds_error=False, fill_value=np.nan)
 
-    return magA_interp, magB_interp, magC_interp, col_interp
+    colrng = (np.min(ABcolmat), np.max(ABcolmat))
+    magrng = (np.min(absCmat), np.max(absCmat))
+
+    return magA_interp, magB_interp, magC_interp, col_interp, agerng, mhrng, magrng, colrng
 
 
 class mScale():

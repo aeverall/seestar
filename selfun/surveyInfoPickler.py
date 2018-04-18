@@ -141,6 +141,8 @@ class surveyInformation():
 
 		self.iso_pickle_file = ''
 		self.iso_pickle_path = os.path.join(self.data_path, self.iso_pickle_file)
+		self.iso_interp_file = ''
+		self.iso_interp_path = os.path.join(self.data_path, self.iso_interp_file)
 
 		self.overlap_fname = ''
 
@@ -156,6 +158,7 @@ class surveyInformation():
 		self.overlap_path = os.path.join(self.spectro_folder, self.overlap_fname)
 
 		self.iso_pickle_path = os.path.join(self.data_path, self.iso_pickle_file)
+		self.iso_interp_path = os.path.join(self.data_path, self.iso_interp_file)
 
 		self.example_string = \
 """

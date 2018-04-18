@@ -4,7 +4,7 @@ SelectionGrid - Contains tools for creating a selection function for a given
 
 Classes
 -------
-    FieldInterpolants - Class for building a dictionary of interpolants for each of the survey Fields
+    SFGenerator - Class for building a dictionary of interpolants for each of the survey Fields
                         The interpolants are used for creating Field selection functions
 
 Functions
@@ -53,18 +53,14 @@ import matplotlib.gridspec as gridspec
 from matplotlib.colors import LogNorm
 from matplotlib.ticker import LogFormatter
 
-import CoordTrans
 from ArrayMechanics import *
-from AngleDisks import *
-from PlotCoordinates import *
-from DataImport import *
-import ComputerOps
 import StatisticalModels
 import FieldUnions
 import SFInstanceClasses
+import IsochroneScaling
 
 
-class FieldInterpolator():
+class SFGenerator():
 
     '''
     FieldInterpolants - Class for building a dictionary of interpolants for each of the survey Fields
@@ -95,19 +91,12 @@ class FieldInterpolator():
         EquatToGal
         AnglePointsToPointingsMatrix
     '''
-    def printTest(self, string, object):
-        if self.testbool:
-            print(string + ': ')
-            print(object)
     
     def __init__(self, pickleFile,
                  surveysf_exists = True,
                  ColMagSF_exists = True,
-                 testbool = False, testfield = '',
+                 isointerp_exists = True,
                  overlapdata_exists = False):
-        
-        # If true, only run selection function for a couple of fields
-        self.testbool=testbool
 
         # Change message to check that SF is running for updated version
         print("Latest Version")
@@ -118,11 +107,9 @@ class FieldInterpolator():
 
         spectro_coords = file_info.spectro_coords
         spectro_path = file_info.spectro_path
-        spectro_pickle_path = file_info.spectro_pickle_path
 
         self.photo_coords = file_info.photo_coords
         self.photo_path = file_info.photo_path
-        photo_pickle_path = file_info.photo_pickle_path
 
         field_coords = file_info.field_coords
         field_path = file_info.field_path
@@ -135,7 +122,9 @@ class FieldInterpolator():
         self.photo_tag = file_info.photo_tag
         self.fieldlabel_type = file_info.fieldlabel_type
 
-        iso_pickle = file_info.iso_pickle_path
+        self.iso_pickle = file_info.iso_pickle_path
+        self.isocolmag_pickle = file_info.iso_interp_path
+        self.isointerp_exists = isointerp_exists
 
         # Import the dataframe of pointings        
         pointings = self.ImportDataframe(field_path, field_coords[0], 
@@ -147,20 +136,20 @@ class FieldInterpolator():
         pointings = pointings.drop_duplicates(subset = 'fieldID')
         #pointings = pointings[pointings.fieldID==2001.0]
         self.pointings = pointings
-
-                
-        # Extract isochrones
-        print("Undilling isochrone interpolants...")
-        with open(iso_pickle, "rb") as input:
-            self.pi = dill.load(input)
-        print("...done.\n")
-        self.isoage = np.copy(self.pi['isoage']) 
-        self.isomh  = np.copy(self.pi['isomh'])
-        # Colour-Magnitude limit values to be used for limits on interpolation regions
-        self.cm_limits = (self.pi['Hmin'], self.pi['Hmax'], self.pi['JKmin'], self.pi['JKmax'])
         
+
         # surveysf_exists true if Selection Function has already been calculated
         if not surveysf_exists:
+
+            print('Creating Distance Age Metalicity interpolants...')
+             #surveysf, agerng, mhrng, srng = self.createDistMhAgeInterp()
+            instanceSF, instanceIMFSF, agerng, mhrng, magrng, colrng = self.createDistMhAgeInterp()
+            with open(sf_pickle_path, 'wb') as handle:
+                    pickle.dump((instanceSF, instanceIMFSF, agerng, mhrng), handle)
+            self.instanceSF=instanceSF
+            self.instanceIMFSF=instanceIMFSF
+            self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
+            print("...done.\n") 
     
             # ColMagSF_exists true if Observable coord SF has already been calculated
             if not ColMagSF_exists:
@@ -184,16 +173,6 @@ class FieldInterpolator():
                 with open(obsSF_pickle_path, "rb") as input:
                     self.obsSF = pickle.load(input)
                 print("...done.\n")
-
-
-            print('Creating Distance Age Metalicity interpolants...')
-             #surveysf, agerng, mhrng, srng = self.createDistMhAgeInterp()
-            instanceSF, instanceIMFSF, agerng, mhrng = self.createDistMhAgeInterp()
-            with open(sf_pickle_path, 'wb') as handle:
-                    pickle.dump((instanceSF, instanceIMFSF, agerng, mhrng), handle)
-            self.instanceSF=instanceSF
-            self.instanceIMFSF = instanceIMFSF
-            print("...done.\n") 
 
         else:              
 
@@ -394,16 +373,21 @@ class FieldInterpolator():
 
         Parameters
         ----------
-            tmass_path - string
-                    - Path to the file containing tmass plate files for 
+            None
 
-        **kwargs
-        --------
-
+        Inherited
+        ---------
+            self.pointings
+            self.stars
+            self.photo_path
+            self.photo_tag
+            self.photo_coords
+            self.cm_limits
 
         Returns
         -------
-
+            obsSelectionFunction - dict
+                Dictionary of selection function classes for observed coordinates
 
         '''
         multiCore = False
@@ -470,9 +454,7 @@ class FieldInterpolator():
         return obsSelectionFunction
 
 
-    def createDistMhAgeInterp(self,
-                              agemin = 0,agemax = 13,
-                              mhmin=-2.5,mhmax=0.5):
+    def createDistMhAgeInterp(self, agerng=(0,13), mhrng=(-2.5,0.5)):
 
         '''
         createDistMhAgeInterp - Creates a selection function in terms of age, mh, s
@@ -480,20 +462,20 @@ class FieldInterpolator():
 
         Inherited
         ---------
-            self.spectro_interp: dict
-                    - Dictionary of spectroscopic interpolants in col-mag space with col-mag ranges and grid areas given
-
-            self.pointings: Dataframe
-                    - Dataframe of coordinates and IDs of spectro fields
-
-            self.pi: dict
-                    - Dictionary of isochrone data
-
             self.photo_interp: dict
                     - Dictionary of photometric interpolants in col-mag space with col-mag ranges and grid areas given
 
             sfFieldColMag - Converts spectroscopic interpolant and photomectric interpolant into a selection grid
                             in colour and magnitude space
+
+            self.iso_pickle - str
+                    Path to isochrone files
+
+            self.isocolmag_pickle - str
+                    Path to colour-magnitude interpolant files
+
+            self.isointerp_exists - boolean
+                    Has an interpolant over the isochrones already been created?
 
         **kwargs
         --------
@@ -502,131 +484,63 @@ class FieldInterpolator():
 
             mhmin/mhmax: float (-2.5, 0.5)
                     - mh range over which we want to build the selection function
-                    
-            smin/smax: float (0.001, 20.)
-                    - s range over which we want to build the selection function  
-
-            test: bool (False)
-                    - If True, allows the function to be tested without running the entire class
 
         Returns
         -------
-            fieldInfo: Dataframe
-                    - Contains information on each plate and the interpolants ('agemhssf')
+            intrinsicSF: selfun/SFInstanceClasses class
+                    - Class from which the selection function may be calculated.
+                    - Calculation on age, mh, mass, s
+
+            intrinsicIMSF: selfun/SFInstanceClasses class
+                    - Class from which the selection function may be calculated
+                    - Calculation on age, mh, mass
 
             (agemin,agemax): tuple of floats
                     - age range of the selection function
 
             (mhmin,mhmax): tuple of floats
                     - mh range of the selection function
-                    
-            (smin,smax): tuple of floats
-                    - s range of the selection function  
         '''
 
-        print('doing the age metallicity thing')
-        
-        # Copy variables locally
-        fieldInfo = self.pointings
-        
-        isoage    = np.copy(self.pi['isoage'])
-        isomh     = np.copy(self.pi['isomh'])
-        isomass   = np.copy(self.pi['isomass_scaled'])
-        isodict   = self.pi['isodict']
-        isomScale = self.pi['mScale']
-        isomUnscale = self.pi['mUnscale']
+        # Initialise the
+        IsoCalculator = IsochroneScaling.IntrinsicToObservable()
 
-        # Delete the isochrone source to save memory
-        del(self.pi)
-        gc.collect()
+        if not self.isointerp_exists:
 
-        # Grids are calculated between age and metallicity ranges
-        # Construct age grid
-        jagemin    = max(0, 
-                         np.sum(isoage<agemin)-1)
-        jagemax     = min(len(isoage), 
-                          np.sum(isoage<agemax) +1)
-        agegrid = isoage[jagemin:jagemax]
-        # Construct metallicity grid
-        jmhmin     = max(0,
-                         np.sum(isomh<mhmin)-1)
-        jmhmax     = min(len(isomh),
-                         np.sum(isomh<mhmax)+1)
-        mhgrid  = isomh[jmhmin:jmhmax]
-        # Construct limited mass grid
-        sizemass = 150
-        mass_sample = lambda x: x[0:: int( len(x)/sizemass )]
-        massgrid = mass_sample(isomass)
-        massgrid = isomass
-        # Size of grid in each dimension
-        nage    = len(agegrid)
-        nmh     = len(mhgrid)
-        nmass   = len(massgrid)
-        print("nage, nmh, nmass: %d, %d, %d" % (nage, nmh, nmass))
-                   
-        fieldInfo = fieldInfo.set_index('fieldID', drop=False)
+            IsoCalculator.iso_pickle = self.iso_pickle
+            IsoCalculator.agerng = agerng
+            IsoCalculator.mhrng = mhrng
 
-        # MultiIndex dataframe for applying transformations
-        index = pd.MultiIndex.from_product([agegrid, mhgrid], names = ['age','mh'])
-        age_mh = pd.DataFrame(list(product(agegrid, mhgrid)), columns=['age','mh'])
+            print("Calculating isochrone distributions...")
+            IsoCalculator.CreateFromIsochrones()
+            print("...done\n")
 
-        # Isochrone string identifiers
-        age_mh['isoname'] = "age"+age_mh.age.astype(str)+"mh"+age_mh.mh.astype(str)
+            print("Pickling isochrone distributions...")
+            IsoCalculator.pickleColMag(self.isocolmag_pickle)
+            print("...done\n")
 
-        # Absolute magnitude arrays from isodict
-        age_mh['absA'] = age_mh.isoname.map(lambda x: isodict[x].Jabs)
-        age_mh['absB'] = age_mh.isoname.map(lambda x: isodict[x].Kabs)
-        age_mh['absC'] = age_mh.isoname.map(lambda x: isodict[x].Habs)
-        # Reduce number of masses to 
-        #mass_cols = ['absA', 'absB', 'absC']
-        #age_mh[mass_cols] = age_mh[mass_cols].applymap(mass_sample)
+        else:
 
-        # Create colour column and extend masses to full length to include zero values for matrix purposes.
-        age_mh['ABcol'] = age_mh.absA - age_mh.absB
-                
-        # Restack age_mh to create matrices in colour and magnitude
-        age_mh.set_index(['age','mh'], inplace=True)
-        absCmat = np.array(age_mh[['absC']].unstack()).tolist()
-        absCmat = np.array(absCmat)
-        ABcolmat = np.array(age_mh[['ABcol']].unstack()).tolist()
-        ABcolmat = np.array(ABcolmat)
+            print("Importing colour-magnitude isochrone interpolants...")
+            IsoCalculator.LoadColMag(self.isocolmag_pickle)
+            print("...done\n")
 
-        # Print out range of colour and magnitude values in the isochrones
-        print('Cabs magnitude matrix range of values:' + str((np.min(absCmat[~np.isnan(absCmat)]), 
-                                                np.max(absCmat[~np.isnan(absCmat)]))))
-        print('Colour matrix range of values:' + str((np.min(ABcolmat[~np.isnan(ABcolmat)]), 
-                                               np.max(ABcolmat[~np.isnan(ABcolmat)]))))
-
-        # Expand grids to account for central coordinates
-        ABcolmat, agegridCol = extendGrid(ABcolmat, agegrid, axis=0, x_lbound=True, x_lb=0.)
-        ABcolmat, mhgridCol = extendGrid(ABcolmat, mhgrid, axis=1)
-        ABcolmat, massgridCol = extendGrid(ABcolmat, massgrid, axis=2, x_lbound=True, x_lb=0., x_ubound=True, x_ub=1.)
-        absCmat, agegridMag = extendGrid(absCmat, agegrid, axis=0, x_lbound=True, x_lb=0.)
-        absCmat, mhgridMag = extendGrid(absCmat, mhgrid, axis=1)
-        absCmat, massgridMag = extendGrid(absCmat, massgrid, axis=2, x_lbound=True, x_lb=0., x_ubound=True, x_ub=1.)
-
-        # Interpolate over matrices to get col&mag as a function of age, metallicity, mass
-        #print(ABcolmat, absCmat)
-        print((np.min(agegridCol), np.max(agegridCol)), (np.min(mhgridCol), np.max(mhgridCol)), (np.min(massgridCol), np.max(massgridCol)))
-        col_interp = RGI((agegridCol, mhgridCol, massgridCol), ABcolmat, bounds_error=False, fill_value=np.nan)
-        mag_interp = RGI((agegridMag, mhgridMag, massgridMag), absCmat, bounds_error=False, fill_value=np.nan)
+        agerng = IsoCalculator.agerng
+        mhrng = IsoCalculator.mhrng
+        magrng = IsoCalculator.magrng
+        colrng = IsoCalculator.colrng
 
         # Instance of class for creating mass dependent selection functions
-        intrinsicSF = SFInstanceClasses.intrinsicMassSF()
-        SFInstanceClasses.setattrs(intrinsicSF,
-                                    col_interp = col_interp,
-                                    mag_interp = mag_interp,
-                                    MassScaling = isomScale,
-                                    MassUnscaling = isomUnscale)
+        intrinsicSF = SFInstanceClasses.intSF_isocalc()
+        SFInstanceClasses.setattrs(intrinsicSF, IsoCalculator=IsoCalculator,
+                                                agerng=agerng, mhrng=mhrng)
         # Instance of class for creating mass independent selection functions
-        intrinsicIMFSF = SFInstanceClasses.intrinsicSF()
-        SFInstanceClasses.setattrs(intrinsicIMFSF,
-                                    col_interp = col_interp,
-                                    mag_interp = mag_interp,
-                                    MassScaling = isomScale,
-                                    MassUnscaling = isomUnscale)
+        intrinsicIMFSF = SFInstanceClasses.intMassSF_isocalc()
+        SFInstanceClasses.setattrs(intrinsicIMFSF, IsoCalculator = IsoCalculator,
+                                                agerng=agerng, mhrng=mhrng)
 
-        return intrinsicSF, intrinsicIMFSF, (agemin, agemax), (mhmin, mhmax)
+        return intrinsicSF, intrinsicIMFSF, agerng, mhrng, magrng, colrng
+
     
             
     def ProjectGrid(self, field):
@@ -788,8 +702,7 @@ class FieldInterpolator():
 def iterateField(stars, photo_path, field, photo_tag, photo_coords, fieldpointing, cm_limits):
 
     '''
-    iteratephotoFields- Iterates over each field file of 2MASS star data and 
-                        creates a colour-magnitude interpolant for the plate.
+    iterateField- Generates a selection function instance for a given field
 
     Parameters
     ----------
@@ -798,31 +711,36 @@ def iterateField(stars, photo_path, field, photo_tag, photo_coords, fieldpointin
         photo_path: string
                 - Location of folder of photometric catalogue files
 
-        field
+        field - field type (str, int, float, np.float64...)
+            The field in question
 
-        photo_tag
+        photo_tag: str
+            The file type of the photo files (.csv...)
 
-        photo_coords
+        photo_coords: list of str
+            Column headers of relevant columns in dataframe
 
-        fieldpointing
+        cm_limits
 
     Returns
     -------
-        photo_interp: dict
-                - Dictionary of interpolants with: 'interp', 'grid_area', 'mag_range', 'col_range'
-                - Doesn't contain entries for fields where there is no 2MASS plate file
+        instanceSF - SFInstanceClasses class
+            Class for calculating the selection function value given colour and magnitude
+            for a field
 
-    First use DataImport.reformatTmassFieldFiles to put files into correct format
+        field - field type (str, int, float, np.float64...)
+            The field in question
 
     '''
     
     database_coords = ['RA','DEC','J','K','H']
     df_coords = ['RA','Dec','appA','appB','appC']
 
+    photofile = os.path.join(photo_path, str(field)+photo_tag)
     # Import photometric data and rename magnitude columns
-    try: photo_points = pd.read_csv(photo_path+str(field)+photo_tag, compression='gzip')
+    try: photo_points = pd.read_csv(photofile, compression='gzip')
     # Depends whether the stored files are gzip or not
-    except IOError: photo_points = pd.read_csv(photo_path+str(field)+photo_tag)
+    except IOError: photo_points = pd.read_csv(photofile)
 
     coords = ['appA', 'appB', 'appC']
     photo_points=photo_points.rename(index=str, 
