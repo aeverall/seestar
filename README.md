@@ -286,14 +286,16 @@ To create the prebuilt selection function (**for a quick run/test**):
 ```python
 from selfun import SelectionGrid
 # To initialise the prebuilt selection function:
-Galaxia_sf = SeletionGrid.FieldInterpolator('[directory]/Galaxia/Galaxia_FileInformation.pickle')
+Galaxia_sf = SeletionGrid.SFGenerator('[directory]/Galaxia/Galaxia_FileInformation.pickle')
 ```
 
 To generate the selection function from scratch using the survey and photometric data files:
 ```python
 from selfun import SelectionGrid
 # To create a selection function from scratch (takes a few minutes due to calculating optimal Gaussian mixture models)
-Galaxia_sf = SeletionGrid.FieldInterpolator('[directory]/Galaxia/Galaxia_FileInformation.pickle', ColMagSF_exists=False)
+Galaxia_sf = SeletionGrid.SFGenerator('[directory]/Galaxia/Galaxia_FileInformation.pickle', 
+											ColMagSF_exists=False, isointerp_exists=True)
+
 ```
 
 
@@ -312,9 +314,12 @@ array = np.loadtxt(file_path)
 
 dataframe = pd.DataFrame(array, columns=['glon', 'glat', 's', 'age', 'mh', 'mass'])
 
-# Calculation of selection function - the dataframe is returned with columns for the fields of the stars and selection probability.
-dataframe = Galaxia_sf(dataframe, coords=['age', 'mh', 's', 'mass'], angles=['glon', 'glat'], method='int')
-# Method='int' means calculating the selection function using intrinsic properties (i.e. age, metallicity and mass).
+# Calculation of selection function
+# - the dataframe is returned with columns for the fields of the stars and selection probability.
+dataframe = Galaxia_sf(dataframe, method='int',
+				coords=['age', 'mh', 's', 'mass'], angle_coords=['glon', 'glat'])
+# Method='int' means calculating the selection function using intrinsic properties 
+#(i.e. age, metallicity and mass).
 
 dataframe.union # The column of selection function probabilities
 ```
@@ -330,9 +335,12 @@ array = np.loadtxt(file_path)
 
 dataframe = pd.DataFrame(array, columns=['glon', 'glat', 'Happ', 'colour])
 
-# Calculation of selection function - the dataframe is returned with columns for the fields of the stars and selection probability.
-dataframe = Galaxia_sf(dataframe, coords=['Happ', 'colour'], angles=['glon', 'glat'], method='observable')
-# Method='observable' means calculating the selection function using observable properties (i.e. apparent magnitude and colour).
+# Calculation of selection function 
+# - the dataframe is returned with columns for the fields of the stars and selection probability.
+dataframe = Galaxia_sf(dataframe, method='observable',
+				coords=['Happ', 'colour'], angle_coords=['glon', 'glat'])
+# Method='observable' means calculating the selection function using observable properties 
+# (i.e. apparent magnitude and colour).
 
 dataframe.union # The column of selection function probabilities
 ```
@@ -343,10 +351,12 @@ dataframe = pd.read_csv('[directory]/Galaxia/Galaxia_survey.csv')
 
 # Observable coordinates
 dataframe['colour'] = dataframe.ubv_j - dataframe.ubv_k
-dataframe = Galaxia_sf(dataframe, coords=['Happ', 'colour'], angles=['glon', 'glat'], method='observable')
+dataframe = Galaxia_sf(dataframe, method='observable',
+				coords=['Happ', 'colour'], angle_coords=['glon', 'glat'])
 
 # Or intrinsic coordinates
-dataframe = Galaxia_sf(dataframe, coords=['age', 'feh', 'rad', 'smass'], angles=['glon', 'glat'], method='int')
+dataframe = Galaxia_sf(dataframe, method='int',
+				coords=['age', 'feh', 'rad', 'smass'], angles=['glon', 'glat'])
 ```
 
 

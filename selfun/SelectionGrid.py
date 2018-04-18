@@ -240,7 +240,7 @@ class SFGenerator():
         # catalogue[points] - list of pointings which coordinates lie on
         # catalogue[field_info] - list of tuples: (P(S|v), field)
         print('Calculating all SF values...')
-        catalogue = FieldUnions.GenerateMatrices(catalogue, self.pointings, angle_coords, point_coords, 'SolidAngle', SFcalc, anglePointings=('l','b'))
+        catalogue = FieldUnions.GenerateMatrices(catalogue, self.pointings, angle_coords, point_coords, 'SolidAngle', SFcalc)
         print('...done')
         # The SF probabilities and coordinates of overlapping fields are used to calculate
         # the field union.
@@ -536,11 +536,11 @@ class SFGenerator():
         colrng = IsoCalculator.colrng
 
         # Instance of class for creating mass dependent selection functions
-        intrinsicSF = SFInstanceClasses.intSF_isocalc()
+        intrinsicSF = SFInstanceClasses.intMassSF_isocalc()
         SFInstanceClasses.setattrs(intrinsicSF, IsoCalculator=IsoCalculator,
                                                 agerng=agerng, mhrng=mhrng)
         # Instance of class for creating mass independent selection functions
-        intrinsicIMFSF = SFInstanceClasses.intMassSF_isocalc()
+        intrinsicIMFSF = SFInstanceClasses.intSF_isocalc()
         SFInstanceClasses.setattrs(intrinsicIMFSF, IsoCalculator = IsoCalculator,
                                                 agerng=agerng, mhrng=mhrng)
 
