@@ -111,7 +111,7 @@ class SFGenerator():
         self.photo_coords = file_info.photo_coords
         self.photo_path = file_info.photo_path
 
-        field_coords = file_info.field_coords
+        self.field_coords = file_info.field_coords
         field_path = file_info.field_path
 
         obsSF_pickle_path = file_info.obsSF_pickle_path
@@ -127,10 +127,10 @@ class SFGenerator():
         self.isointerp_exists = isointerp_exists
 
         # Import the dataframe of pointings        
-        pointings = self.ImportDataframe(field_path, field_coords[0], 
+        pointings = self.ImportDataframe(field_path, self.field_coords[0], 
                                          data_source='Fields', 
                                          angle_units='degrees',
-                                         coordinates= field_coords[1],
+                                         coordinates= self.field_coords[1],
                                          Field_solidangle=False, solidangle=SA)
         pointings = pointings.set_index('fieldID', drop=False)
         pointings = pointings.drop_duplicates(subset = 'fieldID')
@@ -201,8 +201,9 @@ class SFGenerator():
             self.FUInstance = FieldUnions.FieldUnion(database)
         else: raise ValueError('Cannot currently run this code with only one field, working on improving this!')
         
-    def __call__(self, catalogue, method='intrinsic', coords = ['age', 'mh', 's', 'mass'], angles=['l','b']):
-
+    def __call__(self, catalogue, method='intrinsic', 
+                coords = ['age', 'mh', 's', 'mass'], 
+                angle_coords=['l','b'], angles='Galactic'):
 
         '''
         __call__ - Once the selection function has been included, this takes in a catalogue
@@ -230,12 +231,16 @@ class SFGenerator():
             SFcalc = lambda field, df: self.instanceSF( (df[coords[0]], df[coords[1]], df[coords[3]], df[coords[2]]), self.obsSF[field] )
         else: raise ValueError('Method is unknown')
 
+        if self.field_coords[1] == 'Galactic':point_coords=['l', 'b']
+        elif: self.field_coords[1] == 'Equatorial':point_coords=['RA', 'Dec']
+        else: raise ValueError("MThe entry in surveyInfo of field_coords should be Galactic or Equatorial, it's currently %s" % self.field_coords[1])
+
         #print(SFcalc(2.0, catalogue[['Happ', 'Colour', 's', 'age', 'mh', 'mass']]))
 
         # catalogue[points] - list of pointings which coordinates lie on
         # catalogue[field_info] - list of tuples: (P(S|v), field)
         print('Calculating all SF values...')
-        catalogue = FieldUnions.GenerateMatrices(catalogue, self.pointings, angles[0], angles[1], 'SolidAngle', SFcalc)
+        catalogue = FieldUnions.GenerateMatrices(catalogue, self.pointings, angle_coords, point_coords, 'SolidAngle', SFcalc, anglePointings=('l','b'))
         print('...done')
         # The SF probabilities and coordinates of overlapping fields are used to calculate
         # the field union.

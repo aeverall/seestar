@@ -293,7 +293,7 @@ class MatrixUnion():
 		self.Overlaps = overlapdata
 
 		
-def GenerateMatrices(df, pointings, Phi, Th, SA, SFcalc, 
+def GenerateMatrices(df, pointings, angle_coords, point_coords, SA, SFcalc, 
 					IDtype = str, Nsample = 10000, basis='intrinsic'):
 
 	'''
@@ -351,16 +351,16 @@ def GenerateMatrices(df, pointings, Phi, Th, SA, SFcalc,
 		pointings = pointings.reset_index(drop=True)
 		pointings = pointings.copy()
 
-		Mp_df = np.repeat([getattr(dfi,Phi)], 
+		Mp_df = np.repeat([getattr(dfi,angle_coords[0])], 
 		                    len(pointings), 
 		                    axis=0)
-		Mt_df = np.repeat([getattr(dfi,Th)], 
+		Mt_df = np.repeat([getattr(dfi,angle_coords[1])], 
 		                    len(pointings), 
 		                    axis=0)
-		Mp_point = np.transpose(np.repeat([getattr(pointings,Phi)],
+		Mp_point = np.transpose(np.repeat([getattr(pointings,point_coords[0])],
 		                                    len(dfi), 
 		                                    axis=0))
-		Mt_point = np.transpose(np.repeat([getattr(pointings,Th)], 
+		Mt_point = np.transpose(np.repeat([getattr(pointings,point_coords[1])], 
 		                                    len(dfi), 
 		                                    axis=0))
 		Msa_point = np.transpose(np.repeat([getattr(pointings,SA)], 
