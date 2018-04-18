@@ -22,7 +22,6 @@ import scipy.integrate as integrate
 import scipy.optimize as op
 import sys
 from mpmath import *
-import Optimizers
 
 # Import cubature for integrating over regions
 from cubature import cubature
