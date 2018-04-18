@@ -232,7 +232,7 @@ class SFGenerator():
         else: raise ValueError('Method is unknown')
 
         if self.field_coords[1] == 'Galactic':point_coords=['l', 'b']
-        elif: self.field_coords[1] == 'Equatorial':point_coords=['RA', 'Dec']
+        elif self.field_coords[1] == 'Equatorial':point_coords=['RA', 'Dec']
         else: raise ValueError("MThe entry in surveyInfo of field_coords should be Galactic or Equatorial, it's currently %s" % self.field_coords[1])
 
         #print(SFcalc(2.0, catalogue[['Happ', 'Colour', 's', 'age', 'mh', 'mass']]))
