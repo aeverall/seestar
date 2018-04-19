@@ -92,16 +92,8 @@ Here we give a detailed explanation on how to download the available, correctly 
 The files required to run **selfun** are too large to store on GitHub so they are kept separately.
 
 Data we provide can be found [here](#https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing).
-
-To download the data, go to the directory in which you wish to store the data and enter the following into the command line:
-```
-$ wget https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing
-$
-$ tar -zxvf SFdata.tar.gz # Unzip the file into the current directory
-```
-**or**
-Download directly from https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing.
-Then extract the file to the location where you wish to store the data.
+Download the data then extract the file (currently gzip) to the location where you wish to store the data.
+As a warning, the zipped file is ~1.2G. Once unzipped, the folder is ~2.8G so make sure you have space to store the data.
 
 The code repository now doesn't know where the data is stored. To give the repository the location, run the following in a Python shell:
 ```python

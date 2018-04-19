@@ -7,6 +7,8 @@ Classes
     SFGenerator - Class for building a dictionary of interpolants for each of the survey Fields
                         The interpolants are used for creating Field selection functions
 
+    obsMultiFunction - 
+
 Functions
 ---------
     PointDataSample - Creates sample of points which correspond to a plate from RAVE catalogue
@@ -145,50 +147,45 @@ class SFGenerator():
              #surveysf, agerng, mhrng, srng = self.createDistMhAgeInterp()
             instanceSF, instanceIMFSF, agerng, mhrng, magrng, colrng = self.createDistMhAgeInterp()
             with open(sf_pickle_path, 'wb') as handle:
-                    pickle.dump((instanceSF, instanceIMFSF, agerng, mhrng), handle)
+                    pickle.dump((instanceSF, instanceIMFSF, agerng, mhrng, magrng, colrng), handle)
             self.instanceSF=instanceSF
             self.instanceIMFSF=instanceIMFSF
             self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
             print("...done.\n") 
-    
-            # ColMagSF_exists true if Observable coord SF has already been calculated
-            if not ColMagSF_exists:
-                
-                print('Importing data for Colour-Magnitude Field interpolants...')
-                self.stars = self.ImportDataframe(spectro_path, spectro_coords, 
-                                                 angle_units='degrees')
-                print("...done.\n")
-            
-                print('Creating Colour-Magnitude Field interpolants...')
-                self.obsSF = self.iterateAllFields()
-                print('\nnow pickling them...')
-                with open(obsSF_pickle_path, 'wb') as handle:
-                    pickle.dump(self.obsSF, handle)
-                print("...done\n.")
-                    
-            else:
-                # Once Colour Magnitude selection functions have been created
-                # Unpickle colour-magnitude interpolants
-                print("Unpickling colour-magnitude interpolant dictionaries...")
-                with open(obsSF_pickle_path, "rb") as input:
-                    self.obsSF = pickle.load(input)
-                print("...done.\n")
 
         else:              
+        
+            # Once full selection function has been created
+            # Unpickle survey selection function
+            print("Unpickling survey selection function...")
+            with open(sf_pickle_path, "rb") as input:
+                self.instanceSF, self.instanceIMFSF, self.agerng, self.mhrng, \
+                magrng, colrng = pickle.load(input)
+            print("...done.\n") 
+            self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
 
+        # ColMagSF_exists true if Observable coord SF has already been calculated
+        if not ColMagSF_exists:
+            
+            print('Importing data for Colour-Magnitude Field interpolants...')
+            self.stars = self.ImportDataframe(spectro_path, spectro_coords, 
+                                             angle_units='degrees')
+            print("...done.\n")
+        
+            print('Creating Colour-Magnitude Field interpolants...')
+            self.obsSF = self.iterateAllFields()
+            print('\nnow pickling them...')
+            with open(obsSF_pickle_path, 'wb') as handle:
+                pickle.dump(self.obsSF, handle)
+            print("...done\n.")
+                
+        else:
             # Once Colour Magnitude selection functions have been created
             # Unpickle colour-magnitude interpolants
             print("Unpickling colour-magnitude interpolant dictionaries...")
             with open(obsSF_pickle_path, "rb") as input:
                 self.obsSF = pickle.load(input)
             print("...done.\n")
-        
-            # Once full selection function has been created
-            # Unpickle survey selection function
-            print("Unpickling survey selection function...")
-            with open(sf_pickle_path, "rb") as input:
-                self.instanceSF, self.instanceIMFSF, self.agerng, self.mhrng = pickle.load(input)
-            print("...done.\n") 
 
         # Cannot construct overlapping field system if only one field
         # This selection function doesn't currently work for a single field
@@ -412,6 +409,7 @@ class SFGenerator():
             print("multiprocessing process for observable fields...\n")
             results = []
 
+            """
             # Field numbering to show progress
             fieldN = 0
             fieldL = len(field_list)
@@ -433,6 +431,19 @@ class SFGenerator():
             # Exit the pools as they won't be used again
             pool.close()
             pool.join()
+            """
+
+            pool = multiprocessing.Pool(processes=2)
+            results = pool.map(obsMultiFunction(self.stars, self.photo_path, self.photo_tag,
+                                                self.photo_coords, self.pointings, self.cm_limits), field_list)
+
+            # Exit the pools as they won't be used again
+            pool.close()
+            pool.join()
+
+            for r in results:
+                obsSF_field, field = r
+                obsSelectionFunction[field] = obsSF_field
 
         else:
             # List of fields in pointings database
@@ -455,6 +466,8 @@ class SFGenerator():
                 obsSelectionFunction[field] = obsSF_field
 
                 fieldN+=1
+
+        print("Parallel done")
 
         return obsSelectionFunction
 
@@ -703,6 +716,23 @@ class SFGenerator():
         for i in range(len(PhiRad)):
             Phi, Th = GenerateCircle(PhiRad[i],ThRad[i],SA[i])
             PlotDisk(Phi, Th, ax)
+
+class obsMultiFunction():
+
+    def __init__(self, stars, photo_path, photo_tag, photo_coords, 
+                    pointings, cm_limits):
+
+        self.stars = stars
+        self.photo_path = photo_path
+        self.photo_tag = photo_tag
+        self.photo_coords = photo_coords
+        self.pointings = pointings
+        self.cm_limits = cm_limits
+
+    def __call__(self, field):
+
+        return iterateField(self.stars, self.photo_path, field, self.photo_tag, 
+                            self.photo_coords, self.pointings.loc[field], self.cm_limits)
     
 def iterateField(stars, photo_path, field, photo_tag, photo_coords, fieldpointing, cm_limits):
 
@@ -1295,55 +1325,6 @@ def sfFieldColMag(field, col, mag, weight, spectro, photo):
     prob = grid*weight
 
     return prob
-
-class observableSF():
-
-    '''
-
-
-    Parameters
-    ----------
-
-
-    **kwargs
-    --------
-
-
-    Returns
-    -------
-
-
-    '''
-
-    def __init__(self, fieldID):
-
-        self.field = fieldID
-
-        # mag_range, col_range are now the maximum and minimum values of grid centres used in the RGI.
-        self.DF_interp = None
-        self.DF_gridarea = None
-        self.DF_magrange = None
-        self.DF_colrange = None
-        self.DF_Nside = None
-        # mag_range, col_range are now the maximum and minimum values of grid centres used in the RGI.
-        self.SF_interp = None
-        self.SF_gridarea = None
-        self.SF_magrange = None
-        self.SF_colrange = None
-        self.SF_Nside = None
-        
-        self.grid_points = None
-
-    def __call__(self, (x, y)):
-
-        SF = self.SF_interp((x, y))
-
-        return SF
-
-    def normalise(self):
-        # Not sure what this is meant to do now that it's no longer calculated from spectro/photo
-        return self.SF_gridarea/self.DF_gridarea
-
 
 def findNearestFields(anglelist, pointings, Phistr, Thstr):
 

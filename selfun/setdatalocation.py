@@ -22,6 +22,8 @@ def replaceNames(directory):
 				file_info.data_path = directory
 				# Replace photo_path with the directory name
 				file_info.photo_path = os.path.join(directory,folder)
+				# Update remaining entries
+				file_info()
 				
 				# Repickle file
 				file_info.pickleInformation( os.path.join(directory, folder, file) )
