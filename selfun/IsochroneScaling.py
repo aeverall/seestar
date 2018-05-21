@@ -905,3 +905,180 @@ class mUnscale():
         m = self.function( mass_scaled, self.Mmax_interp((age, mh)), self.Mmin)
         
         return m
+
+
+class NearestIsochrone:
+
+    '''
+
+
+    Parameters
+    ----------
+
+
+    **kwargs
+    --------
+
+
+    Returns
+    -------
+
+
+    '''
+    
+    def __init__(self, isoFile):
+
+        '''
+
+
+        Parameters
+        ----------
+
+
+        **kwargs
+        --------
+
+
+        Returns
+        -------
+
+
+        '''
+        
+        # Undill Isochrone interpolants
+        with open(iso_pickle, "rb") as input:
+            pi = dill.load(input)
+        # Assign interpolant properties to class attributes
+        self.isoage    = np.copy(pi.isoage)
+        self.isomh    = np.copy(pi.isomh)
+        self.isodict   = pi.isodict
+        # Clear pi from memory
+        del(pi)
+        gc.collect()
+        
+        # Conversion of absolute to apparent magnitude
+        self.appmag = lambda absmag, s: absmag + 5*np.log10(s*1000/10)
+        # Conversion of apparent to absolute magnitude
+        self.absmag = lambda appmag, s: absmag - 5*np.log10(s*1000/10)
+        
+    def __call__(self, age, mh, mass, s):
+
+        '''
+
+
+        Parameters
+        ----------
+
+
+        **kwargs
+        --------
+
+
+        Returns
+        -------
+
+
+        '''
+        
+        return self.appMag(age, mh, mass, s)
+        
+    def nearestVal(self, l, x):
+
+        '''
+
+
+        Parameters
+        ----------
+
+
+        **kwargs
+        --------
+
+
+        Returns
+        -------
+
+
+        '''
+        
+        # If x below list range
+        if x<l[0]:
+            return l[0]
+        # If x above list range
+        elif x>l[-1]:
+            return l[-1]
+        # If x is within list range
+        else:
+            index0 = sum(x>l) - 1
+            # Rounding correction (round up or down)
+            plus = int( round( (x-l[index0]) / (l[index0+1]-l[index0]) ) )
+            # Return value in list nearest to x
+            return l[index0 + plus]
+    
+    def absMag(self, age, mh, mass):
+
+        '''
+
+
+        Parameters
+        ----------
+
+
+        **kwargs
+        --------
+
+
+        Returns
+        -------
+
+
+        '''
+        
+        # Round age to nearest
+        age_rd = self.nearestVal(self.isoage, age)
+        # Round mh to nearest
+        mh_rd = self.nearestVal(self.isomh, mh)
+        
+        # Label of isochrone
+        isoname = "age"+str(age_rd)+"mh"+str(mh_rd)
+        isochrone = self.isodict[isoname]
+        
+        Mi = isochrone[:,2]
+        J = isochrone[:,13]
+        H = isochrone[:,14]
+        K = isochrone[:,15]
+        
+        isointerp_MJ = scipy.interpolate.interp1d(Mi, J)#, bounds_error=False, fill_value=np.nan)
+        isointerp_MH = scipy.interpolate.interp1d(Mi, H)#, bounds_error=False, fill_value=np.nan)
+        isointerp_MK = scipy.interpolate.interp1d(Mi, K)#, bounds_error=False, fill_value=np.nan)
+        
+        J = isointerp_MJ(mass)
+        K = isointerp_MK(mass)
+        H = isointerp_MH(mass)
+        
+        return J, K, H
+    
+    def appMag(self, age, mh, mass, s):
+
+        '''
+
+
+        Parameters
+        ----------
+
+
+        **kwargs
+        --------
+
+
+        Returns
+        -------
+
+
+        '''
+        
+        J, K, H = self.absMag(age, mh, mass)
+        
+        [j,k,h] = self.appmag([J,K,H], s)
+        
+        return j, k, h
