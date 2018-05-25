@@ -56,10 +56,10 @@ sys.path.append("../FitGalMods/")
 from matplotlib import pyplot as plt
 import matplotlib
 
-import CoordTrans
+#import CoordTrans
 
-from DataImport import *
-from ArrayMechanics import *
+#from DataImport import *
+#from ArrayMechanics import *
 
 def AngleShift(Th):
 
