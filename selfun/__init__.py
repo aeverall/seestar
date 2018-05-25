@@ -1,4 +1,4 @@
-__all__ = ['IsochroneScaling.py', 'ArrayMechanics.py', 'StatisticalModels.py',
- 			'createNew.py', 'setdatalocation.py', 'DistributionPlots.py', 
- 			'FieldAssignment.py', 'FieldUnions.py', 'SelectionGrid.py', 
- 			'SFInstanceClasses.py', 'surveyInfoPickler.py']
+__all__ = ['IsochroneScaling', 'ArrayMechanics', 'StatisticalModels',
+ 			'createNew', 'setdatalocation', 'DistributionPlots', 
+ 			'FieldAssignment', 'FieldUnions', 'SelectionGrid', 
+ 			'SFInstanceClasses', 'surveyInfoPickler']
