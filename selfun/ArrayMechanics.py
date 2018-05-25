@@ -81,8 +81,6 @@ sys.path.append("../FitGalMods/")
 from matplotlib import pyplot as plt
 import matplotlib
 
-import CoordTrans
-
 from AngleDisks import *
 
 

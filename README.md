@@ -98,9 +98,10 @@ As a warning, the zipped file is ~1.2G. Once unzipped, the folder is ~2.8G so ma
 The code repository now doesn't know where the data is stored. To give the repository the location, run the following in a Python shell:
 ```python
 from selfun import setdatalocation
-# [directory] is the folder which has been extracted: [directory] = ..pathtofolder../SFdata
-setdatalocation.replaceNames([directory])
+setdatalocation.replaceNames('/home/user/Documents/[path]/SFdata')
+# Doesn't have to be in /home/ but should be specified in this format.
 ```
+Use an absolute directory location such as /home/user/Documents/[path]/SFdata rather than relative locations (../Documents/[path]/SFdata)
 
 Information held within the database:
 1. Data for each survey computed (including the Galaxia mock example used in Everall & Das (in prep.):
