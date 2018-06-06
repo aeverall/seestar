@@ -3,11 +3,12 @@ Presentation/
 
 UpcomingImprovements.md
 
-selfun/ComputerOps.py
-selfun/CoordTrans.py
-selfun/DataImport.py
-selfun/PlotCoordinates.py
-selfun/Optimizers.py
+self/ComputerOps.py
+self/CoordTrans.py
+self/DataImport.py
+self/PlotCoordinates.py
+self/Optimizers.py
+self/FieldAssignment.py
 *.pyc
 
 SFgithub.sublime-workspace

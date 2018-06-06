@@ -77,7 +77,7 @@ class IntrinsicToObservable():
     def __init__(self):
     
         # Isochrone file location
-        self.iso_pickle = '/media/andy/UUI/ExternalData/SFProject/stellarprop_parsecdefault_currentmass.dill'
+        self.iso_pickle = ''
         # Storage of isochrone information
         self.isoage, self.isomh, self.isodict = (None, None, None)
     
