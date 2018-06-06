@@ -1,6 +1,6 @@
-# selfun
+# SelF
 
-**selfun** is a Python package for creating and using **sel**ection **fun**ctions for spectroscopic stellar surveys.
+**SelF** is a Python package for creating and using **sel**ection **fun**ctions for spectroscopic stellar surveys.
 
 The full theory and design of the selection function can be found in Everall & Das (in prep.).
 
@@ -64,8 +64,8 @@ Here is a quick guide of the steps to take depending what your initial aims are:
 Go to the location where you would like to store the repository.
 
 ```
-$ git clone https://github.com/aeverall/selfun.git
-$ cd selfun
+$ git clone https://github.com/aeverall/SelF.git
+$ cd self
 $ python setup.py install
 ```
 The package requires the following dependencies:
@@ -85,11 +85,11 @@ This will be improved soon!
 ***
 ## Data files <a name="data"></a>
 
-Here we give a detailed explanation on how to download the available, correctly formatted data as well as how to reformat new datasets to be used with **selfun**.
+Here we give a detailed explanation on how to download the available, correctly formatted data as well as how to reformat new datasets to be used with **SelF**.
 
 ### Download data files <a name="download"></a>
 
-The files required to run **selfun** are too large to store on GitHub so they are kept separately.
+The files required to run **SelF** are too large to store on GitHub so they are kept separately.
 
 Data we provide can be found [here](#https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing).
 Download the data then extract the file (currently gzip) to the location where you wish to store the data.
@@ -97,7 +97,7 @@ As a warning, the zipped file is ~1.2G. Once unzipped, the folder is ~2.8G so ma
 
 The code repository now doesn't know where the data is stored. To give the repository the location, run the following in a Python shell:
 ```python
-from selfun import setdatalocation
+from self import setdatalocation
 setdatalocation.replaceNames('/home/user/Documents/[path]/SFdata')
 # Doesn't have to be in /home/ but should be specified in this format.
 ```
@@ -145,7 +145,7 @@ In the repository /examples/ex_pandas.py contains some basic examples of how to 
 
 If starting from the full photometric catalogue, stars can be selected to into individual field files using:
 ```python
-from selfun import FieldAssignment
+from self import FieldAssignment
 ```
 
 An example which runs on the Galaxia data is given in the examples folder. 
@@ -163,11 +163,11 @@ This has already been done and saved in the database as described in the [downlo
 A folder in the data directory can be created by doing one of the following:
 * In command line:
 	```
-	$ python selfun/createNew.py
+	$ python self/createNew.py
 	```
 * In a python shell:
 	```python
-	from selfun import createNew
+	from self import createNew
 	createNew.create()
 	```
 
@@ -244,7 +244,7 @@ Data for the isochrones is provided in two formats:
 	dataframe = pd.DataFrame(array, columns=['glon', 'glat', 's', 'age', 'mh', 'mass'])
 	
 	
-	from selfun import IsochroneScaling
+	from self import IsochroneScaling
 	
 	isoCalculator = IsochroneScaling.IntrinsicToObservable()
 	
@@ -266,7 +266,7 @@ As with all modules in the package, docstrings have been constructed for the mod
 ***
 ## Calculating SF probabilities <a name="sf"></a>
 
-Here we demonstrate how to use **selfun** to generate a selection function and use it on data. 
+Here we demonstrate how to use **SelF** to generate a selection function and use it on data. 
 All examples given are using Galaxia data. Folling the steps and example files should enable you to recreate the results published in Everall & Das (in prep.).
 
 
@@ -277,14 +277,14 @@ The contents of the information file, [directory]/Galaxia/Galaxia_InformationFil
 
 To create the prebuilt selection function (**for a quick run/test**):
 ```python
-from selfun import SelectionGrid
+from self import SelectionGrid
 # To initialise the prebuilt selection function:
 Galaxia_sf = SeletionGrid.SFGenerator('[directory]/Galaxia/Galaxia_FileInformation.pickle')
 ```
 
 To generate the selection function from scratch using the survey and photometric data files:
 ```python
-from selfun import SelectionGrid
+from self import SelectionGrid
 # To create a selection function from scratch (takes a few minutes due to calculating optimal Gaussian mixture models)
 Galaxia_sf = SeletionGrid.SFGenerator('[directory]/Galaxia/Galaxia_FileInformation.pickle', 
 											ColMagSF_exists=False, isointerp_exists=True)

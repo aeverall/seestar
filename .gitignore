@@ -12,3 +12,7 @@ self/FieldAssignment.py
 *.pyc
 
 SFgithub.sublime-workspace
+
+self.egg*
+build/
+dist/
