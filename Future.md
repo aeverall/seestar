@@ -1,19 +1,38 @@
-## GitHub account:
+# Future Improvements and Additions
 
-- Include data for RAVE-TGAS so that selection function can be run.
-- Create an example running code script.
-- Include Plate selectors for 2MASS/Vista data.
-- Fix scripts so that the github account is running.
+SelF will be continuously improved and updated.
+Here, we will list the improvements we intend to make and keep this up-to-date with our progress.
+If there are any improvements not listed here which you would like to see, please get in touch and let us know by email.
 
-## Local:
 
-- Create local ipynb which tests the operation of the code.
+## Surveys
+
+- Galaxia 3-field test (*Galaxia3*)
+- Apogee DR14 (*APOGEE14*)
+- LAMOST
+- GALAH
+- GaiaESO
+- SEGUE
+- RAVE
+
+- Gaia data release 2 Radial Velocity Sample (RVS) 
+	- requires HEALPix build first.
+
+
+## Photometric crossmatch
+
+- VVV survey for low latitude fields.
+
+
+## Isochrone samples
+
+- BASTI isochrones
+- PADOVA isochrones
+
 
 ## Code improvements:
 
-- Generalise so that both 2MASS and Vista are included in the survey.
-- Create point distributions so that Poisson noise factors are minimised.
-- Create optional Union calculation for overlapping fields.
-	- If final survey has star double counts removed, take sum
-	- If final survey has star double counts still in, take Union (area normalised)
-- Parallel computing - decide how to break down code based on number of available cores.
+- All sky survey selection function using HEALPix.
+- Make compatible for Python 3 (Currently only Python 2.7).
+- Dust attenuation calculation.
+	- Requires Milkyway dust map
