@@ -14,7 +14,7 @@ setup(
     
     # Project uses reStructuredText, so ensure that the docutils get
     # installed or upgraded on the target machine
-    install_requires=['numpy', 'pandas', 'matplotlib', 'scipy'],
+    install_requires=['numpy', 'pandas', 'scipy', 're', 'matplotlib', 'seaborn', 'pickle'],
 
     package_data={
         # If any package contains *.txt or *.rst files, include them:
