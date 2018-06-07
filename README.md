@@ -65,17 +65,17 @@ Download the data then extract the file to the location where you wish to store 
 The code repository now doesn't know where the data is stored. To give the repository the location, run the following in a Python shell:
 ```python
 from self import setdatalocation
-setdatalocation.replaceNames('/home/*user*/*path to repo*')
+setdatalocation.replaceNames('/home/USER/PATH')
 ```
-Use an absolute directory location (/home/*user*/*path*) rather than relative locations (../*user*/*path*)
+Use an absolute directory location (/home/USER/PATH) rather than relative locations (../USER/PATH)
 
 Each survey folder in the database contains the following files:
-	* Spectrograph catalogue including crossmatch magnitudes with photometric survey. (*survey*_survey.csv)
-	* Photometric survey data for each field in the spectrograph catalogue. (photometric/*fieldID*.csv)
-	* Pickle files for the selection function in each coordinate system. (*survey*_obsSF.pickle, *survey*_SF.pickle)
-	* Pickle "fieldInfo" file which stores the information on all other files for each survey. (*survey*_fileinfo.pickle)
-	* Spectrograph field pointing locations and IDs. (*survey*_fieldinfo.csv)
-	* Information on overlap between survey fields. (*survey*_fieldoverlapdatabase)
+* Spectrograph catalogue including crossmatch magnitudes with photometric survey. (SURVEY_survey.csv)
+* Photometric survey data for each field in the spectrograph catalogue. (photometric/FIELD-ID.csv)
+* Pickle files for the selection function in each coordinate system. (SURVEY_obsSF.pickle, SURVEY_SF.pickle)
+* Pickle "fieldInfo" file which stores the information on all other files for each survey. (SURVEY_fileinfo.pickle)
+* Spectrograph field pointing locations and IDs. (SURVEY_fieldinfo.csv)
+* Information on overlap between survey fields. (SURVEY_fieldoverlapdatabase)
 
 
 ### Calculating SF probability
@@ -87,7 +87,7 @@ To initialise prebuilt selection function:
 from self import SelectionGrid
 
 # To initialise the prebuilt selection function:
-Galaxia_sf = SeletionGrid.SFGenerator('home/*user*/*path to repo*/Galaxia3/Galaxia3_fileinfo.pickle')
+Galaxia_sf = SeletionGrid.SFGenerator('home/USER/PATH/Galaxia3/Galaxia3_fileinfo.pickle')
 ```
 
 Having created the selection function instance for Galaxia, we now wish to calculate selection probabilities of stars:
@@ -99,7 +99,7 @@ import numpy as np
 import pandas as pd
 
 # Load data into a numpy array
-file_path = 'path_to_txt_file.txt'
+file_path = 'PATH/TO/FILE.txt'
 array = np.loadtxt(file_path)
 
 # Generate a pandas dataframe from the array
@@ -121,7 +121,7 @@ import numpy as np
 import pandas as pd
 
 # Load data into a numpy array
-file_path = # Enter the location of the txt file here (should end in .txt)
+file_path = 'PATH/TO/FILE.txt'
 array = np.loadtxt(file_path)
 
 # Generate a pandas dataframe from the array
@@ -162,12 +162,12 @@ Example: You have a comma separated txt file with 6 columns: galactic longitude 
 import numpy as np
 import pandas as pd
 
-file_path = '*path_to_data*/raw_data.txt' # Enter the location of the txt file here (should end in .txt)
+file_path = 'PATH/TO/DATA/raw_data.txt' # Enter the location of the txt file here (should end in .txt)
 array = np.loadtxt(file_path)
 
 dataframe = pd.DataFrame(array, columns=['glon', 'glat', 'Japp', 'Kapp', 'Happ'])
 
-new_file_path = '*path_to_data*/reformatted_data.csv' # File path for new csv file (should end in .csv)
+new_file_path = 'PATH/TO/DATA/reformatted_data.csv' # File path for new csv file (should end in .csv)
 dataframe.to_csv(new_file_path)
 ```
 This also demonstrates how to create a pandas dataframe, the main tool in pandas. I would highly recommend playing around with the dataframes to find out how useful they are (especially if you usually use numpy arrays for handling data tables).
@@ -175,7 +175,7 @@ In the repository /examples/ex_pandas.py contains some basic examples of how to 
 
 ### Isochrone data
 
-To generate the full selection function, isochronesParsec.tar.gz must be downloaded and extracted from [here](https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing).
+To generate the full selection function, isoPARSEC.tar.gz must be downloaded and extracted from [here](https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing).
 
 
 ### Survey file information <a name="infofile"></a>
@@ -184,31 +184,31 @@ For each survey, a class containing the description of file locations and dataty
 
 A folder in the data directory can be created by doing one of the following:
 In command line:
-	```
-	$ python self/createNew.py
-	```
+```
+$ python self/createNew.py
+```
 In a python shell:
-	```python
-	from self import createNew
-	createNew.create()
-	```
+```python
+from self import createNew
+createNew.create()
+```
 
 This will request some inputs:
-	```
-	Where is the directory? *path_to_directory*/
-	What survey? (will be used to label the folder and file contents) *surveyname*
-	```
+```
+Where is the directory? PATH/TO/DIRECTORY
+What survey? (will be used to label the folder and file contents) SURVEY-NAME
+```
 The *path* is the directory where you wish to store folders for each survey.
 The *surveyname* is the label you wish to give to the survey (e.g. APOGEE14).
-If a folder with *surveyname* exists at *path*, you will have to provide a different name.
+If a folder with SURVEY-NAME exists in PATH/TO/DIRECTORY/, you will have to provide a different name.
 
-A folder labeled *surveyname* will be generated in the location *path* and will contain a *surveyname*_fileinfo.pickle file.
+A folder labeled SURVEY-NAME will be generated in the location *path* and will contain a SURVEY-NAME_fileinfo.pickle file.
 The information held in this file will need to be changed to match the data of the survey.
 ```python
 import pickle
 
 # Load infofile (survey name is "surveyname")
-path = '*path*/*surveyname*/*surveyname*_fileinfo.pickle'
+path = 'PATH/TO/DIRECTORY/SURVEY-NAME/SURVEY-NAME_fileinfo.pickle'
 with open(path, "rb") as input:
     file_info  = pickle.load(input)
 # file_info is an instance of a class for containing all the file locations and data structures.
@@ -228,7 +228,7 @@ file_info.attribute = "value of attribute"
 # Repickle the class instance
 file_info.pickleInformation()
 ```
-Once you have pickled the *surveyname*_fileinfo.pickle file, the selection function will be able to use those file locations and structures.
+Once you have pickled the SURVEY-NAME_fileinfo.pickle file, the selection function will be able to use those file locations and structures.
 
 
 ### Calculating SF probability
@@ -237,17 +237,17 @@ Generate the selection function.
 ```python
 from self import SelectionGrid
 
-Survey_sf = SeletionGrid.SFGenerator('*path*/*surveyname*/*surveyname*_fileinfo.pickle', 
+Survey_sf = SeletionGrid.SFGenerator('PATH/TO/DIRECTORY/SURVEY-NAME/SURVEY-NAME_fileinfo.pickle', 
 						ColMagSF_exists=False)
 ```
 
 On completion, this automatically saves the selection function, after which it can be reloaded much faster:
 ```python
-Survey_sf = SeletionGrid.SFGenerator('*path*/*surveyname*/*surveyname*_fileinfo.pickle', 
+Survey_sf = SeletionGrid.SFGenerator('PATH/TO/DIRECTORY/SURVEY-NAME/SURVEY-NAME_fileinfo.pickle', 
 						ColMagSF_exists=True)
 ```
 
-Having created the selection function instance for *surveyname*, we now wish to calculate selection probabilities of stars:
+Having created the selection function instance for SURVEY-NAME, we now wish to calculate selection probabilities of stars:
 
 1. You have a comma separated txt file with 6 columns: galactic longitude (glon), galactic latitude (glat), distance (s), age, metallicity (mh), mass.
 You want to know the probability of each star in the dataset being included in the survey.
@@ -256,7 +256,7 @@ import numpy as np
 import pandas as pd
 
 # Load data into a numpy array
-file_path = 'path_to_txt_file.txt'
+file_path = 'PATH/TO/FILE.txt'
 array = np.loadtxt(file_path)
 
 # Generate a pandas dataframe from the array
@@ -278,7 +278,7 @@ import numpy as np
 import pandas as pd
 
 # Load data into a numpy array
-file_path = # Enter the location of the txt file here (should end in .txt)
+file_path = 'PATH/TO/FILE.txt'
 array = np.loadtxt(file_path)
 
 # Generate a pandas dataframe from the array
@@ -311,7 +311,7 @@ For more information on the [Kroupa IMF](https://ui.adsabs.harvard.edu/#abs/2001
 ***
 ## Isochrone Calculator <a name="isochrones"></a>
 
-Downloaded and extracted isochronesParsec.tar.gz from [here](https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing).
+Downloaded and extracted isoPARSEC.tar.gz from [here](https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing).
 
 Data for the isochrones is provided in two formats:
 
@@ -319,7 +319,7 @@ Data for the isochrones is provided in two formats:
 	These provide the values of absolute magnitude bands given mass of the star on each isochrone. To access the data of an isochrone:
 	```python
 	import dill
-	iso_pickle = '*path*/isochronesParsec/stellarprop_parsecdefault_currentmass.dill'
+	iso_pickle = 'PATH/TO/DIRECTORY/isoPARSEC/stellarprop_parsecdefault_currentmass.dill'
 	
 	with open(iso_pickle, "rb") as input:
 	    pi = dill.load(input)
@@ -342,7 +342,7 @@ Data for the isochrones is provided in two formats:
 	import numpy as np
 	import pandas as pd
 	
-	file_path = # Enter the location of the txt file here (should end in .txt)
+	file_path = 'PATH/TO/FILE.txt'
 	array = np.loadtxt(file_path)
 	
 	dataframe = pd.DataFrame(array, columns=['glon', 'glat', 's', 'age', 'mh', 'mass'])
@@ -352,7 +352,7 @@ Data for the isochrones is provided in two formats:
 	isoCalculator = IsochroneScaling.IntrinsicToObservable()
 	
 	# If just calculating H-absolute and colour(J-K):
-	isoCalculator.LoadColMag("*path*/isochronesParsec/isochrone_interpolantinstances.pickle")
+	isoCalculator.LoadColMag("*path*/isoPARSEC/isochrone_interpolantinstances.pickle")
 	colour, Habs = isoCalculator.ColourMabs(dataframe.age, dataframe.mh, dataframe.mass)
 	# For calculating apparent magnitude
 	colour, Happ = isoCalculator.ColourMapp(dataframe.age, dataframe.mh, dataframe.mass, dataframe.s)
