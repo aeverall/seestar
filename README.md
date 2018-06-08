@@ -198,11 +198,11 @@ This will request some inputs:
 Where is the directory? PATH/TO/DIRECTORY
 What survey? (will be used to label the folder and file contents) SURVEY-NAME
 ```
-The *path* is the directory where you wish to store folders for each survey.
-The *surveyname* is the label you wish to give to the survey (e.g. APOGEE14).
+The PATH/TO/DIRECTORY is the directory where you wish to store folders for each survey.
+The SURVEY-NAME is the label you wish to give to the survey (e.g. APOGEE14).
 If a folder with SURVEY-NAME exists in PATH/TO/DIRECTORY/, you will have to provide a different name.
 
-A folder labeled SURVEY-NAME will be generated in the location *path* and will contain a SURVEY-NAME_fileinfo.pickle file.
+A folder labeled SURVEY-NAME will be generated in the location PATH/TO/DIRECTORY and will contain a SURVEY-NAME_fileinfo.pickle file.
 The information held in this file will need to be changed to match the data of the survey.
 ```python
 import pickle
