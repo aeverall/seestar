@@ -236,12 +236,12 @@ with open(pickleFile, "rb") as input:
 	def load(self, filename):
 
 		# Load pickled dictionary of attributes
-        with open(filename, "rb") as input:
-            file_dict  = pickle.load(input) 
+		with open(filename, "rb") as input:
+			file_dict  = pickle.load(input) 
 
-        # Convert dictionary to attributes  
-        for key in file_dict:
-            setattr(self, key, file_dict[key])
+		# Convert dictionary to attributes  
+		for key in file_dict:
+			setattr(self, key, file_dict[key])
 
 	def testFiles(self):
 
@@ -258,6 +258,8 @@ with open(pickleFile, "rb") as input:
 			print("\nspectro_path has not been given a file name with .type on the end.")
 		except IOError:
 			print("\nNo file: " + self.spectro_path)
+		except ValueError:
+			print("\n spectr_coords do not match column headers for %s." % self.spectro_path)
 
 		# 2) photo_path
 		if not os.path.exists(self.photo_path):

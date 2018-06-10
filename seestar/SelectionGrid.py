@@ -60,6 +60,7 @@ import StatisticalModels
 import FieldUnions
 import SFInstanceClasses
 import IsochroneScaling
+import surveyInfoPickler
 
 
 class SFGenerator():
@@ -104,7 +105,7 @@ class SFGenerator():
         print("Latest Version")
 
         # Load survey information as a blank class (for loading in data.)
-        file_info = surveyInfoPickler()
+        file_info = surveyInfoPickler.surveyInformation()
         # Get file names and coordinates from pickled file
         file_info.load(pickleFile)
 
@@ -199,13 +200,13 @@ class SFGenerator():
         # Load classes from dictionaries
         # Initialise dictionary
         self.obsSF = {}
-        for key in obsSF_dicts:
+        for field in obsSF_dicts:
             # Initialise class instance
-            obsSF_field = SFInstanceClasses.observableSF()
+            obsSF_field = SFInstanceClasses.observableSF(field)
             # Set class attributes from dictionary
-            SFInstanceClasses.setattrs(obsSF_field, **obsSF_dicts[key])
+            SFInstanceClasses.setattrs(obsSF_field, **obsSF_dicts[field])
             # Add class instance to dictionary
-            self.obsSF[key] = obsSF_field
+            self.obsSF[field] = obsSF_field
 
         # Cannot construct overlapping field system if only one field
         # This selection function doesn't currently work for a single field
