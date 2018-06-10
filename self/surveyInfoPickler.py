@@ -224,6 +224,25 @@ with open(pickleFile, "rb") as input:
 		with open(filename, 'wb') as handle:
 			pickle.dump(self, handle)
 
+	def save(self, filename):
+
+		# Convert attributes to dictionary
+		attr_dict = vars(self)
+
+		# Dump pickled dictionary of attributes
+		with open(filename, 'wb') as handle:
+			pickle.dump(attr_dict, handle)
+
+	def load(self, filename):
+
+		# Load pickled dictionary of attributes
+        with open(filename, "rb") as input:
+            file_dict  = pickle.load(input) 
+
+        # Convert dictionary to attributes  
+        for key in file_dict:
+            setattr(self, key, file_dict[key])
+
 	def testFiles(self):
 
 		# Try to open folders and check file names and data structures

@@ -103,9 +103,10 @@ class SFGenerator():
         # Change message to check that SF is running for updated version
         print("Latest Version")
 
+        # Load survey information as a blank class (for loading in data.)
+        file_info = surveyInfoPickler()
         # Get file names and coordinates from pickled file
-        with open(pickleFile, "rb") as input:
-            file_info  = pickle.load(input) 
+        file_info.load(pickleFile)
 
         spectro_coords = file_info.spectro_coords
         spectro_path = file_info.spectro_path
@@ -146,23 +147,32 @@ class SFGenerator():
             print('Creating Distance Age Metalicity interpolants...')
              #surveysf, agerng, mhrng, srng = self.createDistMhAgeInterp()
             instanceSF, instanceIMFSF, agerng, mhrng, magrng, colrng = self.createDistMhAgeInterp()
+            # Comvert classes to dictionaries of attributes
+            instanceSF_dict = vars(instanceSF)
+            instanceIMFSF_dict = vars(instanceIMFSF)
             with open(sf_pickle_path, 'wb') as handle:
-                    pickle.dump((instanceSF, instanceIMFSF, agerng, mhrng, magrng, colrng), handle)
+                    pickle.dump((instanceSF_dict, instanceIMFSF_dict, agerng, mhrng, magrng, colrng), handle)
             self.instanceSF=instanceSF
             self.instanceIMFSF=instanceIMFSF
             self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
-            print("...done.\n") 
-
+            print("...done.\n")
         else:              
-        
             # Once full selection function has been created
             # Unpickle survey selection function
             print("Unpickling survey selection function...")
             with open(sf_pickle_path, "rb") as input:
-                self.instanceSF, self.instanceIMFSF, self.agerng, self.mhrng, \
+                instanceSF_dict, instanceIMFSF_dict, self.agerng, self.mhrng, \
                 magrng, colrng = pickle.load(input)
             print("...done.\n") 
+
+            # Load class instance from saved dictionary
+            self.instanceSF = SFInstanceClasses.intMassSF_isocalc()
+            self.instanceIMFSF = SFInstanceClasses.intSF_isocalc()
+            SFInstanceClasses.setattrs(self.instanceSF, **instanceSF_dict)
+            SFInstanceClasses.setattrs(self.instanceIMFSF, **instanceIMFSF_dict)
+
             self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
+
 
         # ColMagSF_exists true if Observable coord SF has already been calculated
         if not ColMagSF_exists:
@@ -173,19 +183,29 @@ class SFGenerator():
             print("...done.\n")
         
             print('Creating Colour-Magnitude Field interpolants...')
-            self.obsSF = self.iterateAllFields()
+            obsSF_dicts = self.iterateAllFields()
             print('\nnow pickling them...')
             with open(obsSF_pickle_path, 'wb') as handle:
-                pickle.dump(self.obsSF, handle)
+                pickle.dump(obsSF_dicts, handle)
             print("...done\n.")
-                
         else:
             # Once Colour Magnitude selection functions have been created
             # Unpickle colour-magnitude interpolants
             print("Unpickling colour-magnitude interpolant dictionaries...")
             with open(obsSF_pickle_path, "rb") as input:
-                self.obsSF = pickle.load(input)
+                obsSF_dicts = pickle.load(input)
             print("...done.\n")
+
+        # Load classes from dictionaries
+        # Initialise dictionary
+        self.obsSF = {}
+        for key in obsSF_dicts:
+            # Initialise class instance
+            obsSF_field = SFInstanceClasses.observableSF()
+            # Set class attributes from dictionary
+            SFInstanceClasses.setattrs(obsSF_field, **obsSF_dicts[key])
+            # Add class instance to dictionary
+            self.obsSF[key] = obsSF_field
 
         # Cannot construct overlapping field system if only one field
         # This selection function doesn't currently work for a single field
@@ -403,7 +423,7 @@ class SFGenerator():
             field_list = self.pointings.fieldID.values.tolist()
 
             # Locations for storage of solutions
-            obsSelectionFunction = {}
+            obsSF_dicts = {}
 
             # Build results into a full list of multiprocessing instances
             print("multiprocessing process for observable fields...\n")
@@ -443,14 +463,14 @@ class SFGenerator():
 
             for r in results:
                 obsSF_field, field = r
-                obsSelectionFunction[field] = obsSF_field
+                obsSF_dicts[field] = vars(obsSF_field)
 
         else:
             # List of fields in pointings database
             field_list = self.pointings.fieldID.values.tolist()
 
             # Locations for storage of solutions
-            obsSelectionFunction = {}
+            obsSF_dicts = {}
 
             # Field numbering to show progress
             fieldN = 0
@@ -463,13 +483,13 @@ class SFGenerator():
                 obsSF_field, field = iterateField(self.stars, self.photo_path, field,
                                                 self.photo_tag, self.photo_coords, self.pointings.loc[field],
                                                 self.cm_limits)
-                obsSelectionFunction[field] = obsSF_field
+                obsSF_dicts[field] = vars(obsSF_field)
 
                 fieldN+=1
 
         print("Parallel done")
 
-        return obsSelectionFunction
+        return obsSF_dicts
 
 
     def createDistMhAgeInterp(self, agerng=(0,13), mhrng=(-2.5,0.5)):
