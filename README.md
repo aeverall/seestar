@@ -1,14 +1,14 @@
-# SelF
+# seestar
 
-**SelF** is a Python package for creating and using **Sel**ection **F**unctions for spectroscopic stellar surveys.
+**seestar** is a Python package for creating and using Selection Functions for spectroscopic stellar surveys.
 
 The full theory and design of the selection function can be found in Everall & Das (in prep.), please cite this paper when using the repository.
 
-The purpose of **SelF** is to provide an *easy-to-use*, *fast processing* and *mathematically consistent* method for calculating selection functions for spectroscopic stellar surveys. We hope that this will consolidate the many different methods currently used to calculate selection functions. We also provide precalculated selection functions for popular spectroscopic surveys.
+The purpose of **seestar** is to provide an *easy-to-use*, *fast processing* and *mathematically consistent* method for calculating selection functions for spectroscopic stellar surveys. We hope that this will consolidate the many different methods currently used to calculate selection functions. We also provide precalculated selection functions for popular spectroscopic surveys.
 
 This project will aim to constantly evolve and improve with developments to survey data and requirements of the research being performed. We will list improvements and updates to come as well as the selection functions we are building [here](Future.md).
 
-In the remainder of this README file, we will explain how to install and run **SelF** to calculate selection functions for your favourite surveys.
+In the remainder of this README file, we will explain how to install and run **seestar** to calculate selection functions for your favourite surveys.
 
 
 ***
@@ -26,8 +26,8 @@ In the remainder of this README file, we will explain how to install and run **S
 Go to the location where you would like to store the repository.
 
 ```
-$ git clone https://github.com/aeverall/SelF.git
-$ cd self
+$ git clone https://github.com/aeverall/seestar.git
+$ cd seestar
 $ python setup.py install
 ```
 The package requires the following dependencies:
@@ -48,7 +48,7 @@ The code is built for Python 2.7 so currently does not work for Python 3.
 # Calculate selection functions <a name="SF"></a>
 
 These sections describe how to calculate selection function probabilities, using our [premade selection functions](#PreSF) and from scratch for [new selection functions](#NewSF).
-Before doing this, please follow the [install](#install) instructions to set up **SelF** on your device.
+Before doing this, please follow the [install](#install) instructions to set up **seestar** on your device.
 
 
 ***
@@ -56,7 +56,7 @@ Before doing this, please follow the [install](#install) instructions to set up 
 
 ### Download data files
 
-The files required to run **SelF** are too large to store on GitHub so they are kept separately.
+The files required to run **seestar** are too large to store on GitHub so they are kept separately.
 Data we provide can be found [here](#https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing).
 
 Each gzip file contains the selection function data for the specified survey and data release (e.g. APOGEE14 refers to DR14 of the Apache Point Observatory Galaxy Evolution Experiment).
@@ -64,7 +64,7 @@ Download the data then extract the file to the location where you wish to store 
 
 The code repository now doesn't know where the data is stored. To give the repository the location, run the following in a Python shell:
 ```python
-from self import setdatalocation
+from seestar import setdatalocation
 setdatalocation.replaceNames('/home/USER/PATH')
 ```
 Use an absolute directory location (/home/USER/PATH) rather than relative locations (../USER/PATH)
@@ -84,7 +84,7 @@ All examples given are using Galaxia data (labelled as Galaxia3 as we tested wit
 
 To initialise prebuilt selection function:
 ```python
-from self import SelectionGrid
+from seestar import SelectionGrid
 
 # To initialise the prebuilt selection function:
 Galaxia_sf = SeletionGrid.SFGenerator('home/USER/PATH/Galaxia3/Galaxia3_fileinfo.pickle')
@@ -185,11 +185,11 @@ For each survey, a class containing the description of file locations and dataty
 A folder in the data directory can be created by doing one of the following:
 In command line:
 ```
-$ python self/createNew.py
+$ python seestar/createNew.py
 ```
 In a python shell:
 ```python
-from self import createNew
+from seestar import createNew
 createNew.create()
 ```
 
@@ -235,7 +235,7 @@ Once you have pickled the SURVEY-NAME_fileinfo.pickle file, the selection functi
 
 Generate the selection function.
 ```python
-from self import SelectionGrid
+from seestar import SelectionGrid
 
 Survey_sf = SeletionGrid.SFGenerator('PATH/TO/DIRECTORY/SURVEY-NAME/SURVEY-NAME_fileinfo.pickle', 
 						ColMagSF_exists=False)
@@ -320,7 +320,7 @@ Data for the isochrones is provided in two formats:
 	```python
 	import dill
 	iso_pickle = 'PATH/TO/DIRECTORY/isoPARSEC/stellarprop_parsecdefault_currentmass.dill'
-	
+
 	with open(iso_pickle, "rb") as input:
 	    pi = dill.load(input)
 	
@@ -348,7 +348,7 @@ Data for the isochrones is provided in two formats:
 	dataframe = pd.DataFrame(array, columns=['glon', 'glat', 's', 'age', 'mh', 'mass'])
 	
 	
-	from self import IsochroneScaling
+	from seestar import IsochroneScaling
 	isoCalculator = IsochroneScaling.IntrinsicToObservable()
 	
 	# If just calculating H-absolute and colour(J-K):

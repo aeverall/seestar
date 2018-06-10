@@ -9,7 +9,7 @@ Contains tools for:
 """
 
 setup(
-    name="SelF",
+    name="seestar",
     version="1.0",
     
     # Project uses reStructuredText, so ensure that the docutils get
@@ -23,14 +23,14 @@ setup(
         #'hello': ['*.msg'],
     },
 
-    packages = ['self'],
+    packages = ['seestar'],
 
     # metadata for upload to PyPI
     author="Andrew Everall",
     author_email="andrew.everall1995@gmail.com",
     description="Selection Function package",
     license="GPLv3",
-    url="https://github.aeverall/SelF.git",   # project home page, if any
+    url="https://github.aeverall/seestar.git",   # project home page, if any
 
     # could also include long_description, download_url, classifiers, etc.
 )

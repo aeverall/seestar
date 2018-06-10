@@ -1,19 +1,16 @@
 SFdata/
 Presentation/
 
-UpcomingImprovements.md
-
-self/ComputerOps.py
-self/CoordTrans.py
-self/DataImport.py
-self/PlotCoordinates.py
-self/Optimizers.py
-self/FieldAssignment.py
+seestar/ComputerOps.py
+seestar/CoordTrans.py
+seestar/DataImport.py
+seestar/PlotCoordinates.py
+seestar/Optimizers.py
+seestar/FieldAssignment.py
 *.pyc
 
 SFgithub.sublime-workspace
 
-self.egg*
-SelF.egg*
+*egg*
 build/
 dist/
