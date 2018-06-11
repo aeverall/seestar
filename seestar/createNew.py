@@ -67,9 +67,9 @@ def create():
 
 
 	# Location of pickle file which the file information will be stored in
-	pklfile = os.path.join(directory, folder, folder+"_FileInformation.pickle")
+	pklfile = os.path.join(directory, folder, folder+"_fileinfo.pickle")
 	# Pickle the file information
-	FileInfo.pickleInformation(pklfile)
+	FileInfo.save(pklfile)
 
 
 if __name__ == "__main__":

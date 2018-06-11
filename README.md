@@ -219,7 +219,7 @@ file_info.load(path)
 file_info?
 
 # To test the file names are set correctly and the data structures are correct/
-file_info.test()
+file_info.testFiles()
 
 # Print out all attributes and their current values:
 file_info.printValues()
