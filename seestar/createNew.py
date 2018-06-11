@@ -1,4 +1,6 @@
 import os
+from seestar import surveyInfoPickler
+
 
 def create():
 
@@ -18,8 +20,6 @@ def create():
 
 	# Create the directory
 	os.makedirs( os.path.join(directory, folder) )
-
-	from selfun import surveyInfoPickler
 
 	# Initialise class
 	FileInfo = surveyInfoPickler.surveyInformation()

@@ -55,13 +55,13 @@ import matplotlib.gridspec as gridspec
 from matplotlib.colors import LogNorm
 from matplotlib.ticker import LogFormatter
 
-from ArrayMechanics import *
-import StatisticalModels
-import FieldUnions
-import SFInstanceClasses
-import IsochroneScaling
-import surveyInfoPickler
-
+from seestar import ArrayMechanics as AM
+from seestar import StatisticalModels
+from seestar import FieldUnions
+from seestar import SFInstanceClasses
+from seestar import IsochroneScaling
+from seestar import surveyInfoPickler
+from seestar import AngleDisks
 
 class SFGenerator():
 
@@ -362,8 +362,8 @@ class SFGenerator():
         elif angle_units in ('rad','radians'): pass
         else: raise ValueError ("I don't understand the units specified")
         # Include Galactic Coordinates
-        if coordinates == 'Equatorial': data['l'], data['b'] = EquatToGal(data.RA, data.Dec)
-        if coordinates == 'Galactic': data['RA'], data['Dec'] = GalToEquat(data.l, data.b)
+        if coordinates == 'Equatorial': data['l'], data['b'] = AngleDisks.EquatToGal(data.RA, data.Dec)
+        if coordinates == 'Galactic': data['RA'], data['Dec'] = AngleDisks.GalToEquat(data.l, data.b)
 
         if data_source=='stars': 
             data['Colour'] = data.appA - data.appB
@@ -664,7 +664,7 @@ class SFGenerator():
         '''
         print("\nNote: this is iterating through 10k stars at a time.\n\
         If lots of memory available, increase N for greater efficiency.")
-        df = AnglePointsToPointingsMatrix(stars, self.pointings,
+        df = AM.AnglePointsToPointingsMatrix(stars, self.pointings,
                                           Phi, Th, 'SolidAngle', IDtype = self.fieldlabel_type,
                                           Nsample = 10000)
         
@@ -1149,8 +1149,8 @@ def IndexColourMagSG(points, N_2D,
 
 
     # Find grid square centre coordinates
-    mag_centers = BoundaryToCentre(magnitudes)
-    col_centers = BoundaryToCentre(colours)
+    mag_centers = AM.BoundaryToCentre(magnitudes)
+    col_centers = AM.BoundaryToCentre(colours)
 
     # Extend grids to deal with boundary effects
     # For 2MASS, range is limited by RAVE range therefore we need to extend non-zero values out
@@ -1161,17 +1161,17 @@ def IndexColourMagSG(points, N_2D,
         mag_lb, mag_ub = mag_centers[0]-dmag, mag_centers[len(mag_centers)-1]+dmag
         dcol = col_centers[1]-col_centers[0]
         col_lb, col_ub = col_centers[0]-dcol, col_centers[len(col_centers)-1]+dcol
-        selection_grid, mag_centers = extendGrid(selection_grid, mag_centers, axis=0,
+        selection_grid, mag_centers = AM.extendGrid(selection_grid, mag_centers, axis=0,
                                                 x_lbound=True, x_lb=mag_lb,
                                                 x_ubound=True, x_ub=mag_ub)
-        selection_grid, col_centers = extendGrid(selection_grid, col_centers, axis=1,
+        selection_grid, col_centers = AM.extendGrid(selection_grid, col_centers, axis=1,
                                                 x_lbound=True, x_lb=col_lb,
                                                 x_ubound=True, x_ub=col_ub)
     # For RAVE, region is limited by population therefore we need to extend zeros out
     else:
-        selection_grid, mag_centers = extendGrid(selection_grid,
+        selection_grid, mag_centers = AM.extendGrid(selection_grid,
                                                 mag_centers, axis=0)
-        selection_grid, col_centers = extendGrid(selection_grid,
+        selection_grid, col_centers = AM.extendGrid(selection_grid,
                                                 col_centers, axis=1)
 
 
@@ -1260,10 +1260,10 @@ def fieldInterp(fieldInfo, agegrid, mhgrid, sgrid,
         sfgrid = np.array(sfgrid)
 
         # Expand grids to account for central coordinates
-        sfgrid, age4grid = extendGrid(sfgrid, agegrid, axis=0, x_lbound=True, x_lb=0.)
-        sfgrid, mh4grid = extendGrid(sfgrid, mhgrid, axis=1)
-        sfgrid, mass4grid = extendGrid(sfgrid, massgrid, axis=2, x_lbound=True, x_lb=0.)
-        sfgrid, s4grid = extendGrid(sfgrid, sgrid, axis=3, x_lbound=True, x_lb=0.)
+        sfgrid, age4grid = AM.extendGrid(sfgrid, agegrid, axis=0, x_lbound=True, x_lb=0.)
+        sfgrid, mh4grid = AM.extendGrid(sfgrid, mhgrid, axis=1)
+        sfgrid, mass4grid = AM.extendGrid(sfgrid, massgrid, axis=2, x_lbound=True, x_lb=0.)
+        sfgrid, s4grid = AM.extendGrid(sfgrid, sgrid, axis=3, x_lbound=True, x_lb=0.)
 
         sf4interpolant = RGI((age4grid,mh4grid,mass4grid,s4grid),sfgrid, bounds_error=False, fill_value=0.0)
         del(age4grid,mh4grid,mass4grid,s4grid,sfgrid)
@@ -1281,9 +1281,9 @@ def fieldInterp(fieldInfo, agegrid, mhgrid, sgrid,
         sfgrid = np.array(sfgrid)
 
         # Expand grids to account for central coordinates
-        sfgrid, age3grid = extendGrid(sfgrid, agegrid, axis=0, x_lbound=True, x_lb=0.)
-        sfgrid, mh3grid = extendGrid(sfgrid, mhgrid, axis=1)
-        sfgrid, s3grid = extendGrid(sfgrid, sgrid, axis=2, x_lbound=True, x_lb=0.)
+        sfgrid, age3grid = AM.extendGrid(sfgrid, agegrid, axis=0, x_lbound=True, x_lb=0.)
+        sfgrid, mh3grid = AM.extendGrid(sfgrid, mhgrid, axis=1)
+        sfgrid, s3grid = AM.extendGrid(sfgrid, sgrid, axis=2, x_lbound=True, x_lb=0.)
 
         sf3interpolant = RGI((age3grid,mh3grid,s3grid),sfgrid, bounds_error=False, fill_value=0.0)
 
@@ -1383,7 +1383,7 @@ def findNearestFields(anglelist, pointings, Phistr, Thstr):
         Phi = anglelist[0][i]
         Th = anglelist[1][i]
         points = pointings[[Phistr, Thstr, 'fieldID']]
-        displacement = AngleSeparation(points[Phistr], points[Thstr], Phi, Th)
+        displacement = AM.AngleSeparation(points[Phistr], points[Thstr], Phi, Th)
         field = points[displacement == displacement.min()]['fieldID'].iloc[0]
         
         fieldlist.append(field)

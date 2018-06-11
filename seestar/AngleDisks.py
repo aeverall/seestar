@@ -50,16 +50,9 @@ import numpy as np
 import pandas as pd
 
 import sys, os
-os.path.exists("../../Project/Milky/FitGalaxyModels/")
-sys.path.append("../FitGalMods/")
 
 from matplotlib import pyplot as plt
 import matplotlib
-
-#import CoordTrans
-
-#from DataImport import *
-#from ArrayMechanics import *
 
 def AngleShift(Th):
 
