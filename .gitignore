@@ -1,14 +1,17 @@
 SFdata/
 Presentation/
+seestar/SetFields/
 
-UpcomingImprovements.md
-
-selfun/AngleDisks.py
-selfun/ComputerOps.py
-selfun/CoordTrans.py
-selfun/DataImport.py
-selfun/PlotCoordinates.py
-selfun/Optimizers.py
+seestar/ComputerOps.py
+seestar/CoordTrans.py
+seestar/DataImport.py
+seestar/PlotCoordinates.py
+seestar/Optimizers.py
+seestar/FieldAssignment.py
 *.pyc
 
 SFgithub.sublime-workspace
+
+*egg*
+build/
+dist/

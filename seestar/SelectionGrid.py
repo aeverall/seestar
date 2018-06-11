@@ -55,12 +55,13 @@ import matplotlib.gridspec as gridspec
 from matplotlib.colors import LogNorm
 from matplotlib.ticker import LogFormatter
 
-from ArrayMechanics import *
-import StatisticalModels
-import FieldUnions
-import SFInstanceClasses
-import IsochroneScaling
-
+from seestar import ArrayMechanics as AM
+from seestar import StatisticalModels
+from seestar import FieldUnions
+from seestar import SFInstanceClasses
+from seestar import IsochroneScaling
+from seestar import surveyInfoPickler
+from seestar import AngleDisks
 
 class SFGenerator():
 
@@ -103,9 +104,10 @@ class SFGenerator():
         # Change message to check that SF is running for updated version
         print("Latest Version")
 
+        # Load survey information as a blank class (for loading in data.)
+        file_info = surveyInfoPickler.surveyInformation()
         # Get file names and coordinates from pickled file
-        with open(pickleFile, "rb") as input:
-            file_info  = pickle.load(input) 
+        file_info.load(pickleFile)
 
         spectro_coords = file_info.spectro_coords
         spectro_path = file_info.spectro_path
@@ -146,23 +148,32 @@ class SFGenerator():
             print('Creating Distance Age Metalicity interpolants...')
              #surveysf, agerng, mhrng, srng = self.createDistMhAgeInterp()
             instanceSF, instanceIMFSF, agerng, mhrng, magrng, colrng = self.createDistMhAgeInterp()
+            # Comvert classes to dictionaries of attributes
+            instanceSF_dict = vars(instanceSF)
+            instanceIMFSF_dict = vars(instanceIMFSF)
             with open(sf_pickle_path, 'wb') as handle:
-                    pickle.dump((instanceSF, instanceIMFSF, agerng, mhrng, magrng, colrng), handle)
+                    pickle.dump((instanceSF_dict, instanceIMFSF_dict, agerng, mhrng, magrng, colrng), handle)
             self.instanceSF=instanceSF
             self.instanceIMFSF=instanceIMFSF
             self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
-            print("...done.\n") 
-
+            print("...done.\n")
         else:              
-        
             # Once full selection function has been created
             # Unpickle survey selection function
             print("Unpickling survey selection function...")
             with open(sf_pickle_path, "rb") as input:
-                self.instanceSF, self.instanceIMFSF, self.agerng, self.mhrng, \
+                instanceSF_dict, instanceIMFSF_dict, self.agerng, self.mhrng, \
                 magrng, colrng = pickle.load(input)
             print("...done.\n") 
+
+            # Load class instance from saved dictionary
+            self.instanceSF = SFInstanceClasses.intMassSF_isocalc()
+            self.instanceIMFSF = SFInstanceClasses.intSF_isocalc()
+            SFInstanceClasses.setattrs(self.instanceSF, **instanceSF_dict)
+            SFInstanceClasses.setattrs(self.instanceIMFSF, **instanceIMFSF_dict)
+
             self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
+
 
         # ColMagSF_exists true if Observable coord SF has already been calculated
         if not ColMagSF_exists:
@@ -173,19 +184,29 @@ class SFGenerator():
             print("...done.\n")
         
             print('Creating Colour-Magnitude Field interpolants...')
-            self.obsSF = self.iterateAllFields()
+            obsSF_dicts = self.iterateAllFields()
             print('\nnow pickling them...')
             with open(obsSF_pickle_path, 'wb') as handle:
-                pickle.dump(self.obsSF, handle)
+                pickle.dump(obsSF_dicts, handle)
             print("...done\n.")
-                
         else:
             # Once Colour Magnitude selection functions have been created
             # Unpickle colour-magnitude interpolants
             print("Unpickling colour-magnitude interpolant dictionaries...")
             with open(obsSF_pickle_path, "rb") as input:
-                self.obsSF = pickle.load(input)
+                obsSF_dicts = pickle.load(input)
             print("...done.\n")
+
+        # Load classes from dictionaries
+        # Initialise dictionary
+        self.obsSF = {}
+        for field in obsSF_dicts:
+            # Initialise class instance
+            obsSF_field = SFInstanceClasses.observableSF(field)
+            # Set class attributes from dictionary
+            SFInstanceClasses.setattrs(obsSF_field, **obsSF_dicts[field])
+            # Add class instance to dictionary
+            self.obsSF[field] = obsSF_field
 
         # Cannot construct overlapping field system if only one field
         # This selection function doesn't currently work for a single field
@@ -341,8 +362,8 @@ class SFGenerator():
         elif angle_units in ('rad','radians'): pass
         else: raise ValueError ("I don't understand the units specified")
         # Include Galactic Coordinates
-        if coordinates == 'Equatorial': data['l'], data['b'] = EquatToGal(data.RA, data.Dec)
-        if coordinates == 'Galactic': data['RA'], data['Dec'] = GalToEquat(data.l, data.b)
+        if coordinates == 'Equatorial': data['l'], data['b'] = AngleDisks.EquatToGal(data.RA, data.Dec)
+        if coordinates == 'Galactic': data['RA'], data['Dec'] = AngleDisks.GalToEquat(data.l, data.b)
 
         if data_source=='stars': 
             data['Colour'] = data.appA - data.appB
@@ -403,7 +424,7 @@ class SFGenerator():
             field_list = self.pointings.fieldID.values.tolist()
 
             # Locations for storage of solutions
-            obsSelectionFunction = {}
+            obsSF_dicts = {}
 
             # Build results into a full list of multiprocessing instances
             print("multiprocessing process for observable fields...\n")
@@ -443,14 +464,14 @@ class SFGenerator():
 
             for r in results:
                 obsSF_field, field = r
-                obsSelectionFunction[field] = obsSF_field
+                obsSF_dicts[field] = vars(obsSF_field)
 
         else:
             # List of fields in pointings database
             field_list = self.pointings.fieldID.values.tolist()
 
             # Locations for storage of solutions
-            obsSelectionFunction = {}
+            obsSF_dicts = {}
 
             # Field numbering to show progress
             fieldN = 0
@@ -463,13 +484,13 @@ class SFGenerator():
                 obsSF_field, field = iterateField(self.stars, self.photo_path, field,
                                                 self.photo_tag, self.photo_coords, self.pointings.loc[field],
                                                 self.cm_limits)
-                obsSelectionFunction[field] = obsSF_field
+                obsSF_dicts[field] = vars(obsSF_field)
 
                 fieldN+=1
 
         print("Parallel done")
 
-        return obsSelectionFunction
+        return obsSF_dicts
 
 
     def createDistMhAgeInterp(self, agerng=(0,13), mhrng=(-2.5,0.5)):
@@ -643,7 +664,7 @@ class SFGenerator():
         '''
         print("\nNote: this is iterating through 10k stars at a time.\n\
         If lots of memory available, increase N for greater efficiency.")
-        df = AnglePointsToPointingsMatrix(stars, self.pointings,
+        df = AM.AnglePointsToPointingsMatrix(stars, self.pointings,
                                           Phi, Th, 'SolidAngle', IDtype = self.fieldlabel_type,
                                           Nsample = 10000)
         
@@ -1128,8 +1149,8 @@ def IndexColourMagSG(points, N_2D,
 
 
     # Find grid square centre coordinates
-    mag_centers = BoundaryToCentre(magnitudes)
-    col_centers = BoundaryToCentre(colours)
+    mag_centers = AM.BoundaryToCentre(magnitudes)
+    col_centers = AM.BoundaryToCentre(colours)
 
     # Extend grids to deal with boundary effects
     # For 2MASS, range is limited by RAVE range therefore we need to extend non-zero values out
@@ -1140,17 +1161,17 @@ def IndexColourMagSG(points, N_2D,
         mag_lb, mag_ub = mag_centers[0]-dmag, mag_centers[len(mag_centers)-1]+dmag
         dcol = col_centers[1]-col_centers[0]
         col_lb, col_ub = col_centers[0]-dcol, col_centers[len(col_centers)-1]+dcol
-        selection_grid, mag_centers = extendGrid(selection_grid, mag_centers, axis=0,
+        selection_grid, mag_centers = AM.extendGrid(selection_grid, mag_centers, axis=0,
                                                 x_lbound=True, x_lb=mag_lb,
                                                 x_ubound=True, x_ub=mag_ub)
-        selection_grid, col_centers = extendGrid(selection_grid, col_centers, axis=1,
+        selection_grid, col_centers = AM.extendGrid(selection_grid, col_centers, axis=1,
                                                 x_lbound=True, x_lb=col_lb,
                                                 x_ubound=True, x_ub=col_ub)
     # For RAVE, region is limited by population therefore we need to extend zeros out
     else:
-        selection_grid, mag_centers = extendGrid(selection_grid,
+        selection_grid, mag_centers = AM.extendGrid(selection_grid,
                                                 mag_centers, axis=0)
-        selection_grid, col_centers = extendGrid(selection_grid,
+        selection_grid, col_centers = AM.extendGrid(selection_grid,
                                                 col_centers, axis=1)
 
 
@@ -1239,10 +1260,10 @@ def fieldInterp(fieldInfo, agegrid, mhgrid, sgrid,
         sfgrid = np.array(sfgrid)
 
         # Expand grids to account for central coordinates
-        sfgrid, age4grid = extendGrid(sfgrid, agegrid, axis=0, x_lbound=True, x_lb=0.)
-        sfgrid, mh4grid = extendGrid(sfgrid, mhgrid, axis=1)
-        sfgrid, mass4grid = extendGrid(sfgrid, massgrid, axis=2, x_lbound=True, x_lb=0.)
-        sfgrid, s4grid = extendGrid(sfgrid, sgrid, axis=3, x_lbound=True, x_lb=0.)
+        sfgrid, age4grid = AM.extendGrid(sfgrid, agegrid, axis=0, x_lbound=True, x_lb=0.)
+        sfgrid, mh4grid = AM.extendGrid(sfgrid, mhgrid, axis=1)
+        sfgrid, mass4grid = AM.extendGrid(sfgrid, massgrid, axis=2, x_lbound=True, x_lb=0.)
+        sfgrid, s4grid = AM.extendGrid(sfgrid, sgrid, axis=3, x_lbound=True, x_lb=0.)
 
         sf4interpolant = RGI((age4grid,mh4grid,mass4grid,s4grid),sfgrid, bounds_error=False, fill_value=0.0)
         del(age4grid,mh4grid,mass4grid,s4grid,sfgrid)
@@ -1260,9 +1281,9 @@ def fieldInterp(fieldInfo, agegrid, mhgrid, sgrid,
         sfgrid = np.array(sfgrid)
 
         # Expand grids to account for central coordinates
-        sfgrid, age3grid = extendGrid(sfgrid, agegrid, axis=0, x_lbound=True, x_lb=0.)
-        sfgrid, mh3grid = extendGrid(sfgrid, mhgrid, axis=1)
-        sfgrid, s3grid = extendGrid(sfgrid, sgrid, axis=2, x_lbound=True, x_lb=0.)
+        sfgrid, age3grid = AM.extendGrid(sfgrid, agegrid, axis=0, x_lbound=True, x_lb=0.)
+        sfgrid, mh3grid = AM.extendGrid(sfgrid, mhgrid, axis=1)
+        sfgrid, s3grid = AM.extendGrid(sfgrid, sgrid, axis=2, x_lbound=True, x_lb=0.)
 
         sf3interpolant = RGI((age3grid,mh3grid,s3grid),sfgrid, bounds_error=False, fill_value=0.0)
 
@@ -1362,7 +1383,7 @@ def findNearestFields(anglelist, pointings, Phistr, Thstr):
         Phi = anglelist[0][i]
         Th = anglelist[1][i]
         points = pointings[[Phistr, Thstr, 'fieldID']]
-        displacement = AngleSeparation(points[Phistr], points[Thstr], Phi, Th)
+        displacement = AM.AngleSeparation(points[Phistr], points[Thstr], Phi, Th)
         field = points[displacement == displacement.min()]['fieldID'].iloc[0]
         
         fieldlist.append(field)

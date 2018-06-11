@@ -33,8 +33,9 @@ Requirements
 import itertools
 import numpy as np
 import pandas as pd
-import ArrayMechanics
 import sys, gc
+
+from seestar import ArrayMechanics
 
 class FieldUnion():
 

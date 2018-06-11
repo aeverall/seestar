@@ -9,12 +9,12 @@ Contains tools for:
 """
 
 setup(
-    name="selfun",
+    name="seestar",
     version="1.0",
     
     # Project uses reStructuredText, so ensure that the docutils get
     # installed or upgraded on the target machine
-    install_requires=['numpy', 'pandas', 'matplotlib', 'scipy'],
+    install_requires=['numpy', 'pandas', 'scipy', 'regex', 'matplotlib', 'seaborn', 'dill'],
 
     package_data={
         # If any package contains *.txt or *.rst files, include them:
@@ -23,14 +23,14 @@ setup(
         #'hello': ['*.msg'],
     },
 
-    packages = ['selfun'],
+    packages = ['seestar'],
 
     # metadata for upload to PyPI
     author="Andrew Everall",
     author_email="andrew.everall1995@gmail.com",
     description="Selection Function package",
     license="GPLv3",
-    url="https://github.aeverall/selfun",   # project home page, if any
+    url="https://github.aeverall/seestar.git",   # project home page, if any
 
     # could also include long_description, download_url, classifiers, etc.
 )

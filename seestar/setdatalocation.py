@@ -1,5 +1,5 @@
 import pickle, os
-import surveyInfoPickler
+from seestar import surveyInfoPickler
 
 def replaceNames(directory):
 

@@ -81,9 +81,7 @@ sys.path.append("../FitGalMods/")
 from matplotlib import pyplot as plt
 import matplotlib
 
-import CoordTrans
-
-from AngleDisks import *
+from seestar import AngleDisks
 
 
 def BoundaryToCentre(bin_bounds):
@@ -507,8 +505,8 @@ def AngleSeparation(Phi, Th, Phi0, Th0):
     N.B. all ndarrays must be the same size
     '''
 
-    Th = AngleShift(Th)
-    Th0 = AngleShift(Th0)
+    Th = AngleDisks.AngleShift(Th)
+    Th0 = AngleDisks.AngleShift(Th0)
 
     delta = np.arccos( np.cos(Th0)*np.cos(Th) + \
                        np.sin(Th0)*np.sin(Th)*np.cos(Phi - Phi0))
