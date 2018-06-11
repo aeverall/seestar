@@ -206,11 +206,13 @@ A folder labeled SURVEY-NAME will be generated in the location PATH/TO/DIRECTORY
 The information held in this file will need to be changed to match the data of the survey.
 ```python
 import pickle
+from seestar import surveyInfoPickler
 
-# Load infofile (survey name is "surveyname")
+# Create instance of information class
+file_info = surveyInfoPickler.surveyInformation()
+# Load infofile (survey name is "SURVEY-NAME")
 path = 'PATH/TO/DIRECTORY/SURVEY-NAME/SURVEY-NAME_fileinfo.pickle'
-with open(path, "rb") as input:
-    file_info  = pickle.load(input)
+file_info.load(path)
 # file_info is an instance of a class for containing all the file locations and data structures.
 
 # To view a docstring which has example code on how to set each of the features
@@ -226,7 +228,7 @@ file_info.printValues()
 file_info.attribute = "value of attribute"
 
 # Repickle the class instance
-file_info.pickleInformation()
+file_info.save(path)
 ```
 Once you have pickled the SURVEY-NAME_fileinfo.pickle file, the selection function will be able to use those file locations and structures.
 
