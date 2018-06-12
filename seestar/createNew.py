@@ -71,6 +71,8 @@ def create():
 	# Pickle the file information
 	FileInfo.save(pklfile)
 
+	return pklfile
+
 
 if __name__ == "__main__":
 	create()
