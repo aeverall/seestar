@@ -91,7 +91,7 @@ class IntrinsicToObservable():
         # Conversion of absolute to apparent magnitude
         self.appmag = lambda absmag, s: absmag + 5*np.log10(s*1000/10)
         # Conversion of apparent to absolute magnitude
-        self.absmag = lambda appmag, s: absmag - 5*np.log10(s*1000/10)
+        self.absmag = lambda appmag, s: appmag - 5*np.log10(s*1000/10)
 
         # Columns for A, B and C magnitudes in iso_pickle file
         # Colour = A-B
@@ -959,7 +959,7 @@ class NearestIsochrone:
         # Conversion of absolute to apparent magnitude
         self.appmag = lambda absmag, s: absmag + 5*np.log10(s*1000/10)
         # Conversion of apparent to absolute magnitude
-        self.absmag = lambda appmag, s: absmag - 5*np.log10(s*1000/10)
+        self.absmag = lambda appmag, s: appmag - 5*np.log10(s*1000/10)
         
     def __call__(self, age, mh, mass, s):
 
