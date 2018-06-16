@@ -80,7 +80,7 @@ Each survey folder in the database contains the following files:
 
 ### Calculating SF probability
 
-All examples given are using Galaxia data (labelled as Galaxia3 as we tested with 3 fields). Folling the steps and example files should enable you to recreate the results published in Everall & Das (in prep.).
+All examples given are using Galaxia data (labelled as Galaxia3 as we tested with 3 fields). Following the steps and example files should enable you to recreate the results published in Everall & Das (in prep.).
 
 To initialise prebuilt selection function:
 ```python
