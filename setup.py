@@ -23,7 +23,7 @@ setup(
         #'hello': ['*.msg'],
     },
 
-    packages = ['seestar'],
+    packages = ['seestar', 'seestar.SetFields'],
 
     # metadata for upload to PyPI
     author="Andrew Everall",

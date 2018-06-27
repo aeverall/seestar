@@ -223,23 +223,23 @@ class FieldUnion():
 
 # Calculating field fractional overlaps
 
-def GenerateRandomPoints(N):
+def GenerateRandomPoints(N, labels=['phi', 'theta', 'halfangle']):
 
     # Latitude weighted by cosine angle distribution
     brand = np.arcsin(2*np.random.rand(N)-1)
     lrand = np.random.rand(N)*2*np.pi
     # Generate dataframe for random points across sky
     coordsrand = np.vstack((lrand, brand)).T
-    coordsrand = pd.DataFrame(coordsrand, columns=["l", "b"])
+    coordsrand = pd.DataFrame(coordsrand, columns=[labels[0], labels[1]])
     
     return coordsrand
 
-def CalculateIntersections(coordsrand, fields, IDtype):
+def CalculateIntersections(coordsrand, fields, IDtype,  labels=['phi','theta','halfangle']):
 
     print('Counting intersection area fractions...')
 
     # Add column with the list of fields which overlap at each point
-    fields = ArrayMechanics.AnglePointsToPointingsMatrix(coordsrand, fields, "l", "b", 'SolidAngle', IDtype=IDtype)
+    fields = ArrayMechanics.AnglePointsToPointingsMatrix(coordsrand, fields, labels[0], labels[1], labels[2], IDtype=IDtype)
     
     # Only consider points with field
     intersections = fields[fields.points.map(len)>0]
@@ -277,12 +277,12 @@ def CalculateIntersections(coordsrand, fields, IDtype):
     
     return intersections[["points", "counts", "fullregion", "fraction"]] 
     
-def CreateIntersectionDatabase(N, fields, IDtype):
+def CreateIntersectionDatabase(N, fields, IDtype, labels=['phi', 'theta', 'halfangle']):
     
     # Generate full set of points over the entire sky
-    coordsrand = GenerateRandomPoints(N)
+    coordsrand = GenerateRandomPoints(N, labels=labels)
     # Calculate fraction overlaps for each field
-    database = CalculateIntersections(coordsrand, fields, IDtype)
+    database = CalculateIntersections(coordsrand, fields, IDtype, labels=labels)
     
     return database
 
@@ -294,7 +294,7 @@ class MatrixUnion():
 		self.Overlaps = overlapdata
 
 		
-def GenerateMatrices(df, pointings, angle_coords, point_coords, SA, SFcalc, 
+def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcalc, 
 					IDtype = str, Nsample = 10000, basis='intrinsic'):
 
 	'''
@@ -317,8 +317,8 @@ def GenerateMatrices(df, pointings, angle_coords, point_coords, SA, SFcalc,
         Phi: string
             Column header for longitude coordinate (RA or l)
 
-        SA: SolidAngle
-            Column header for solid angle of plate on sky
+        halfange: string
+            Column header for half-angle of plate on sky
 
         surveysf: Dictionary of interpolants
         	Selection Function dictionary to be used to calculate selection function values for fields
@@ -364,10 +364,10 @@ def GenerateMatrices(df, pointings, angle_coords, point_coords, SA, SFcalc,
 		Mt_point = np.transpose(np.repeat([getattr(pointings,point_coords[1])], 
 		                                    len(dfi), 
 		                                    axis=0))
-		Msa_point = np.transpose(np.repeat([getattr(pointings,SA)], 
+		Msa_point = np.transpose(np.repeat([getattr(pointings,halfangle)], 
 		                                    len(dfi), 
 		                                    axis=0))
-		Msa_point = np.sqrt(Msa_point/np.pi) * np.pi/180
+		"""Msa_point = np.sqrt(Msa_point/np.pi) * np.pi/180"""
 		# Boolean matrix specifying whether each point lies on that pointing
 		Mbool = ArrayMechanics.AngleSeparation(Mp_df,
 		                        Mt_df,

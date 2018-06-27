@@ -155,12 +155,7 @@ To create a new selection function, the user needs to create a new survey folder
 
 ### Preparing the survey folder
 
-A new folder in the data directory needs to be created for the survey by doing one of the following. Either type into the command line:
-
-```
-$ python seestar/createNew.py
-```
-or, type in a python shell:
+A new folder in the data directory needs to be created for the survey by doing the following in a python shell:
 ```python
 from seestar import createNew
 createNew.create()

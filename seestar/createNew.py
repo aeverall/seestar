@@ -1,4 +1,6 @@
 import os
+import numpy as np
+import pandas as pd
 from seestar import surveyInfoPickler
 
 
@@ -28,48 +30,101 @@ def create():
 	FileInfo.data_path = directory
 
 	# Folder in .data_path which contains the file informatino
-	FileInfo.spectro = folder
+	FileInfo.survey = folder
 
-	# Filename of spectrograph star information
-	FileInfo.spectro_fname = folder + '_survey.csv'
-	# Column headers for spectrograph information
-	# [ fieldID, Phi, Th, magA, magB, magC]
-	# magA-magB = Colour, magC = m (for selection limits)
-	FileInfo.spectro_coords = ['fieldid', 'glon', 'glat', 'magA', 'magB', 'magC']
-
-	# Filename (in FileInfo.spectro file) for field pointings
-	FileInfo.field_fname = folder + '_fieldinfo.csv'
-	# Column headers in field pointings
-	FileInfo.field_coords = (['fieldID', 'glon', 'glat', 'Magmin', 'Magmax', 'Colmin', 'Colmax'], 'Galactic')
-	# Solid angle area of fiels in deg^2
-	FileInfo.field_SA = 1.
 	# Data type for field IDs
 	FileInfo.fieldlabel_type = str
 
+	# Coordinate system, Equatorial or Galactic
+	FileInfo.coord_system = 'Galactic'
+
+	# Filename of spectrograph star information
+	FileInfo.spectro_fname = folder + '_survey.csv'
+	# magA-magB = Colour, magC = m (for selection limits)
+	FileInfo.spectro_coords = ['fieldID', 'glon', 'glat', 'Japp', 'Kapp', 'Happ']
+	FileInfo.spectro_dtypes = [FileInfo.fieldlabel_type, float, float, float, float, float]
+
+	# Filename (in FileInfo.spectro file) for field pointings
+	FileInfo.field_fname = folder + '_fieldinfo.csv'
+	# Column headers in field pointings and their datatypes
+	FileInfo.field_coords = ['fieldID', 'glon', 'glat', 'halfangle', 'Magmin', 'Magmax', 'Colmin', 'Colmax']
+	FileInfo.field_dtypes = [FileInfo.fieldlabel_type, float, float, float, float, float, float, float]
+
 	# Location where photometric datafiles are stored (require large storage space)
-	FileInfo.photo_path = os.path.join(directory, folder)
-	# Column headers in photometric data files
-	FileInfo.photo_coords = ['glon', 'glat', 'magA', 'magB', 'magC']
+	FileInfo.photo_path = os.path.join(directory, folder, 'photometric')
+	# Column headers in photometric data files and their datatypes
+	FileInfo.photo_coords = ['glon', 'glat', 'Japp', 'Kapp', 'Happ']
+	FileInfo.photo_dtypes = [float, float, float, float, float]
 	# File types for photometric data
 	FileInfo.photo_tag = '.csv'
+
+	FileInfo.theta_rng = (-np.pi/2, np.pi/2)
+	FileInfo.phi_rng = (0, 2*np.pi)
 
 	# pickled file locations which will store the selection function information
 	FileInfo.sf_pickle_fname = folder + '_SF.pickle'
 	FileInfo.obsSF_pickle_fname = folder + '_obsSF.pickle'
 
-	# File containing isochrone data
-	FileInfo.iso_pickle_file = "evoTracks/isochrones.pickle" 
+	# Folder and files containing isochrone data
+	FileInfo.iso_folder = "isoPARSEC"
+	FileInfo.iso_data_file = "stellarprop_parsecdefault_currentmass.dill" 
+	FileInfo.iso_interp_file = "isochrone_interpolantinstances.pickle"
+	FileInfo.iso_mag_file = "isochrone_magnitudes.pickle"
 	# File location for storing information on area overlap of individual fields
 	FileInfo.overlap_fname = folder + '_fieldoverlapdatabase'
 
 	# Run the __call__ routine to setup the file locations
 	FileInfo()
 
+	# Generate spectroscopic catalogue file
+	createCSV(FileInfo.spectro_path, FileInfo.spectro_coords, FileInfo.spectro_dtypes)
+	# Generate field information file
+	createCSV(FileInfo.field_path, FileInfo.field_coords, FileInfo.field_dtypes)
+	# Generate photometric catalogue file
+	createPhoto(FileInfo.photo_path, FileInfo.photo_coords, FileInfo.photo_dtypes)
 
 	# Location of pickle file which the file information will be stored in
 	pklfile = os.path.join(directory, folder, folder+"_fileinfo.pickle")
+	FileInfo.fileinfo_path = pklfile
 	# Pickle the file information
 	FileInfo.save(pklfile)
+
+	message = """
+The files for the project have been generated.
+They are located here: {folder}
+Photometric files are in the subfolder: {photo_path}
+Example csv files have been generated for you with the correct column headings.
+""".format(folder=FileInfo.survey_folder, photo_path=FileInfo.photo_path)
+	print(message)
+
+	return pklfile
+
+
+def createCSV(filelocation, headers, dtypes):
+
+	# create array with data
+	data = np.zeros((len(headers), 5))
+
+	# transform to dataframe
+	df = pd.DataFrame(data.T, columns=headers)
+
+	# Correct data types
+	for i in range(len(headers)):
+		df[headers[i]] = df[headers[i]].astype(dtypes[i])
+
+	# Save csv file
+	df.to_csv(filelocation, index=False, header=True)
+
+def createPhoto(folderlocation, headers, dtypes):
+
+	# Create photometric directory
+	os.makedirs( folderlocation )
+
+	# create a filename
+	photo_file = os.path.join(folderlocation, 'field1.csv')
+
+	# create csv file
+	createCSV(photo_file, headers, dtypes)
 
 
 if __name__ == "__main__":

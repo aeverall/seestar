@@ -12,6 +12,7 @@ import os
 import pickle
 import re
 import pandas as pd
+import numpy as np
 
 class surveyInformation():
 
@@ -27,25 +28,28 @@ class surveyInformation():
 		pickleInformation - Pickles an instance of the class so that it is saved for use
 							in the selection function
 
-	Variables Required
+	Attributes
 	------------------
-		data_path - str - Path to folder containing all data - e.g. '../SFdata'
-		photo_path - str - Path to folder containing photometric survey data - e.g. '/media/.../2MASS'
-				(This is usually kept externally due to the large file size 40+Gb)
+		data_path - str - Path to directory containing Galaxia3 and isoPARSEC folders - e.g. '/home/user/PATHTOFOLDER/'
+		photo_path - str - Path to folder containing photometric survey data - e.g. '/PATH/Galaxia3/photometric'
 
-		spectro - str - Name of spectroscopic survey folder being analysed - e.g. '/RAVE'
-		spectro_fname - str - Name of file containing spectroscopic survey data - e.g. '/RAVE_wPlateIDs.csv'
-
-		field_fname - str - File name of data file for field pointings - e.g. '/RAVE_FIELDS_wFieldIDs.csv
+		spectro - str - Name of spectroscopic survey - e.g. 'Galaxia3'
+		spectro_fname - str - Name of file containing spectroscopic survey data - e.g. 'Galaxia3_survey.csv'
+		field_fname - str - data file for field pointings - e.g. 'Galaxia3_fieldinfo.csv'
 
 		spectro_coords - list of str - List of column headers taken from spectroscopic survey - 
-					- e.g. ['FieldName', 'RA_TGAS', 'DE_TGAS', 'Jmag_2MASS', 'Kmag_2MASS', 'Hmag_2MASS']
+					- e.g. ['fieldid', 'glon', 'glat', 'Happ', 'Japp', 'Kapp']
 		field_coords - tuple of list and str - List of column headers taken from pointings file and coord system (Equatorial or Galactic)
-					- e.g. (['RAVE_FIELD', 'RAdeg', 'DEdeg'], 'Equatorial')
+					- e.g. ['fieldID', 'glon', 'glat', 'Magmin', 'Magmax', 'Colmin', 'Colmax']
 		photo_coords - list of str - List of column headers taken from photometric survey
-					- e.g. ['RA', 'Dec', 'j', 'h', 'k']
+					- e.g. ['glon', 'glat', 'Happ', 'Japp', 'Kapp']
 
-		field_SA - float - Solid angle of all fields in the survey (this will need to be changed if SA is variable) - e.g. 28.3
+		spectro_dtype - list of dtypes - data types of columns in spectroscopic catalogue
+					- e.g. [str, float, float, float, float, float]
+		field_dtype - list of dtypes - data types of columns in field info file
+					- e.g. [str, float, float, float, float, float, float]
+		photo_dtype - list of dtypes- data types of columns in photometric catalogue
+					- e.g. [float, float, float, float, float]
 
 		photo_pickle_fname - str - File name for pickled instance of photometric interpolants - e.g. '/2massdata_RAVEfields.pickle'
 		spectro_pickle_fname - str - File name for pickled instance of spectroscopic interpolants - e.g. '/2massdata_RAVEfields.pickle'
@@ -58,86 +62,61 @@ class surveyInformation():
 
 	Example:
 	--------
-		Demo = surveyInformation()
 
-		# Location where spectrograph survey information is stored
-		Demo.data_path = '../../SFgithub/SFdata'
+		fileinfo_path = '/home/user/..../Galaxia3/Galaxia3_fileinfo.pickle'
 
-		# Folder in .data_path which contains the file informatino
-		Demo.spectro = '/SpectroName'
+		# Load in class instance
+		Demo = surveyInfoPickler.surveyInformation()
+		Demo.load(fileinfo_path)
 
-		# Filename of spectrograph star information
-		Demo.spectro_fname = '/Spectrograph_survey.csv'
-		# Column headers for spectrograph information
-		# [ fieldID, Phi, Th, magA, magB, magC]
-		# magA-magB = Colour, magC = m (for selection limits)
-		Demo.spectro_coords = ['fieldid', 'glon', 'glat', 'J', 'K', 'H']
+		# See attributes of class
+		Demo.printValues()
 
-		# Filename (in Demo.spectro file) for field pointings
-		Demo.field_fname = '/Spectrograph_fieldinfo.csv'
-		# Column headers in field pointings
-		Demo.field_coords = (['fieldID', 'glon', 'glat', 'hmin', 'hmax', 'cmin', 'cmax'], 'Galactic')
-		# Solid angle area of fiels in deg^2
-		Demo.field_SA = 12.565
-		# Data type for field IDs
-		Demo.fieldlabel_type = np.float64
-
-		# Location where photometric datafiles are stored (require large storage space)
-		Demo.photo_path = '/photometricstorage/'
-		# Column headers in photometric data files
-		Demo.photo_coords = ['glon', 'glat', 'J', 'K', 'H']
-		# File types for photometric data
-		Demo.photo_tag = '.csv'
-
-		# pickled file locations which will store the selection function information
-		Demo.spectro_pickle_fname = '/Spectrograph_survey.pickle'
-		Demo.photo_pickle_fname = '/Spectrograph_full.pickle'
-		Demo.sf_pickle_fname = '/Spectrograph_SF.pickle'
-		Demo.obsSF_pickle_fname = '/Spectrograph_obsSF.pickle'
-
-		# File containing isochrone data
-		Demo.iso_pickle_file = "/evoTracks/isochrones.pickle" 
-		# File location for storing information on area overlap of individual fields
-		Demo.overlap_fname = '/Spectrograph_fieldoverlapdatabase'
+		# Change incorrect attributes
+		Demo.attribute = ReplacementAttribute # e.g. new path to data or new file location
 
 		# Run the __call__ routine to setup the file locations
 		Demo()
+
 		# testFiles checks whether the information given is accurate
 		# If this is the first time running, pickle files and overlap_fname shouldn't exist
 		Demo.testFiles()
 
-		# Location of pickle file which the file information will be stored in
-		pklfile = "../../SFgithub/SFdata/SpectroName/SpectrographFileInformation.pickle"
 		# Pickle the file information
-		Demo.pickleInformation(pklfile)
+		Demo.save(fileinfo_path)
 		'''
 
-	def __init__(self):
+	def __init__(self, path=None):
 
 		self.data_path = ''
+		self.survey = ''
+		self.survey_folder = os.path.join(self.data_path, self.survey)
+
 		self.photo_path = ''
 
-		self.spectro = ''
 		self.spectro_fname = ''
-		self.spectro_folder = os.path.join(self.data_path, self.spectro)
-		self.spectro_path = os.path.join(self.spectro_folder, self.spectro_fname)
+		self.spectro_path = os.path.join(self.survey_folder, self.spectro_fname)
 
 		self.field_fname = ''
-		self.field_path = os.path.join(self.spectro_folder, self.field_fname)
+		self.field_path = os.path.join(self.survey_folder, self.field_fname)
 
 		self.spectro_coords = None
 		self.field_coords = None
 		self.photo_coords = None
-
-		self.field_SA = 0.0
+		self.spectro_dtypes = None
+		self.field_dtypes = None
+		self.photo_dtypes = None
+		self.coord_system = ''
+		self.theta_rng = None
+		self.phi_rng = None
 
 		self.sf_pickle_fname = ''
-		self.sf_pickle_path = os.path.join(self.spectro_folder, self.sf_pickle_fname)
+		self.sf_pickle_path = os.path.join(self.survey_folder, self.sf_pickle_fname)
 		self.obsSF_pickle_fname = ''
-		self.obsSF_pickle_path = os.path.join(self.spectro_folder, self.obsSF_pickle_fname)
+		self.obsSF_pickle_path = os.path.join(self.survey_folder, self.obsSF_pickle_fname)
 
 		self.photo_tag = None
-		self.fieldlabel_type = None # str 
+		self.fieldlabel_type = None #self.spectro_dtypes[0]
 
 		self.iso_pickle_file = ''
 		self.iso_pickle_path = os.path.join(self.data_path, self.iso_pickle_file)
@@ -146,74 +125,51 @@ class surveyInformation():
 
 		self.overlap_fname = ''
 
+		self.fileinfo_path = ''
+
+		if path is not None:
+			self.load(path)
+
 	def __call__(self):
 
-		self.spectro_folder = os.path.join(self.data_path, self.spectro)
-		self.spectro_path = os.path.join(self.spectro_folder, self.spectro_fname)
+		self.survey_folder = os.path.join(self.data_path, self.survey)
+		self.spectro_path = os.path.join(self.survey_folder, self.spectro_fname)
 
-		self.field_path = os.path.join(self.spectro_folder, self.field_fname)
+		self.field_path = os.path.join(self.survey_folder, self.field_fname)
 
-		self.sf_pickle_path = os.path.join(self.spectro_folder, self.sf_pickle_fname)
-		self.obsSF_pickle_path = os.path.join(self.spectro_folder, self.obsSF_pickle_fname)
-		self.overlap_path = os.path.join(self.spectro_folder, self.overlap_fname)
+		self.sf_pickle_path = os.path.join(self.survey_folder, self.sf_pickle_fname)
+		self.obsSF_pickle_path = os.path.join(self.survey_folder, self.obsSF_pickle_fname)
+		self.overlap_path = os.path.join(self.survey_folder, self.overlap_fname)
 
-		self.iso_pickle_path = os.path.join(self.data_path, self.iso_pickle_file)
-		self.iso_interp_path = os.path.join(self.data_path, self.iso_interp_file)
+		self.iso_data_path = os.path.join(self.data_path, self.iso_folder, self.iso_data_file)
+		self.iso_interp_path = os.path.join(self.data_path, self.iso_folder, self.iso_interp_file)
+		self.iso_mag_path = os.path.join(self.data_path, self.iso_folder, self.iso_mag_file)
 
 		self.example_string = \
 """
 # Get file names and coordinates from pickled file
-pickleFile = '{directory}/{label}/{label}_FileInformation.pickle'
-with open(pickleFile, "rb") as input:
-    {label}  = pickle.load(input)
+pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
 
-# Location where spectrograph survey information is stored
-{label}.data_path = '../../SFgithub/SFdata'
+# Load in class instance
+{label} = surveyInfoPickler.surveyInformation()
+{label}.load(pickleFile)\n
 
-# Folder in .data_path which contains the file informatino
-{label}.spectro = '{label}'
+# See attributes of class
+{label}.printValues()
 
-# Filename of spectrograph star information
-{label}.spectro_fname = '{label}_survey.csv'
-# Column headers for spectrograph information
-# [ fieldID, Phi, Th, magA, magB, magC]
-# magA-magB = Colour, magC = m (for selection limits)
-{label}.spectro_coords = ['fieldid', 'glon', 'glat', 'J', 'K', 'H']
-
-# Filename (in {label}.spectro file) for field pointings
-{label}.field_fname = '{label}_fieldinfo.csv'
-# Column headers in field pointings
-{label}.field_coords = (['fieldID', 'glon', 'glat', 'hmin', 'hmax', 'cmin', 'cmax'], 'Galactic')
-# Solid angle area of fiels in deg^2
-{label}.field_SA = 1.
-# Data type for field IDs
-{label}.fieldlabel_type = str
-
-# Location where photometric datafiles are stored (require large storage space)
-{label}.photo_path = '{label}'
-# Column headers in photometric data files
-{label}.photo_coords = ['glon', 'glat', 'J', 'K', 'H']
-# File types for photometric data
-{label}.photo_tag = '.csv'
-
-# pickled file locations which will store the selection function information
-{label}.sf_pickle_fname = '/Spectrograph_SF.pickle'
-{label}.obsSF_pickle_fname = '/Spectrograph_obsSF.pickle'
-
-# File containing isochrone data
-{label}.iso_pickle_file = "evoTracks/isochrones.pickle" 
-# File location for storing information on area overlap of individual fields
-{label}.overlap_fname = '{label}_fieldoverlapdatabase'
+# Change incorrect attributes
+{label}.attribute = ReplacementAttribute # e.g. new path to data or new file location
 
 # Run the __call__ routine to setup the file locations
 {label}()
+
 # testFiles checks whether the information given is accurate
 # If this is the first time running, pickle files and overlap_fname shouldn't exist
 {label}.testFiles()
 
 # Pickle the file information
-{label}.pickleInformation(pklfile)
-""".format(label=self.spectro, directory=self.data_path)
+{label}.save(fileinfo_path)
+""".format(label=self.survey, directory=self.data_path)
 
 		# Set the class instance doc string as a coding example
 		self.__doc__ = self.example_string
@@ -224,7 +180,11 @@ with open(pickleFile, "rb") as input:
 		with open(filename, 'wb') as handle:
 			pickle.dump(self, handle)
 
-	def save(self, filename):
+	def save(self):
+
+		self.saveas(self.fileinfo_path)
+
+	def saveas(self, filename):
 
 		# Convert attributes to dictionary
 		attr_dict = vars(self)
@@ -247,111 +207,219 @@ with open(pickleFile, "rb") as input:
 
 		# Try to open folders and check file names and data structures
 
-		# 1) data_path, spectro_path, spectro_coords
-		# Use .xxx in file path to determine file type
-		try:
-			re_dotfile = re.compile('.+\.(?P<filetype>[a-z]+)')
-			filetype = re_dotfile.match(self.spectro_path).group('filetype')
-			# Import data as a pandas DataFrame
-			test_data1 = getattr(pd, 'read_'+filetype)(self.spectro_path, usecols = self.spectro_coords, nrows = 5)
-		except AttributeError:
-			print("\nspectro_path has not been given a file name with .type on the end.")
-		except IOError:
-			print("\nNo file: " + self.spectro_path)
-		except ValueError:
-			print("\n spectr_coords do not match column headers for %s." % self.spectro_path)
-
-		# 2) photo_path
+		# 1) Test paths - photo_path, spectro_path, field_path
+		print("1) Checking file paths exist:")
+		good = True
+		if not os.path.exists(self.spectro_path):
+			print("The path to sprectrograph catalogue (spectro_path) does not exist: %s" % self.spectro_path)
+			good = False
+		if not os.path.exists(self.field_path):
+			print("The path to field info file (field_path) does not exist: %s" % self.field_path)
+			good = False
 		if not os.path.exists(self.photo_path):
-			print("\nThe path to your photometric survey, photo_path, does not exist: %s" % self.photo_path)
+			print("The path to photometric folder (photo_path) does not exist: %s" % self.photo_path)
+			good = False
+		if good: print("OK")
+		print('')
 
-		# 3) field_path, field_coords, limlabels
-		try:
-			# Use .xxx in file path to determine file type
-			re_dotfile = re.compile('.+\.(?P<filetype>[a-z]+)')
-			filetype = re_dotfile.match(self.field_path).group('filetype')
-			# Import data as a pandas DataFrame
-			test_data2 = getattr(pd, 'read_'+filetype)(self.field_path, nrows = 5)
-			print("\nYour angular coordinates will be treated as %s." % self.field_coords[1])
+		# 2) Test spectro file - column headers, data types
+		print("2) Checking spectroscopic catalogue file structure:")
+		good = True
+		if os.path.exists(self.spectro_path):
+			try:
+				# Load in dataframe
+				df = pd.read_csv(self.spectro_path)
+				df_in = True
+			except ValueError:
+				# Raise error if dataframe cannot be loaded in.
+				print("pd.read_csv('%s') failed for some reason. Please try to fix this." % self.spectro_path)
+				df_in = False
+				good = False
+			if df_in:
+				if not set(self.spectro_coords).issubset(list(df)):
+					# If column headers don't match spectro_coords, return error
+					print("Column headers are %s, \nbut spectro_coords suggests %s, \nplease resolve this.\n" %  (df.columns.values, self.spectro_coords))
+					good = False
+				else:
+					for i in range(len(self.spectro_coords)):
+						# Check that each coordinate has the right datatype.
+						if not df[self.spectro_coords[i]].dtype == self.spectro_dtypes[i]:
+							print("Datatype of column %s given as %s but is actually %s." % (self.spectro_coords[i], str(self.spectro_dtypes[i]), str(df[self.spectro_coords[i]].dtype)))
+							self.spectro_dtypes[i] = df[self.spectro_coords[i]].dtype
+							print("Changed dtype to %s, run self.save() to keep these changes." % df[self.spectro_coords[i]].dtype)
+							good = False
+					# Check that longitude and latitude are in the right range
+					theta = df[self.spectro_coords[2]]
+					phi = df[self.spectro_coords[1]]
+					inrange = all(theta>=self.theta_rng[0])&all(theta<=self.theta_rng[1])&all(phi>=self.phi_rng[0])&all(phi<=self.phi_rng[1])
+					if not inrange:
+						print("spectro_path angle range not correct. Should be -pi/2<=theta<=pi/2, 0<=pi<=2pi. Data gives %s<=theta=<%s, %s<=phi<=%s." % \
+							(str(min(theta)), str(max(theta)), str(min(phi)), str(max(phi))))
+						good = False
+		if good: print("OK")
+		print('')
 
-			for i in range(len(self.field_coords[0])):
-				try: cut = test_data2[self.field_coords[0][i]].iloc[0]
-				except KeyError: print("\nfield_coords column header, %s, is not in dataframe" % self.field_coords[0][i])
-		except AttributeError:
-			print("\nfield_path has not been given a file name with .type on the end.")
-		except IOError:
-			print("\nThe path to your field coordinates, field_path, does not exist: %s" % self.field_path)
+		# 3) Test field file - column headers, data types
+		print("3) Checking field information file structure:")
+		good = True
+		if os.path.exists(self.field_path):
+			try:
+				# Load in dataframe
+				df = pd.read_csv(self.field_path)
+				df_in = True
+			except ValueError:
+				# Raise error if dataframe cannot be loaded in.
+				print("pd.read_csv('%s') failed for some reason. Please try to fix this." % self.field_path)
+				good = False
+				df_in = False
+			if df_in:
+				if not set(self.field_coords).issubset(list(df)):
+					# If column headers don't match field_coords, return error
+					print("Column headers are %s, \nbut field_coords suggests %s, \nplease resolve this.\n" %  (df.columns.values, self.field_coords))
+					good = False
+				else:
+					for i in range(len(self.field_coords)):
+						# Check that each coordinate has the right datatype.
+						if not df[self.field_coords[i]].dtype == self.field_dtypes[i]:
+							print("Datatype of column %s given as %s but is actually %s." % (self.field_coords[i], str(self.field_dtypes[i]), str(df[self.field_coords[i]].dtype)))
+							self.field_dtypes[i] = df[self.field_coords[i]].dtype
+							print("Changed dtype to %s, run self.save() to keep these changes." % df[self.field_coords[i]].dtype)
+							good = False
+					# Check that longitude and latitude are in the right range
+					theta = df[self.field_coords[2]]
+					phi = df[self.field_coords[1]]
+					inrange = all(theta>=self.theta_rng[0])&all(theta<=self.theta_rng[1])&all(phi>=self.phi_rng[0])&all(phi<=self.phi_rng[1])
+					if not inrange:
+						print("field_path angle range not correct. Should be -pi/2<=theta<=pi/2, 0<=pi<=2pi. Data gives %s<=theta=<%s, %s<=phi<=%s." % \
+							(str(min(theta)), str(max(theta)), str(min(phi)), str(max(phi))))
+						good = False
+					# Check that half-angle is in range
+					halfangle = df[self.field_coords[3]]
+					inrange = all(halfangle>=0)&all(halfangle<=np.pi)
+					if not inrange:
+						print("Halfangle out of range. Should be 0<=halfangle<=pi. Data gives %s<=halfangle=<%s." % \
+							(str(min(halfangle)), str(max(halfangle))))
+						good = False
+					print("(make sure halfangle is in units of radians.)")
+		if good: print("OK")		
+		print('')
 
-		# 4) photo_pickle_path, spectro_pickle_path, sf_pickle_path, obsSF_pickle_path, overlap_path
+		# 4) Test photo file - column headers, data types
+		print("4) Checking photometric catalogue file structure:")
+		good = True
+		if os.path.exists(self.photo_path):
+			# Find all photometric files in folder
+			photo_files = os.listdir(self.photo_path)
+			# Pick a random file:
+			photo_file = photo_files[np.random.randint(len(photo_files))]
+			print("Checking %s:" % photo_file)
+			# Join with photo_path to find path to files
+			filepath = os.path.join(self.photo_path, photo_file)
+			try:
+				# Load in dataframe
+				df = pd.read_csv(filepath, nrows=3)
+				df_in = True
+			except ValueError:
+				# Raise error if dataframe cannot be loaded in.
+				print("pd.read_csv('%s') failed for some reason. Please try to fix this." % filepath)
+				df_in = False
+				good = False
+			if df_in:
+				if not set(self.photo_coords).issubset(list(df)):
+					# If column headers don't match photo_coords, return error
+					print("Column headers are %s, \nbut photo_coords suggests %s, \nplease resolve this.\n" %  (df.columns.values, self.photo_coords))
+					good = False
+				else:
+					for i in range(len(self.photo_coords)):
+						# Check that each coordinate has the right datatype.
+						if not df[self.photo_coords[i]].dtype == self.photo_dtypes[i]:
+							print("Datatype of column %s given as %s but is actually %s." % (self.photo_coords[i], str(self.photo_dtypes[i]), str(df[self.photo_coords[i]].dtype)))
+							self.photo_dtypes[i] = df[self.photo_coords[i]].dtype
+							print("Changed dtype to %s, run self.save() to keep these changes." % df[self.photo_coords[i]].dtype)
+							good = False
+					# Check that longitude and latitude are in the right range
+					theta = df[self.photo_coords[1]]
+					phi = df[self.photo_coords[0]]
+					inrange = all(theta>=self.theta_rng[0])&all(theta<=self.theta_rng[1])&all(phi>=self.phi_rng[0])&all(phi<=self.phi_rng[1])
+					if not inrange:
+						print("photo_path angle range not correct. Should be -pi/2<=theta<=pi/2, 0<=pi<=2pi. Data gives %s<=theta=<%s, %s<=phi<=%s." % \
+							(str(min(theta)), str(max(theta)), str(min(phi)), str(max(phi))))
+						good = False
+		else: 
+			print("Path to folder of photometric files, %s, not found." % self.photo_path)
+			good = False
+		if good: print("OK")			
+		print('')
+
+		# 5) Test SF paths
+		print("5) Checking selection function pickle paths exist:")
+		good = True
 		if not os.path.exists(self.sf_pickle_path):
-			print("\nThe path to your selection function pickled instance, sf_pickle_path, does not exist: %s" % self.sf_pickle_path)
+			print("The path to your selection function pickled instance, sf_pickle_path, does not exist: %s" % self.sf_pickle_path)
+			good = False
 		if not os.path.exists(self.obsSF_pickle_path):
-			print("\nThe path to your selection function pickled instance, obsSF_pickle_path, does not exist: %s" % self.obsSF_pickle_path)
+			print("The path to your selection function pickled instance, obsSF_pickle_path, does not exist: %s" % self.obsSF_pickle_path)
+			good = False
 		if not os.path.exists(self.overlap_path):
-			print("\nThe path to your selection function pickled instance, obsSF_pickle_path, does not exist: %s" % self.overlap_path)
+			print("The path to your selection function pickled instance, obsSF_pickle_path, does not exist: %s" % self.overlap_path)
+			good = False
+		if not good: 
+			print("^ These files should exist for an already made selection function. If you're starting from scratch, ignore this!")
+		else: print("OK")
+		print('')
 
-		# 5) field_SA
-		print("\n The solid angle extent of your fields is %s\n" % str(self.field_SA))
-
-		# 6) fieldlabel_type
-		try:
-			ftype = type(test_data2[self.field_coords[0][0]].iloc[0])
-			if ftype == self.fieldlabel_type:
-				print("\nYour field labels are of type %s\n" % str(ftype))
-			else:
-				print("\nYou stated %s for field label type but the type appears to be %s." % (str(self.fieldlabel_type), str(ftype)))
-		except UnboundLocalError:
-			print("\nThe tests of field_path and field_coords have not been passed so fieldlabel_type cannot be tested.")
-
-		# 7) iso_pickle_path
-		if not os.path.exists(self.iso_pickle_path):
-			print("\nThe path to your isochrone pickled instance, iso_pickle_path, does not exist: %s" % self.iso_pickle_path)       	
+		# 6) Test isochrone paths
+		print("6) Checking isochrone pickle files exist:")
+		good = True
+		if not os.path.exists(self.iso_data_path):
+			print("\nThe path to isochrone data, iso_data_path, does not exist: %s" % self.iso_data_path)
+			good = False
+		if not os.path.exists(self.iso_interp_path):
+			print("\nThe path to isochrone data, iso_interp_path, does not exist: %s" % self.iso_interp_path)
+			good = False
+		if not os.path.exists(self.iso_mag_path):
+			print("\nThe path to isochrone data, iso_mag_path, does not exist: %s" % self.iso_mag_path)
+			good = False
+		if good: print("OK")
 
 	def printValues(self):
 
-		print("""Location where spectrograph survey information is stored""")
-		print("\ndata_path: " + self.data_path)
-		print("""Location where photometric datafiles are stored (require large storage space)""")
-		print("\nphoto_path: " + self.photo_path)
+		print("Location of spectroscopic catalogue")
+		print("spectro_path: " + self.spectro_path)
+		print("Filename (in Demo.spectro file) for field pointings")
+		print("field_path: " + self.field_path +'\n')
+		print("Location of photometric folder of field files")
+		print("photo_path: " + self.photo_path)
 
-		print("""Folder in .data_path which contains the file informatino""")
-		print("\nspectro: " + self.spectro)
-		print("""Filename of spectrograph star information""")
-		print("\nspectro_fname: " + self.spectro_fname)
-		print("\nspectro_folder: " + self.spectro_folder)
-		print("\nspectro_path: " + self.spectro_path)
+		print("""Column headers and dtypes for spectrograph information [ fieldID, Phi, Th, magA, magB, magC]
+where magA-magB = Colour, magC = m (for selection limits)""")
+		print("spectro_coords: " + str(self.spectro_coords))
+		print("spectro_dtypes: " + str(self.spectro_dtypes))
+		print("Column headers for field pointing information [fieldID, Phi, Th, halfangle, Magmin, Magmax, Colmin, Colmax]")
+		print("field_coords: " + str(self.field_coords))
+		print("field_dtypes: " + str(self.field_dtypes))
+		print("""Column headers and dtypes for photometric field files [ Phi, Th, magA, magB, magC]
+where magA-magB = Colour, magC = m (for selection limits)""")
+		print("photo_coords: " + str(self.photo_coords))
+		print("photo_dtypes: " + str(self.photo_dtypes))
 
-		print("""Filename (in Demo.spectro file) for field pointings""")
-		print("\nfield_fname: " + self.field_fname)
-		print("\nfield_path: " + self.field_path)
+		print('Coordinate system of angles ("Equatorial" or "Galactic")')
+		print("coord_system:" + str(self.coord_system) +'\n')
 
-		print("""Column headers for spectrograph information
-				[ fieldID, Phi, Th, magA, magB, magC]
-				magA-magB = Colour, magC = m (for selection limits)""")
-		print("\nspectro_coords: " + str(self.spectro_coords))
-		print("""Column headers in field pointings""")
-		print("\nfield_coords: " + str(self.field_coords))
-		print("""Column headers in photometric data files""")
-		print("\nphoto_coords: " + str(self.photo_coords))
+		print("pickled file locations which will store the selection function information:")
+		print("sf_pickle_path: " + self.sf_pickle_path)
+		print("obsSF_pickle_path: " + self.obsSF_pickle_path +'\n')
 
-		print("""Solid angle area of fiels in deg^2""")
-		print("\nfield_SA: " + str(self.field_SA))
+		print("File types for photometric data")
+		print("photo_tag: " + str(self.photo_tag))
 
-		print("""pickled file locations which will store the selection function information""")
-		print("\nsf_pickle_fname: " + self.sf_pickle_fname)
-		print("\nsf_pickle_path: " + self.sf_pickle_path)
-		print("\nobsSF_pickle_path: " + self.obsSF_pickle_path)
+		print("File containing dill instance of isochrone data.")
+		print("iso_data_file: " + self.iso_data_path)
+		print("File containing pickled isochrone interpolants.")
+		print("iso_interp_path: " + self.iso_interp_path)
+		print("File containing pickled isochrone magnitudes.")
+		print("iso_mag_path: " + self.iso_mag_path +'\n')
 
-		print("""File types for photometric data""")
-		print("\nphoto_tag: " + str(self.photo_tag))
-		print("""Data type for field IDs""")
-		print("\nfieldlabel_type: " + str(self.fieldlabel_type))
-
-		print("""File containing isochrone data""")
-		print("iso_pickle_file: " + self.iso_pickle_file)
-		print("""File location for storing information on area overlap of individual fields""")
-		print("iso_pickle_path: " + self.iso_pickle_path)
-
-	def pythonCodeExample(self):
+	def example(self):
 
 		print(self.example_string)
