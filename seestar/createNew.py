@@ -47,7 +47,7 @@ def create():
 	# Filename (in FileInfo.spectro file) for field pointings
 	FileInfo.field_fname = folder + '_fieldinfo.csv'
 	# Column headers in field pointings and their datatypes
-	FileInfo.field_coords = ['fieldID', 'glon', 'glat', 'half_angle', 'Magmin', 'Magmax', 'Colmin', 'Colmax']
+	FileInfo.field_coords = ['fieldID', 'glon', 'glat', 'halfangle', 'Magmin', 'Magmax', 'Colmin', 'Colmax']
 	FileInfo.field_dtypes = [FileInfo.fieldlabel_type, float, float, float, float, float, float, float]
 
 	# Location where photometric datafiles are stored (require large storage space)

@@ -182,12 +182,7 @@ To generate the full selection function, isoPARSEC.tar.gz must be downloaded and
 
 For each survey, a class containing the description of file locations and datatypes is required. The pickle instances are called *survey*_fileinfo.pickle for the premade surveys but for new selection functions these need to be generated.
 
-A folder in the data directory can be created by doing one of the following:
-In command line:
-```
-$ python seestar/createNew.py
-```
-In a python shell:
+A folder in the data directory can be created by doing the following in a python shell:
 ```python
 from seestar import createNew
 createNew.create()

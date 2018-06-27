@@ -293,6 +293,14 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
 						print("field_path angle range not correct. Should be -pi/2<=theta<=pi/2, 0<=pi<=2pi. Data gives %s<=theta=<%s, %s<=phi<=%s." % \
 							(str(min(theta)), str(max(theta)), str(min(phi)), str(max(phi))))
 						good = False
+					# Check that half-angle is in range
+					halfangle = df[self.field_coords[3]]
+					inrange = all(halfangle>=0)&all(halfangle<=np.pi)
+					if not inrange:
+						print("Halfangle out of range. Should be 0<=halfangle<=pi. Data gives %s<=halfangle=<%s." % \
+							(str(min(halfangle)), str(max(halfangle))))
+						good = False
+					print("(make sure halfangle is in units of radians.)")
 		if good: print("OK")		
 		print('')
 
@@ -387,7 +395,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
 where magA-magB = Colour, magC = m (for selection limits)""")
 		print("spectro_coords: " + str(self.spectro_coords))
 		print("spectro_dtypes: " + str(self.spectro_dtypes))
-		print("Column headers for field pointing information [fieldID, Phi, Th, half_angle, Magmin, Magmax, Colmin, Colmax]")
+		print("Column headers for field pointing information [fieldID, Phi, Th, halfangle, Magmin, Magmax, Colmin, Colmax]")
 		print("field_coords: " + str(self.field_coords))
 		print("field_dtypes: " + str(self.field_dtypes))
 		print("""Column headers and dtypes for photometric field files [ Phi, Th, magA, magB, magC]

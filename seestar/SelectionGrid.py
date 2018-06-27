@@ -121,8 +121,6 @@ class SFGenerator():
         obsSF_pickle_path = file_info.obsSF_pickle_path
         sf_pickle_path = file_info.sf_pickle_path
 
-        SA = file_info.field_SA
-
         self.photo_tag = file_info.photo_tag
         self.fieldlabel_type = file_info.fieldlabel_type
 
@@ -131,13 +129,10 @@ class SFGenerator():
         self.isointerp_exists = isointerp_exists
 
         # Import the dataframe of pointings        
-        pointings = self.ImportDataframe(field_path, self.field_coords[0], 
-                                         data_source='Fields', 
-                                         angle_units='degrees',
-                                         coordinates= self.field_coords[1],
-                                         Field_solidangle=False, solidangle=SA)
-        pointings = pointings.set_index('fieldID', drop=False)
-        pointings = pointings.drop_duplicates(subset = 'fieldID')
+        pointings = self.ImportDataframe(field_path, self.field_coords, 
+                                         data_source='field')
+        pointings = pointings.set_index(self.field_coords[0], drop=False)
+        pointings = pointings.drop_duplicates(subset = self.field_coords[0])
         #pointings = pointings[pointings.fieldID==2001.0]
         self.pointings = pointings
         
@@ -179,8 +174,7 @@ class SFGenerator():
         if not ColMagSF_exists:
             
             print('Importing data for Colour-Magnitude Field interpolants...')
-            self.stars = self.ImportDataframe(spectro_path, spectro_coords, 
-                                             angle_units='degrees')
+            self.spectro_df = self.ImportDataframe(spectro_path, spectro_coords)
             print("...done.\n")
         
             print('Creating Colour-Magnitude Field interpolants...')
@@ -213,7 +207,7 @@ class SFGenerator():
         if len(self.pointings)>1:
             if not overlapdata_exists:
                 # Create the field intersection database
-                database = FieldUnions.CreateIntersectionDatabase(5000, pointings, self.fieldlabel_type)
+                database = FieldUnions.CreateIntersectionDatabase(20000, pointings, self.fieldlabel_type, labels = ['phi', 'theta', 'halfangle'])
                 database.to_csv(file_info.overlap_path)
             else: database = pd.read_csv(file_info.overlap_path)
             self.FUInstance = FieldUnions.FieldUnion(database)
@@ -221,7 +215,7 @@ class SFGenerator():
         
     def __call__(self, catalogue, method='intrinsic', 
                 coords = ['age', 'mh', 's', 'mass'], 
-                angle_coords=['l','b'], angles='Galactic'):
+                angle_coords=['phi','theta']):
 
         '''
         __call__ - Once the selection function has been included, this takes in a catalogue
@@ -258,7 +252,7 @@ class SFGenerator():
         # catalogue[points] - list of pointings which coordinates lie on
         # catalogue[field_info] - list of tuples: (P(S|v), field)
         print('Calculating all SF values...')
-        catalogue = FieldUnions.GenerateMatrices(catalogue, self.pointings, angle_coords, point_coords, 'SolidAngle', SFcalc)
+        catalogue = FieldUnions.GenerateMatrices(catalogue, self.pointings, angle_coords, point_coords, 'halfangle', SFcalc)
         print('...done')
         # The SF probabilities and coordinates of overlapping fields are used to calculate
         # the field union.
@@ -271,11 +265,7 @@ class SFGenerator():
         
     def ImportDataframe(self, path,
                         coord_labels, 
-                        data_source = 'stars', 
-                        coordinates = 'Equatorial',
-                        angle_units = 'degrees',
-                        Field_solidangle = True,
-                        solidangle = 0.):
+                        data_source = 'spectro'):
 
         '''
         ImportDataframe - Creates a dataframe of relevant relevant information on stars
@@ -292,27 +282,11 @@ class SFGenerator():
 
         **kwargs
         --------
-            data_source: string ('stars')
-                    - 'stars', assumes we are importing a database of stars
+            data_source: string ('spectro')
+                    - 'spectro', assumes we are importing a database of stars
                         (so it imports magnitudes aswell)
-                    - 'Fields': assumes we are importing a database of fields
-                        (so it imports SolidAngle and calculates halfangle too)
-
-            coordinates: string ('Equatorial')
-                    - 'Galactic': Takes given fields to be l and b. Doesn't do a coordinate transformation
-                    - 'Equatorial': Takes given fields to be RA and Dec and calculates Galactic coords
-
-            angle_units: string ('degrees')
-                    - 'degrees': Converts units to radians for the output
-                    - 'rad' or 'radians': Doesnt convert units
-
-            Field_solidangle: bool (True)
-                    - True: Assumes a solid angle if given per field in the database
-                    - False: Adds a column to the database which all have the same solid angle
-                                (if False, solidangle= must be given)
-
-            solidangle: float (0.)
-                    - The generic solid angle extent of all plates if Field_solidangle == False
+                    - 'field': assumes we are importing a database of fields
+                        (so it imports halfangle and calculates halfangle too)
 
         Returns
         -------
@@ -334,43 +308,44 @@ class SFGenerator():
         filetype = re_dotfile.match(path).group('filetype')
 
         # Import data as a pandas DataFrame
-        data = getattr(pd, 'read_'+filetype)(path, 
+        df = getattr(pd, 'read_'+filetype)(path, 
                                              usecols = coord_labels)
 
-        # Relabel columns
-        if coordinates == 'Equatorial': coords = ['fieldID','RA', 'Dec']
-        elif coordinates == 'Galactic': coords = ['fieldID','l', 'b']
+        if data_source=='spectro': 
+            coords = ['fieldID','phi', 'theta', 'appA', 'appB', 'appC']
+        elif data_source=='field':
+            coords = ['fieldID', 'phi', 'theta', 'halfangle', 'Magmin', 'MagMax', 'Colmin', 'Colmax']
+            #coords.extend(['halfangle'])
 
-        if data_source=='stars': coords.extend(['appA', 'appB', 'appC'])
-
-        elif data_source=='Fields':
-            coords.extend(['mlBound', 'muBound', 'clBound', 'cuBound'])
-            if Field_solidangle: coords.extend(['SolidAngle'])
-            else: data['SolidAngle'] = np.zeros((len(data))) + solidangle
-
+        # Replace given coordinates with standardised ones
         print(dict(zip(coord_labels, coords)))
-        data = data.rename(index=str, columns=dict(zip(coord_labels, coords)))
+        df = df.rename(index=str, columns=dict(zip(coord_labels, coords)))
 
-        # Remove any null values from data
-        for coord in coords: data = data[pd.notnull(data[coord])]
+        # Remove any null values from df
+        full_length = len(df)
+        for coord in coords: df = df[pd.notnull(df[coord])]
+        used_length = len(df)
+        print("Filtering for null values in %s: Total star count = %d. Filtered star count = %d. %d stars removed with null values" % \
+                (data_source, full_length, used_length, full_length-used_length))
 
         # Correct units
-        if (angle_units == 'degrees') & \
-           (coordinates == 'Equatorial'): data.RA, data.Dec = data.RA*np.pi/180, data.Dec*np.pi/180
+        """if (angle_units == 'degrees') & \
+           (coordinates == 'Equatorial'): df.RA, df.Dec = df.RA*np.pi/180, df.Dec*np.pi/180
         elif (angle_units == 'degrees') & \
-             (coordinates == 'Galactic'): data.l, data.b = data.l*np.pi/180, data.b*np.pi/180
+             (coordinates == 'Galactic'): df.l, df.b = df.l*np.pi/180, df.b*np.pi/180
         elif angle_units in ('rad','radians'): pass
         else: raise ValueError ("I don't understand the units specified")
-        # Include Galactic Coordinates
-        if coordinates == 'Equatorial': data['l'], data['b'] = AngleDisks.EquatToGal(data.RA, data.Dec)
-        if coordinates == 'Galactic': data['RA'], data['Dec'] = AngleDisks.GalToEquat(data.l, data.b)
 
-        if data_source=='stars': 
-            data['Colour'] = data.appA - data.appB
+        # Include Galactic Coordinates
+        if coordinates == 'Equatorial': df['l'], df['b'] = AngleDisks.EquatToGal(df.RA, df.Dec)
+        if coordinates == 'Galactic': df['RA'], df['Dec'] = AngleDisks.GalToEquat(df.l, df.b)"""
+
+        if data_source=='spectro': 
+            df['Colour'] = df.appA - df.appB
 
             # Magnitude and colour ranges from full sample
-            mag_range = (np.min(data.appC), np.max(data.appC))
-            col_range = (np.min(data.Colour), np.max(data.Colour))
+            mag_range = (np.min(df.appC), np.max(df.appC))
+            col_range = (np.min(df.Colour), np.max(df.Colour))
 
             #Save star results in the class variables
             self.mag_range = mag_range
@@ -378,14 +353,12 @@ class SFGenerator():
 
             print(mag_range, col_range)
 
-            return data
+            return df
 
-        elif data_source == 'Fields':
-            #Convert solid angle to hald opening angle
-            data['half_opening'] = np.sqrt(data.SolidAngle / np.pi)
+        elif data_source == 'field':
 
-            #Save Field data in the class variable
-            return data
+            #Save field df in the class variable
+            return df
             
     def iterateAllFields(self):
 
@@ -401,7 +374,7 @@ class SFGenerator():
         Inherited
         ---------
             self.pointings
-            self.stars
+            self.spectro_df
             self.photo_path
             self.photo_tag
             self.photo_coords
@@ -440,7 +413,7 @@ class SFGenerator():
                 sys.stdout.flush()
 
                 results.append(pool.apply_async(iterateField, 
-                                                args=(self.stars, self.photo_path, field,
+                                                args=(self.spectro_df, self.photo_path, field,
                                                     self.photo_tag, self.photo_coords, self.pointings.loc[field],
                                                     self.cm_limits)))
                 fieldN+=1
@@ -455,7 +428,7 @@ class SFGenerator():
             """
 
             pool = multiprocessing.Pool(processes=2)
-            results = pool.map(obsMultiFunction(self.stars, self.photo_path, self.photo_tag,
+            results = pool.map(obsMultiFunction(self.spectro_df, self.photo_path, self.photo_tag,
                                                 self.photo_coords, self.pointings, self.cm_limits), field_list)
 
             # Exit the pools as they won't be used again
@@ -481,7 +454,7 @@ class SFGenerator():
                 sys.stdout.write("\rCurrent field in col-mag calculation: %s, %d/%d" % (str(field), fieldN, fieldL))
                 sys.stdout.flush()
 
-                obsSF_field, field = iterateField(self.stars, self.photo_path, field,
+                obsSF_field, field = iterateField(self.spectro_df, self.photo_path, field,
                                                 self.photo_tag, self.photo_coords, self.pointings.loc[field],
                                                 self.cm_limits)
                 obsSF_dicts[field] = vars(obsSF_field)
@@ -594,7 +567,7 @@ class SFGenerator():
 
         Inherited
         ---------
-            self.stars: Dataframe
+            self.spectro_df: Dataframe
                     - Survey stars
 
             self.CreateInterpolant - Creates an interpolant in colour-magnitude space for the given rave Field
@@ -616,7 +589,7 @@ class SFGenerator():
 
         '''
 
-        points = self.stars[self.stars.field_ID == field]
+        points = self.spectro_df[self.spectro_df.field_ID == field]
         
         interp, pop_grid, mag, col = self.CreateInterpolant(points, Grid=True)
         
@@ -632,7 +605,7 @@ class SFGenerator():
         
         return interp, pop_grid, mag, col
     
-    def PointsToPointings(self, stars, Phi='RA', Th='Dec'):
+    def PointsToPointings(self, stars, Phi='phi', Th='theta'):
 
         '''
         PointsToPointings - Generates a list for each point for all field pointings
@@ -665,12 +638,12 @@ class SFGenerator():
         print("\nNote: this is iterating through 10k stars at a time.\n\
         If lots of memory available, increase N for greater efficiency.")
         df = AM.AnglePointsToPointingsMatrix(stars, self.pointings,
-                                          Phi, Th, 'SolidAngle', IDtype = self.fieldlabel_type,
+                                          Phi, Th, 'halfangle', IDtype = self.fieldlabel_type,
                                           Nsample = 10000)
         
         return df
 
-    def PlotPlates(self, EqorGal = 'Gal', **kwargs):
+    def PlotPlates(self, **kwargs):
 
         '''
         PlotPlates - Plots circles for each survey field in angles
@@ -711,25 +684,14 @@ class SFGenerator():
         plates_given.update(kwargs)
 
         if plates_given['pointings']:
-            if EqorGal == 'Eq':
-                PhiRad = np.copy(self.pointings.RA)
-                ThRad = np.copy(self.pointings.Dec)
-            elif EqorGal == 'Gal':
-                PhiRad = np.copy(self.pointings.l)
-                ThRad = np.copy(self.pointings.b)
-            else:
-                raise ValueError('EqorGal must be either "Eq" or "Gal"!')       
+            PhiRad = np.copy(self.pointings.phi)
+            ThRad = np.copy(self.pointings.theta)      
         else:
-            if EqorGal == 'Eq':
-                PhiRad = np.copy(self.pointings.loc[fieldIDs].RA)
-                ThRad = np.copy(self.pointings.loc[fieldIDs].Dec)
-            elif EqorGal == 'Gal':
-                PhiRad = np.copy(self.pointings.loc[fieldIDs].l)
-                ThRad = np.copy(self.pointings.loc[fieldIDs].b)
-            else:
-                raise ValueError('EqorGal must be either "Eq" or "Gal"!')  
+            PhiRad = np.copy(self.pointings.loc[fieldIDs].phi)
+            ThRad = np.copy(self.pointings.loc[fieldIDs].theta)
 
-        SA = np.copy(self.pointings.SolidAngle)
+        halfangle = np.copy(self.pointings.halfangle)
+        SA = 2*np.pi*(1 - np.cos(halfangle))
 
         fig = plt.figure(figsize=(20,10))
         ax = fig.add_subplot(111, projection='mollweide')
@@ -740,10 +702,10 @@ class SFGenerator():
 
 class obsMultiFunction():
 
-    def __init__(self, stars, photo_path, photo_tag, photo_coords, 
+    def __init__(self, spectro_df, photo_path, photo_tag, photo_coords, 
                     pointings, cm_limits):
 
-        self.stars = stars
+        self.spectro_df = spectro_df
         self.photo_path = photo_path
         self.photo_tag = photo_tag
         self.photo_coords = photo_coords
@@ -752,17 +714,17 @@ class obsMultiFunction():
 
     def __call__(self, field):
 
-        return iterateField(self.stars, self.photo_path, field, self.photo_tag, 
+        return iterateField(self.spectro_df, self.photo_path, field, self.photo_tag, 
                             self.photo_coords, self.pointings.loc[field], self.cm_limits)
     
-def iterateField(stars, photo_path, field, photo_tag, photo_coords, fieldpointing, cm_limits):
+def iterateField(spectro, photo_path, field, photo_tag, photo_coords, fieldpointing, cm_limits):
 
     '''
     iterateField- Generates a selection function instance for a given field
 
     Parameters
     ----------
-        stars:
+        spectro:
 
         photo_path: string
                 - Location of folder of photometric catalogue files
@@ -788,9 +750,6 @@ def iterateField(stars, photo_path, field, photo_tag, photo_coords, fieldpointin
             The field in question
 
     '''
-    
-    database_coords = ['RA','DEC','J','K','H']
-    df_coords = ['RA','Dec','appA','appB','appC']
 
     photofile = os.path.join(photo_path, str(field)+photo_tag)
     # Import photometric data and rename magnitude columns
@@ -804,7 +763,7 @@ def iterateField(stars, photo_path, field, photo_tag, photo_coords, fieldpointin
     photo_points['Colour'] = photo_points.appA - photo_points.appB
 
     # Select preferred survey stars
-    spectro_points = stars[stars.fieldID == field]
+    spectro_points = spectro[spectro.fieldID == field]
 
     # Only create an interpolant if there are any points in the region
     if len(spectro_points)>0:
@@ -832,25 +791,25 @@ def iterateField(stars, photo_path, field, photo_tag, photo_coords, fieldpointin
 
         # Use given limits to determine boundaries of dataset
         # apparent mag upper bound
-        if fieldpointing.mlBound == "NoLimit":
+        if fieldpointing.Magmin == "NoLimit":
             mag_min = np.min(spectro_points.appC) - 2
             max_min = cm_limits[0]
-        else: mag_min = fieldpointing.mlBound
+        else: mag_min = fieldpointing.Magmin
         # apparent mag lower bound
-        if fieldpointing.muBound == "NoLimit":
+        if fieldpointing.MagMax == "NoLimit":
             mag_max = np.max(spectro_points.appC) + 2
             mag_max = cm_limits[1]
-        else: mag_max = fieldpointing.muBound
+        else: mag_max = fieldpointing.MagMax
         # colour uppper bound
-        if fieldpointing.clBound == "NoLimit":
+        if fieldpointing.Colmin == "NoLimit":
             col_min = np.min(spectro_points.Colour) - 0.1
             col_min = cm_limits[2]
-        else: col_min = fieldpointing.clBound
+        else: col_min = fieldpointing.Colmin
         # colour lower bound
-        if fieldpointing.cuBound == "NoLimit":
+        if fieldpointing.Colmax == "NoLimit":
             col_max = np.max(spectro_points.Colour) + 0.1
             col_max = cm_limits[3]
-        else: col_max = fieldpointing.cuBound
+        else: col_max = fieldpointing.Colmax
 
         # Chose only photometric survey points within the colour-magnitude region.
         photo_points = photo_points[(photo_points.appC >= mag_min)&\

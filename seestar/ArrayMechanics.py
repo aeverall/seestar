@@ -713,7 +713,7 @@ def PointsInPointings(df, pointings):
     for i in range(len(pointings)):
         plotting(df['bool'+str(i)])
 
-def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, SA, IDtype = str, Nsample = 10000):
+def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, halfangle, IDtype = str, Nsample = 10000):
 
     '''
     AnglePointsToPointingsMatrix - Adds a column to the df with the number of the field pointing
@@ -735,8 +735,8 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, SA, IDtype = str, Nsamp
         Phi: string
             Column header for longitude coordinate (RA or l)
 
-        SA: SolidAngle
-            Column header for solid angle of plate on sky
+        halfangle: string
+            Column header for half-angle of plate on sky
 
     kwargs
     ------
@@ -778,10 +778,9 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, SA, IDtype = str, Nsamp
         Mt_point = np.transpose(np.repeat([getattr(pointings,Th)], 
                                             len(dfi), 
                                             axis=0))
-        Msa_point = np.transpose(np.repeat([getattr(pointings,SA)], 
+        Msa_point = np.transpose(np.repeat([getattr(pointings,halfangle)], 
                                             len(dfi), 
                                             axis=0))
-        Msa_point = np.sqrt(Msa_point/np.pi) * np.pi/180
         
         Mbool = AngleSeparation(Mp_df,
                                 Mt_df,
