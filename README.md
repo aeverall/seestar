@@ -164,21 +164,24 @@ createNew.create()
 This will request some inputs:
 ```
 Where is the directory? PATH/TO/DIRECTORY
-What survey? (will be used to label the folder and file contents) SURVEY-NAME
+What survey? (will be used to label the folder and file contents) SURVEY
 ```
 The PATH/TO/DIRECTORY is the directory where you wish to store folders for each survey.
-The SURVEY-NAME is the label you wish to give to the survey (e.g. APOGEE14).
+The SURVEY is the label you wish to give to the survey (e.g. APOGEE14).
 If a folder with SURVEY-NAME exists in PATH/TO/DIRECTORY/, you will have to provide a different name.
 
-A folder labeled SURVEY-NAME will be generated in the location PATH/TO/DIRECTORY and will contain a SURVEY-NAME_fileinfo.pickle file.
+A folder labeled SURVEY-NAME will be generated in the location PATH/TO/DIRECTORY and will contain the following:
+* SURVEY_fileinfo.pickle - pickled dictionary of survey information (file locations and data structures).
+* SURVEY_survey.csv - spectroscopic catalogue template.
+* SURVEY_fieldinfo.csv - spectroscopic field pointing catalogue template.
+* photometric/field1.csv - folder for photometric catalogue files for each field in the spectroscopic survey (an example template file, field1.csv, is also included).
 
-Once you have created this folder, you need to generate the appropriate input files:
+Once you have created this folder, you must replace the template files with real field files:
+* Spectroscopic catalogue (SURVEY_survey.csv). This file will be a comma separated file with at least the following five columns (appropriately labelled): galactic longitude in radians ('glon'), galactic latitude in radians ('glat'), apparent magnitudes ('Happ', 'Japp', 'Kapp'), field id tag for the star ('fieldID'). The file can have other columns too but they won't be used.
+* Photometric catalogue for each field in the spectroscopic catalogue (photometric/FIELD-ID.csv). Comma separated file listing all starts on the field pointing in the photometric catalogue. It will have at least the following four columns (appropriately labelled): galactic longitude in radians ('glon'), galactic latitude in radians ('glat'), apparent magnitudes ('Happ', 'Japp', 'Kapp'). The file can have other columns too but they won't be used.
+* Locations and IDs of the spectroscopic field pointings (SURVEY_fieldinfo.csv). This file gives the central galactic longitude in radians ('glon') and galactic latitude in radians ('glat') of each field, half angle in radians ('halfangle') and the color and magnitude limits imposed by the spectroscopic survey ('Magmin', 'Magmax', 'Colmin', 'Colmax'). If none are imposed, write "NoLimit".
 
-* Spectroscopic catalogue (SURVEY_survey.csv). This file will be a comma separated file with at least the following five columns (appropriately labelled): galactic longitude in degrees (glon), galactic latitude in degrees (glat), apparent magnitude (e.g. Happ), colour, e.g. J-K (colour), field ID (fieldID). The file can have other columns too but they won't be used.
-* Photometric survey data for each field in the spectroscopic catalogue (photometric/FIELD-ID.csv). This file will be a comma separated file listing all starts in FIELD-ID according to some `complete' photometric survey. It will have at least the following four columns (appropriately labelled): galactic longitude in degrees (glon), galactic latitude in degrees (glat), apparent magnitude (e.g. Happ), colour, e.g. J-K (colour). The file can have other columns too but they won't be used.
-* Locations and IDs of the spectroscopic field pointings (SURVEY_fieldinfo.csv). This file gives the central galactic longitude in degrees (glon) and galactic latitude in degrees (glat) of each field, solid angle in degrees squared (SA), half-angle of cone in degrees (halfangle), and the minimum color and magnitude limits imposed by the spectroscopic survey. If none are imposed, write "NoLimit".
 
-An example survey folder can be downloaded for Galaxia mock data from [here](#https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing). The column labels can be decided by the user, and the package informed below.
 
 The information held in SURVEY-NAME_fileinfo.pickle need to now be updated with the file locations, and some other bits of information in order to calculate the selection function.
 
@@ -187,29 +190,16 @@ import pickle
 from seestar import surveyInfoPickler
 
 # Create instance of information class
-file_info = surveyInfoPickler.surveyInformation()
-
-# Load infofile (survey name is "SURVEY-NAME")
 path = 'PATH/TO/DIRECTORY/SURVEY-NAME/SURVEY-NAME_fileinfo.pickle'
-file_info.load(path)
+file_info = surveyInfoPickler.surveyInformation(path)
 # file_info is an instance of a class for containing all the file locations and data structures.
 
-# Typing the following tells you which file names are set correctly and which data structures are correct, and therefore which need to be set/
+# Run a test of the structure of files in the selection function directory to check if they're ready.
 file_info.testFiles()
 
-# Print out all attributes and their current values:
-file_info.printValues()
-
-# Change the values of some attributes
-file_info.attribute = "value of attribute"
-
 # Repickle the class instance
-file_info.save(path)
+file_info.save()
 ```
-Once you have pickled the SURVEY-NAME_fileinfo.pickle file, the selection function will be able to use those file locations and structures.
-
-# The following is docstring which has example code on how to set each of the features. 
-file_info?
 
 
 ### Isochrone data
