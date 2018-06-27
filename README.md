@@ -191,14 +191,27 @@ createNew.create()
 This will request some inputs:
 ```
 Where is the directory? PATH/TO/DIRECTORY
-What survey? (will be used to label the folder and file contents) SURVEY-NAME
+What survey? (will be used to label the folder and file contents) SURVEY
 ```
 The PATH/TO/DIRECTORY is the directory where you wish to store folders for each survey.
-The SURVEY-NAME is the label you wish to give to the survey (e.g. APOGEE14).
+The SURVEY is the label you wish to give to the survey (e.g. APOGEE14).
 If a folder with SURVEY-NAME exists in PATH/TO/DIRECTORY/, you will have to provide a different name.
 
-A folder labeled SURVEY-NAME will be generated in the location PATH/TO/DIRECTORY and will contain a SURVEY-NAME_fileinfo.pickle file.
-The information held in this file will need to be changed to match the data of the survey.
+A folder labeled SURVEY-NAME will be generated in the location PATH/TO/DIRECTORY and will contain the following:
+* SURVEY_fileinfo.pickle - pickled dictionary of survey information (file locations and data structures).
+* SURVEY_survey.csv - spectroscopic catalogue template.
+* SURVEY_fieldinfo.csv - spectroscopic field pointing catalogue template.
+* photometric/field1.csv - folder for photometric catalogue files for each field in the spectroscopic survey (an example template file, field1.csv, is also included).
+
+Once you have created this folder, you must replace the template files with real field files:
+* Spectroscopic catalogue (SURVEY_survey.csv). This file will be a comma separated file with at least the following five columns (appropriately labelled): galactic longitude in radians ('glon'), galactic latitude in radians ('glat'), apparent magnitudes ('Happ', 'Japp', 'Kapp'), field id tag for the star ('fieldID'). The file can have other columns too but they won't be used.
+* Photometric catalogue for each field in the spectroscopic catalogue (photometric/FIELD-ID.csv). Comma separated file listing all starts on the field pointing in the photometric catalogue. It will have at least the following four columns (appropriately labelled): galactic longitude in radians ('glon'), galactic latitude in radians ('glat'), apparent magnitudes ('Happ', 'Japp', 'Kapp'). The file can have other columns too but they won't be used.
+* Locations and IDs of the spectroscopic field pointings (SURVEY_fieldinfo.csv). This file gives the central galactic longitude in radians ('glon') and galactic latitude in radians ('glat') of each field, half angle in randians ('halfangle') and the color and magnitude limits imposed by the spectroscopic survey ('Magmin', 'Magmax', 'Colmin', 'Colmax'). If none are imposed, write "NoLimit".
+
+
+
+The information held in SURVEY-NAME_fileinfo.pickle need to now be updated with the file locations, and some other bits of information in order to calculate the selection function.
+
 ```python
 import pickle
 from seestar import surveyInfoPickler
