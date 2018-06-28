@@ -137,6 +137,8 @@ class surveyInformation():
 
 		self.field_path = os.path.join(self.survey_folder, self.field_fname)
 
+		self.photo_path = os.path.join(self.survey_folder, 'photometric')
+
 		self.sf_pickle_path = os.path.join(self.survey_folder, self.sf_pickle_fname)
 		self.obsSF_pickle_path = os.path.join(self.survey_folder, self.obsSF_pickle_fname)
 		self.overlap_path = os.path.join(self.survey_folder, self.overlap_fname)
