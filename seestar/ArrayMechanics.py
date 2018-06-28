@@ -73,7 +73,6 @@ AngleDisks
 import numpy as np
 import pandas as pd
 import gc
-
 import sys, os
 os.path.exists("../../Project/Milky/FitGalaxyModels/")
 sys.path.append("../FitGalMods/")
@@ -807,6 +806,9 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, halfangle, IDtype = str
         field_listoflists = Mplates.values.tolist()
         field_listoflists = [filtering(x, '') for x in field_listoflists]
 
+        del(Mplates)
+        gc.collect()
+
         dtypeMap = lambda row: map(IDtype, row)
         field_listoflists = map(dtypeMap, field_listoflists)
 
@@ -819,7 +821,10 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, halfangle, IDtype = str
         dfi.index = dfi['index']
 
         if i == 0: newdf = dfi
-        else: newdf = pd.concat((newdf, dfi))
+        else: 
+            newdf = pd.concat((newdf, dfi))
+
+        break
 
     return newdf
 

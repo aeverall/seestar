@@ -122,7 +122,7 @@ class SFGenerator():
         sf_pickle_path = file_info.sf_pickle_path
 
         self.photo_tag = file_info.photo_tag
-        self.fieldlabel_type = file_info.fieldlabel_type
+        self.fieldlabel_type = file_info.field_dtypes[0]
 
         self.iso_pickle = file_info.iso_pickle_path
         self.isocolmag_pickle = file_info.iso_interp_path

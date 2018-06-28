@@ -16,10 +16,14 @@ import pandas as pd
 import gc
 import cProfile
 import pstats
+
+import os
 import sys
 import time
 import gzip
 from seestar import ArrayMechanics
+from seestar import surveyInfoPickler
+import psutil
 
 
 class FieldAssignment():
@@ -27,13 +31,16 @@ class FieldAssignment():
     '''
     FieldAssignment - For assigning stars from an allsky survey to the field pointings of a multi-fibre survey.
 
+    args
+    ----
+        fileinfo: surveyInformation instance
+            - surveyInformation which includes the required format for files
+
     **kwargs
     --------
-      allsky_directory="": str
-          - Directory in which files for the allsky dataset are stored
 
-      allsky_files=[]: list of str
-          - File names in allsky dataset
+      photometric_files=[]: list of str
+          - Paths to all files with the photometric data
           - If only one datafile, set only one element of list equal to that filename
 
       fieldpoint_directory = "": str
@@ -76,56 +83,45 @@ class FieldAssignment():
 
     '''
 
-    def __init__(self, 
-                 allsky_directory="", allsky_files=[], 
+    def __init__(self, fileinfo_path,
+                 photometric_files=[], 
                  fieldpoint_directory = "",
                  pointings_path="", file_headers=['a', 'b', 'c', 'd', 'e'],
                  pointings_units = 'degrees'):
-        
-        # Locations of files
-        self.allsky_directory = allsky_directory
+
+        # surveyInformation instance
+        self.fileinfo = surveyInfoPickler.surveyInformation(fileinfo_path)
+
         # List of files with full galaxy data
-        # All files should be .csv.gz format
-        self.allsky_files = allsky_files
-        self.allsky_units = 'degrees'
+        # All files should be .csv format
+        self.photometric_files = photometric_files
+
         # Total number of stars in database
-        self.allsky_total = 1
-        
-        # Column headers to take from allsky
-        self.allsky_headers = []
-        # Column headers for angles
-        self.allsky_angles = ['Phi', 'Th']
-        
-        # Columns which are not allowed to contain null values
-        self.notnulls = ['glon', 'glat']
+        self.total = countStars(photometric_files)
         
         # Directory and names of pointings files
-        self.fieldpoint_directory = fieldpoint_directory
+        self.fieldpoint_directory = self.fileinfo.photo_path
         
         # Setup pointings dataframe containing unique field positions
-        pointings_path = pointings_path
+        pointings_path = self.fileinfo.field_path
         pointings = pd.read_csv(pointings_path)
-        
-        ### Tidying the pointings field file
-        # Headers: [fieldID, glon, glat, SA, halfangle]
-        use_headers = ['fieldID', 'Phi', 'Th', 'SA', 'halfangle']
-        file_headers = file_headers
-        pointings = pointings.rename(index=str, columns=dict(zip(file_headers, use_headers)))
-        pointings = pointings.drop_duplicates(subset='fieldID')
-        
-        # Convert Degrees to Radians
-        angle_units = pointings_units
-        if angle_units == 'degrees':
-            pointings.Phi *= np.pi/180
-            pointings.Th *= np.pi/180
-            
         # Make pointings a class attribute
         self.pointings = pointings
-            
-        # ID type for fields in pointings
-        self.IDtype = type(self.pointings.fieldID.iloc[0])
-        
 
+        # ID type for fields in pointings
+        self.IDtype = self.fileinfo.field_dtypes[0]
+
+        # Number of stars to be imported at once
+        self.N_import = importLimit(photometric_files)
+
+        # Number of stars to be iterated over
+        Npoint = len(pointings)
+        self.N_iter = iterLimit(Npoint)
+
+    def __call__(self):
+
+        self.ClearFiles()
+        self.RunAssignmentAPTPM(N_import=self.N_import, N_iterate=self.N_iter)
 
     def ClearFiles(self):
 
@@ -133,18 +129,17 @@ class FieldAssignment():
         ClearFiles() - Clears all field pointing files and leaves headers
         '''
         
-        print('Clearing field files...')
+        print 'Clearing field files...',
         
         # Take headers from source files (photometric catalogue)
-        headers = pd.read_csv(self.allsky_directory+self.allsky_files[0], 
-                              compression='gzip', nrows = 1)[self.allsky_headers][:0]
+        headers = pd.read_csv(self.photometric_files[0], nrows = 1)[:0]
         
         # Write all field files with the appropriate headers
-        for field in self.pointings.fieldID:
-            headers.to_csv(self.fieldpoint_directory+str(field)+'.csv', compression='gzip',
+        for field in self.pointings[self.fileinfo.field_coords[0]]:
+            headers.to_csv(os.path.join(self.fieldpoint_directory, str(field))+'.csv',
                           index=False, mode = 'w')
             
-        print('...done\n')
+        print '...done\n'
         
 
     def RunAssignment(self, N_import=int(1e6), N_iterate=int(1e4)):
@@ -280,8 +275,53 @@ class FieldAssignment():
 
                         data[self.allsky_headers].to_csv(open_files[field], compression='gzip',
                                                           index=False, header=False)
+
+    def RunAssignmentAPTPM(self, N_import=100000, N_iterate=1000):
+            
+            # Time in order to track progress
+            start = time.time()
+            # For analysing the progress
+            starsanalysed = 0
+            
+            # Open files for writing
+            open_files = {}
+            for field in self.pointings[self.fileinfo.field_coords[0]]:
+                open_files[field] = open(os.path.join(self.fieldpoint_directory, str(field))+'.csv', 'a+')
+
+            # Iterate over full directory files
+            for filename in self.photometric_files:
+                
+                for df_allsky in pd.read_csv(filename, chunksize=N_import):
+                
+                    starsanalysed += len(df_allsky)
+                    fname = filename.split('/')[-1]
+
+                    # Updates of progress continuously output
+                    perc = round((starsanalysed/float(self.total))*100, 3)
+                    duration = round((time.time() - start)/60., 1)
+                    projected = round((time.time() - start)*self.total/((starsanalysed+1)*3600), 3)
+                    sys.stdout.write('\r'+'allsky file: '+fname+'  '+\
+                                   'Completion: '+str(starsanalysed)+'/'+str(self.total)+'('+
+                                   str(perc)+'%)  Time='+str(duration)+'m  Projected: '+str(projected)+'h')
+                    sys.stdout.flush()
                         
-    def RunAssignmentAPTPM(self, N_import=1000000, N_iterate=1000):
+                    # Column header labels in pointings
+                    phi, theta, halfangle = self.fileinfo.field_coords[1:4]
+                        
+                    df_allsky = ArrayMechanics.\
+                                AnglePointsToPointingsMatrix(df_allsky, self.pointings, phi, theta, halfangle,
+                                                            IDtype = self.IDtype, Nsample = N_iterate)
+
+                    
+                    for field in self.pointings[self.fileinfo.field_coords[0]]:
+
+                        # Check which rows are assigned to the right field
+                        df_bool = df_allsky.points.apply(lambda x: field in x)
+                        df = df_allsky[df_bool]
+                        
+                        df.to_csv(open_files[field], index=False, header=False)
+                        
+    def RunAssignmentAPTPM_old(self, N_import=1000000, N_iterate=1000):
 
         '''
         RunAssignmenAPTPMt(): - Runs thorough method for calculating field assignments
@@ -367,3 +407,39 @@ class FieldAssignment():
 
                     df[self.allsky_headers].to_csv(open_files[field], compression='gzip',
                                                      index=False, header=False)
+
+def importLimit(files, proportion=0.1):
+
+    filename = files[0]
+    df = pd.read_csv(filename, nrows=1000)
+
+    mem_thousand = sys.getsizeof(df)
+    mem = psutil.virtual_memory()
+
+    ratio = mem.available/mem_thousand
+    import_max = 1000 * ratio * proportion
+    
+    return import_max
+
+def iterLimit(Npoint, proportion=0.1):
+
+    mem = psutil.virtual_memory()
+
+    iter_max = (mem.available * proportion)/(50 * Npoint)
+    
+    return int(iter_max)
+
+def countStars(files):
+
+    print "Counting total number of stars",
+
+    count = 0
+    for filen in files:
+        print ".",
+        with open(filen) as f:
+            for _ in f:
+                count += 1
+    
+    print "done"
+    return count
+
