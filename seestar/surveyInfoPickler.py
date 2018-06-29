@@ -88,6 +88,8 @@ class surveyInformation():
 
 	def __init__(self, path=None):
 
+		self.style = ''
+
 		self.data_path = ''
 		self.survey = ''
 		self.survey_folder = os.path.join(self.data_path, self.survey)
@@ -242,6 +244,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
 					# If column headers don't match spectro_coords, return error
 					print("Column headers are %s, \nbut spectro_coords suggests %s, \nplease resolve this.\n" %  (df.columns.values, self.spectro_coords))
 					good = False
+					if self.style = 'as': print("(Before running HealpixAssignment there won't be a 'fieldID' column)")
 				else:
 					for i in range(len(self.spectro_coords)):
 						# Check that each coordinate has the right datatype.
@@ -255,7 +258,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
 					phi = df[self.spectro_coords[1]]
 					inrange = all(theta>=self.theta_rng[0])&all(theta<=self.theta_rng[1])&all(phi>=self.phi_rng[0])&all(phi<=self.phi_rng[1])
 					if not inrange:
-						print("spectro_path angle range not correct. Should be -pi/2<=theta<=pi/2, 0<=pi<=2pi. Data gives %s<=theta=<%s, %s<=phi<=%s." % \
+						print("spectro_path angle range not correct. Should be -pi/2<=theta<=pi/2, 0<=phi<=2pi. Data gives %s<=theta=<%s, %s<=phi<=%s." % \
 							(str(min(theta)), str(max(theta)), str(min(phi)), str(max(phi))))
 						good = False
 		if good: print("OK")
@@ -287,22 +290,24 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
 							self.field_dtypes[i] = df[self.field_coords[i]].dtype.type
 							print("Changed dtype to %s, run self.save() to keep these changes." % df[self.field_coords[i]].dtype.type)
 							good = False
-					# Check that longitude and latitude are in the right range
-					theta = df[self.field_coords[2]]
-					phi = df[self.field_coords[1]]
-					inrange = all(theta>=self.theta_rng[0])&all(theta<=self.theta_rng[1])&all(phi>=self.phi_rng[0])&all(phi<=self.phi_rng[1])
-					if not inrange:
-						print("field_path angle range not correct. Should be -pi/2<=theta<=pi/2, 0<=pi<=2pi. Data gives %s<=theta=<%s, %s<=phi<=%s." % \
-							(str(min(theta)), str(max(theta)), str(min(phi)), str(max(phi))))
-						good = False
-					# Check that half-angle is in range
-					halfangle = df[self.field_coords[3]]
-					inrange = all(halfangle>=0)&all(halfangle<=np.pi)
-					if not inrange:
-						print("Halfangle out of range. Should be 0<=halfangle<=pi. Data gives %s<=halfangle=<%s." % \
-							(str(min(halfangle)), str(max(halfangle))))
-						good = False
-					print("(make sure halfangle is in units of radians.)")
+
+					if self.style == 'mf':
+						# Check that longitude and latitude are in the right range
+						theta = df[self.field_coords[2]]
+						phi = df[self.field_coords[1]]
+						inrange = all(theta>=self.theta_rng[0])&all(theta<=self.theta_rng[1])&all(phi>=self.phi_rng[0])&all(phi<=self.phi_rng[1])
+						if not inrange:
+							print("field_path angle range not correct. Should be -pi/2<=theta<=pi/2, 0<=pi<=2pi. Data gives %s<=theta=<%s, %s<=phi<=%s." % \
+								(str(min(theta)), str(max(theta)), str(min(phi)), str(max(phi))))
+							good = False
+						# Check that half-angle is in range
+						halfangle = df[self.field_coords[3]]
+						inrange = all(halfangle>=0)&all(halfangle<=np.pi)
+						if not inrange:
+							print("Halfangle out of range. Should be 0<=halfangle<=pi. Data gives %s<=halfangle=<%s." % \
+								(str(min(halfangle)), str(max(halfangle))))
+							good = False
+						print("(make sure halfangle is in units of radians.)")
 		if good: print("OK")		
 		print('')
 

@@ -809,12 +809,13 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, halfangle, IDtype = str
         del(Mplates)
         gc.collect()
 
-        dtypeMap = lambda row: map(IDtype, row)
-        field_listoflists = map(dtypeMap, field_listoflists)
+        try: 
+            dtypeMap = lambda row: map(IDtype, row)
+            field_listoflists = map(dtypeMap, field_listoflists)
+        except TypeError:
+
 
         field_series = pd.Series(field_listoflists)
-
-
         field_series = pd.DataFrame(field_series, columns=['points'])
         dfi = dfi.reset_index()
         dfi = dfi.merge(field_series, how='inner', right_index=True, left_index=True)

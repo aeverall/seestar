@@ -20,6 +20,14 @@ def create():
 				 os.path.join(directory, folder))
 		else: good_folder = True
 
+	good_ans = False
+	while (not good_ans):
+		survey_style = raw_input("Style of survey? a = multi-fibre fields, b = all-sky: ")
+		if survey_style in ('a','b'):
+			good_ans = True
+			if survey_style == 'a': style='mf'
+			else:  style='as'
+
 	# Create the directory
 	os.makedirs( os.path.join(directory, folder) )
 
@@ -29,11 +37,14 @@ def create():
 	# Location where spectrograph survey information is stored
 	FileInfo.data_path = directory
 
+	# Type of survey, multifibre vs allsky
+	FileInfo.style = style
+
 	# Folder in .data_path which contains the file informatino
 	FileInfo.survey = folder
 
 	# Data type for field IDs
-	FileInfo.fieldlabel_type = str
+	if style=='mf': FileInfo.fieldlabel_type = str
 
 	# Coordinate system, Equatorial or Galactic
 	FileInfo.coord_system = 'Galactic'
@@ -42,13 +53,20 @@ def create():
 	FileInfo.spectro_fname = folder + '_survey.csv'
 	# magA-magB = Colour, magC = m (for selection limits)
 	FileInfo.spectro_coords = ['fieldID', 'glon', 'glat', 'Japp', 'Kapp', 'Happ']
-	FileInfo.spectro_dtypes = [FileInfo.fieldlabel_type, float, float, float, float, float]
+	if style=='mf': FileInfo.spectro_dtypes = [FileInfo.fieldlabel_type, float, float, float, float, float]
+	elif style=='as': FileInfo.spectro_dtypes = [None, float, float, float, float, float]
+	else: print("Houston, we have a problem! code 1")
 
 	# Filename (in FileInfo.spectro file) for field pointings
 	FileInfo.field_fname = folder + '_fieldinfo.csv'
 	# Column headers in field pointings and their datatypes
-	FileInfo.field_coords = ['fieldID', 'glon', 'glat', 'halfangle', 'Magmin', 'Magmax', 'Colmin', 'Colmax']
-	FileInfo.field_dtypes = [FileInfo.fieldlabel_type, float, float, float, float, float, float, float]
+	if style=='mf':
+		FileInfo.field_coords = ['fieldID', 'glon', 'glat', 'halfangle', 'Magmin', 'Magmax', 'Colmin', 'Colmax']
+		FileInfo.field_dtypes = [FileInfo.fieldlabel_type, float, float, float, float, float, float, float]
+	elif style=='as':
+		FileInfo.field_coords = ['fieldID', 'Magmin', 'Magmax', 'Colmin', 'Colmax']
+		FileInfo.field_dtypes = [FileInfo.fieldlabel_type, float, float, float, float]		
+	else: print("Houston, we have a problem! code 2")
 
 	# Location where photometric datafiles are stored (require large storage space)
 	FileInfo.photo_path = os.path.join(directory, folder, 'photometric')
@@ -87,7 +105,7 @@ def create():
 	pklfile = os.path.join(directory, folder, folder+"_fileinfo.pickle")
 	FileInfo.fileinfo_path = pklfile
 	# Pickle the file information
-	FileInfo.save(pklfile)
+	FileInfo.saveas(pklfile)
 
 	message = """
 The files for the project have been generated.
