@@ -43,6 +43,7 @@ DataImport
 
 import numpy as np
 import pandas as pd
+import healpy as hp
 from itertools import product
 import re, dill, pickle, multiprocessing
 import cProfile, pstats
@@ -62,6 +63,7 @@ from seestar import SFInstanceClasses
 from seestar import IsochroneScaling
 from seestar import surveyInfoPickler
 from seestar import AngleDisks
+from seestar import FieldAssignment
 
 class SFGenerator():
 
@@ -202,20 +204,23 @@ class SFGenerator():
             # Add class instance to dictionary
             self.obsSF[field] = obsSF_field
 
-        # Cannot construct overlapping field system if only one field
-        # This selection function doesn't currently work for a single field
-        if len(self.pointings)>1:
-            if not overlapdata_exists:
-                # Create the field intersection database
-                database = FieldUnions.CreateIntersectionDatabase(20000, pointings, self.fieldlabel_type, labels = ['phi', 'theta', 'halfangle'])
-                database.to_csv(file_info.overlap_path)
-            else: database = pd.read_csv(file_info.overlap_path)
-            self.FUInstance = FieldUnions.FieldUnion(database)
-        else: raise ValueError('Cannot currently run this code with only one field, working on improving this!')
+        # Calculate field overlap for multifibre surveys (Healpix doesn't overlap)
+        if self.style == 'mf':
+            # Cannot construct overlapping field system if only one field
+            # This selection function doesn't currently work for a single field
+            if len(self.pointings)>1:
+                if not overlapdata_exists:
+                    # Create the field intersection database
+                    database = FieldUnions.CreateIntersectionDatabase(20000, pointings, self.fieldlabel_type, labels = ['phi', 'theta', 'halfangle'])
+                    database.to_csv(file_info.overlap_path)
+                else: database = pd.read_csv(file_info.overlap_path)
+                self.FUInstance = FieldUnions.FieldUnion(database)
+            else: raise ValueError('Cannot currently run this code with only one field, working on improving this!')
         
     def __call__(self, catalogue, method='intrinsic', 
                 coords = ['age', 'mh', 's', 'mass'], 
-                angle_coords=['phi','theta']):
+                angle_coords=['phi','theta'],
+                rng_phi=(0, 2*np.pi), rng_th=(-np.pi/2, np.pi/2)):
 
         '''
         __call__ - Once the selection function has been included, this takes in a catalogue
@@ -243,22 +248,34 @@ class SFGenerator():
             SFcalc = lambda field, df: self.instanceSF( (df[coords[0]], df[coords[1]], df[coords[3]], df[coords[2]]), self.obsSF[field] )
         else: raise ValueError('Method is unknown')
 
-        if self.field_coords[1] == 'Galactic':point_coords=['l', 'b']
-        elif self.field_coords[1] == 'Equatorial':point_coords=['RA', 'Dec']
-        else: raise ValueError("MThe entry in surveyInfo of field_coords should be Galactic or Equatorial, it's currently %s" % self.field_coords[1])
+        # Not entirely sure what the point in this is.
+        point_coords = self.field_coords[1:3]
 
-        #print(SFcalc(2.0, catalogue[['Happ', 'Colour', 's', 'age', 'mh', 'mass']]))
+        if self.style == 'mf':
+            # catalogue[points] - list of pointings which coordinates lie on
+            # catalogue[field_info] - list of tuples: (P(S|v), field)
+            print('Calculating all SF values...')
+            catalogue = FieldUnions.GenerateMatrices(catalogue, self.pointings, angle_coords, point_coords, 'halfangle', SFcalc)
+            print('...done')
+            # The SF probabilities and coordinates of overlapping fields are used to calculate
+            # the field union.
+            print('Calculating union contribution...')
+            catalogue['union'] = catalogue.field_info.map(self.FUInstance.fieldUnion)
+            print('...done')
+        elif self.style == 'as':
+            npixel = len(self.pointings)
+            nside = hp.npix2nside( npixel )
+            # Assign stars to fields then calculate selection functions
+            theta = catalogue[angle_coords[1]]
+            phi = catalogue[angle_coords[2]]
+            catalogue[self.field_coords[0]] = FieldAssignment.labelStars(theta, phi, rng_th, rng_phi, nside)
 
-        # catalogue[points] - list of pointings which coordinates lie on
-        # catalogue[field_info] - list of tuples: (P(S|v), field)
-        print('Calculating all SF values...')
-        catalogue = FieldUnions.GenerateMatrices(catalogue, self.pointings, angle_coords, point_coords, 'halfangle', SFcalc)
-        print('...done')
-        # The SF probabilities and coordinates of overlapping fields are used to calculate
-        # the field union.
-        print('Calculating union contribution...')
-        catalogue['union'] = catalogue.field_info.map(self.FUInstance.fieldUnion)
-        print('...done')
+            # Calculate selection function
+            catalogue['sfprob'] = 0.
+            for field in self.pointings[self.field_coords[0]]:
+                # Calculate probabilities for stars on the field
+                isfield = catalogue[self.field_coords[0]] == field
+                catalogue['sfprob'][isfield] = SFcalc(field, catalogue[isfield])
 
         return catalogue
         
