@@ -97,18 +97,10 @@ class SFGenerator():
         AnglePointsToPointingsMatrix
     '''
     
-    def __init__(self, pickleFile,
-                 surveysf_exists = True,
-                 ColMagSF_exists = True,
-                 isointerp_exists = True,
-                 overlapdata_exists = False):
+    def __init__(self, pickleFile):
 
         # Check what components of the selection function already exist
         gen_intsf, use_intsf, gen_obssf, use_obssf, use_isointerp, use_overlap = path_check(pickleFile)
-        raise Error('Just temporary to test path_check.')
-
-        # Change message to check that SF is running for updated version
-        print("Latest Version")
 
         # Load survey information from pickleFile
         file_info = surveyInfoPickler.surveyInformation(pickleFile)
@@ -130,7 +122,7 @@ class SFGenerator():
 
         self.iso_pickle = file_info.iso_pickle_path
         self.isocolmag_pickle = file_info.iso_interp_path
-        self.isointerp_exists = isointerp_exists
+        self.use_isointerp = use_isointerp
 
         # Import the dataframe of pointings        
         pointings = self.ImportDataframe(field_path, self.field_coords, 
@@ -160,10 +152,9 @@ class SFGenerator():
                     pickle.dump(obsSF_dicts, handle)
                 print("...done\n.")
 
-            # Load classes from dictionaries
             # Initialise dictionary
             self.obsSF = {}
-            for field in obsSF_dicts:
+            for field in obsSF_dicts: # Load classes from dictionaries
                 # Initialise class instance
                 obsSF_field = SFInstanceClasses.observableSF(field)
                 # Set class attributes from dictionary
@@ -172,8 +163,7 @@ class SFGenerator():
                 self.obsSF[field] = obsSF_field
         
         if gen_intsf: # If we want to generate an intrinsic selection function    
-            if use_intsf: # Use a premade intrinsic selection function     
-                # Once full selection function has been created
+            if use_intsf: # Use a premade intrinsic selection function
                 # Unpickle survey selection function
                 print("Unpickling survey selection function...")
                 with open(sf_pickle_path, "rb") as input:
@@ -499,8 +489,8 @@ class SFGenerator():
             self.isocolmag_pickle - str
                     Path to colour-magnitude interpolant files
 
-            self.isointerp_exists - boolean
-                    Has an interpolant over the isochrones already been created?
+            self.use_isointerp - boolean
+                    Shall we use a premated interpolant of the isochrones?
 
         **kwargs
         --------
@@ -530,8 +520,11 @@ class SFGenerator():
         # Initialise the
         IsoCalculator = IsochroneScaling.IntrinsicToObservable()
 
-        if not self.isointerp_exists:
-
+        if self.use_isointerp:
+            print("Importing colour-magnitude isochrone interpolants...")
+            IsoCalculator.LoadColMag(self.isocolmag_pickle)
+            print("...done\n")
+        else:
             IsoCalculator.iso_pickle = self.iso_pickle
             IsoCalculator.agerng = agerng
             IsoCalculator.mhrng = mhrng
@@ -542,12 +535,6 @@ class SFGenerator():
 
             print("Pickling isochrone distributions...")
             IsoCalculator.pickleColMag(self.isocolmag_pickle)
-            print("...done\n")
-
-        else:
-
-            print("Importing colour-magnitude isochrone interpolants...")
-            IsoCalculator.LoadColMag(self.isocolmag_pickle)
             print("...done\n")
 
         agerng = IsoCalculator.agerng
@@ -1478,20 +1465,22 @@ def path_check(pickleFile):
     # ISOCHRONES
     if gen_intsf & (not use_intsf): # Only need isochrones for generating an intrinsic Selection Function.
         if os.path.exists(fileinfo.iso_interp_path):
-            raw_input("Path to interpolated isochrones (%s) exists. These will be used." % fileinfo.iso_interp_fname)
+            print("Path to interpolated isochrones (%s) exists. These will be used." % fileinfo.iso_interp_file)
             use_isointerp = True
         elif os.path.exists(fileinfo.iso_data_path):
-            raw_input("No interpolated isochrones. They will be generated from %s." % fileinfo.iso_data_fname)
+            print("No interpolated isochrones. They will be generated from %s." % fileinfo.iso_data_file)
             use_isointerp = False
         else: raise IOError('No isochrone files at %s or %s' % (fileinfo.iso_interp_path, fileinfo.iso_data_path))
+    else: use_isointerp = 'na'
 
     # Field overlap
     if fileinfo.style == 'mf': # Only useful for multifibre spectroscopic surveys
         if os.path.exists(fileinfo.overlap_path):
-            raw_input("Path to field overlap info (%s) exists. This will be used." % fileinfo.overlap_fname)
+            print("Path to field overlap info (%s) exists. This will be used." % fileinfo.overlap_fname)
             use_overlap = True
         else:
-            raw_input("No field overlap information. This will be generated using the pointings data.")
+            print("No field overlap information. This will be generated using the pointings data.")
             use_overlap = False
+    else: use_overlap = 'na'
 
     return gen_intsf, use_intsf, gen_obssf, use_obssf, use_isointerp, use_overlap

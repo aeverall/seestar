@@ -682,19 +682,14 @@ def Redistribution(isoage, isomh, isodict,
     ----------
         isoage - 1D array
             Set of age values in isochrones.
-
         isomh  - 1D array
             Set of metallicity values in isochrones.
-
         isodict - dict
             Dictionary containing all isochrones.
-
         m_scaled - 1D array
             Set of scaled mass values to be used in new isochrone distribution.
-
         scaling - lambda/function instance
             Function for scaling mass (Mi, Mmax, Mmon)
-
         unscaling - lambda/function instance
             Function for unscaling mass (Mi, Mmax, Mmin)
 
@@ -702,7 +697,6 @@ def Redistribution(isoage, isomh, isodict,
     --------
         columnABC - 3-tuple of ints
             Columns of magnitude bands in isochrones
-
         columnMi - int
             Column of initial mass in isochrones
 
@@ -764,20 +758,34 @@ def cmInterpolation(isoage, isomh, iso_info, m_scaled,
                     agerng= (0,13), mhrng=(-2.5, 0.5)):
 
     '''
-
+    cmInterpolation - Interpolate over colour and magnitude on an age-metallicity-scaled mass grid.
 
     Parameters
     ----------
-
+        isoage, isomh: arr of float
+            - Ages and metallicities of all isochrones in the catalogue
+        iso_info: dict
+            - Dictionary of all isochrones where values are "age%fmh%f" % age, metallicity
+        m_scaled: arr of float
+            - Array of scaled mass values to be used for interpolation points
 
     **kwargs
     --------
-
+        agerng=(0,13): tuple of float
+            - Min and max age to be used (will actually be a larger range as will take nearest isochrone instide)
+        mhrng=(-2.5, 0.5): tuple of float
+            - Min and max metallicity to be used (will actually be a larger range as will take nearest isochrone instide)
 
     Returns
     -------
-
-
+        magA_interp, magB_interp, magC_interp: RGI
+            - Interpolation of absolute magnitude over age-metallicity-scaled mass grid
+        col_interp: RGI
+            - Interpolation of colour over age-metallicity-scaled mass grid
+        agerng, mhrng: tuple of float
+            - Min and max age and metallicity taken from max and min isochrones
+        magrng, colrng: tuple of float
+            - Min and max magnitude and colour found from all isochrones
     '''
 
     # Construct mass grid
@@ -872,108 +880,27 @@ def cmInterpolation(isoage, isomh, iso_info, m_scaled,
     return magA_interp, magB_interp, magC_interp, col_interp, agerng, mhrng, magrng, colrng
 
 
-class mScale():
-
-    '''
-
-
-    Parameters
-    ----------
-
-
-    **kwargs
-    --------
-
-
-    Returns
-    -------
-
-
-    '''
-    
-    def __init__(self, Mmax_interp, Mmin):
-        
-        self.Mmax_interp = Mmax_interp
-        self.Mmin = Mmin
-        
-        self.function = lambda mass, Mmax, Mmin: (mass-Mmin)/(Mmax-Mmin)
-        
-    def __call__(self, age, mh, mass):
-        
-        mass_scaled = self.function( mass, self.Mmax_interp((age, mh)), self.Mmin)
-    
-        return mass_scaled
-    
-class mUnscale():
-
-    '''
-
-
-    Parameters
-    ----------
-
-
-    **kwargs
-    --------
-
-
-    Returns
-    -------
-
-
-    '''
-    
-    def __init__(self, Mmax_interp, Mmin):
-        
-        self.Mmax_interp = Mmax_interp
-        self.Mmin = Mmin
-        
-        self.function = lambda mass_scaled, Mmax, Mmin: mass_scaled*(Mmax-Mmin) + Mmin
-        
-    def __call__(self, age, mh, mass_scaled):
-    
-        m = self.function( mass_scaled, self.Mmax_interp((age, mh)), self.Mmin)
-        
-        return m
-
-
 class NearestIsochrone:
 
     '''
-
+    NearestIsochrone - Calculate col/mag from nearest isochrone method
 
     Parameters
     ----------
+        isoFile: str
+            - Path to the isochrone data file
 
-
-    **kwargs
-    --------
-
+    Functions
+    ---------
+        
 
     Returns
     -------
-
+        appMag(age, mh, mass, s)
 
     '''
     
     def __init__(self, isoFile):
-
-        '''
-
-
-        Parameters
-        ----------
-
-
-        **kwargs
-        --------
-
-
-        Returns
-        -------
-
-
-        '''
         
         # Undill Isochrone interpolants
         with open(iso_pickle, "rb") as input:
@@ -994,19 +921,22 @@ class NearestIsochrone:
     def __call__(self, age, mh, mass, s):
 
         '''
-
+        __call__ - Returns the apparent magnitude given age, metallicity, mass and distance
 
         Parameters
         ----------
-
-
-        **kwargs
-        --------
-
+            age - array or float (same size array as mh, mass, s) (Gyr)
+                ages of objects to be calculated
+            mh - array or float (dex)
+                metallicity of objects to be calculated
+            mass - array or float (solar mass)
+                mass of objects to be calculated
+            s - array or float (kpc)
+                distance of objects to be calculated     
 
         Returns
         -------
-
+            appMag(age, mh, mass, s)
 
         '''
         
@@ -1015,53 +945,54 @@ class NearestIsochrone:
     def nearestVal(self, l, x):
 
         '''
-
+        nearestVal - Takes a list and a value and returns the nearest value in the list
 
         Parameters
         ----------
-
-
-        **kwargs
-        --------
-
-
+            l: list or array of float
+                - List of values to check through
+            x: float
+                - Value which we want list element to be closest to.
         Returns
         -------
-
-
+            l[index0 + plus]: float
+                - Value in list which is closest to x
         '''
         
-        # If x below list range
-        if x<l[0]:
-            return l[0]
-        # If x above list range
-        elif x>l[-1]:
-            return l[-1]
-        # If x is within list range
-        else:
-            index0 = sum(x>l) - 1
-            # Rounding correction (round up or down)
-            plus = int( round( (x-l[index0]) / (l[index0+1]-l[index0]) ) )
-            # Return value in list nearest to x
-            return l[index0 + plus]
+        # Find absolute difference between all elements
+        diff = np.abs(x-l)
+        # Take the list val which has difference as the minimum
+        listval = l[diff == np.min(diff)][0]
+
+        return listval
     
     def absMag(self, age, mh, mass):
 
         '''
-
+        absMag - Calculate absolute magnitude in J, H, and K from age, metallicity and mass
 
         Parameters
         ----------
+            age - array or float (same size array as mh, mass, s) (Gyr)
+                ages of objects to be calculated
+            mh - array or float (dex)
+                metallicity of objects to be calculated
+            mass - array or float (solar mass)
+                mass of objects to be calculated
 
-
-        **kwargs
-        --------
-
+        Inherited
+        ---------
+            isoage - 1D array
+                Set of age values in isochrones.
+            isomh  - 1D array
+                Set of metallicity values in isochrones.
+            isodict - dict
+                Dictionary containing all isochrones.
 
         Returns
         -------
-
-
+            J, H, K: 1D array of float
+                - J, H and K absolute magnitudes
         '''
         
         # Round age to nearest
@@ -1091,20 +1022,28 @@ class NearestIsochrone:
     def appMag(self, age, mh, mass, s):
 
         '''
-
+        appMag - Calculate apparent magnitude in j, h, k from age, metallicity, mass and distance
 
         Parameters
         ----------
+            age - array or float (same size array as mh, mass, s) (Gyr)
+                ages of objects to be calculated
+            mh - array or float (dex)
+                metallicity of objects to be calculated
+            mass - array or float (solar mass)
+                mass of objects to be calculated
+            s - array or float (kpc)
+                distance of objects to be calculated     
 
-
-        **kwargs
-        --------
-
+        Inherited
+        ---------
+            appmag: lambda
+                - Convert absolute to apparent magnitude given distance
 
         Returns
         -------
-
-
+            j, h, k: 1D array of float
+                - j, h, k apparent magnitudes
         '''
         
         J, K, H = self.absMag(age, mh, mass)
@@ -1112,3 +1051,101 @@ class NearestIsochrone:
         [j,k,h] = self.appmag([J,K,H], s)
         
         return j, k, h
+
+class mScale():
+
+    '''
+    ##### NOT IN USE #####
+    mScale - Class for converting between mass and scaled mass with max and min mass interps.
+
+    Parameters
+    ----------
+        Mmax_interp: RGI
+            - Interpolant of maximum mass of isochrones over age and metallicity
+        Mmin: float
+            - Min mass of all isochrones (seems to be the same value for every isochrone
+    '''
+    
+    def __init__(self, Mmax_interp, Mmin):
+        
+        self.Mmax_interp = Mmax_interp
+        self.Mmin = Mmin
+        
+        self.function = lambda mass, Mmax, Mmin: (mass-Mmin)/(Mmax-Mmin)
+        
+    def __call__(self, age, mh, mass):
+        
+        '''
+        __call__ - Return mass scaled given age, metallicity and mass
+
+        Parameters
+        ----------
+            age - array or float (same size array as mh, mass, s) (Gyr)
+                ages of objects to be calculated
+            mh - array or float (dex)
+                metallicity of objects to be calculated
+            mass - array or float (solar mass)
+                mass of objects to be calculated
+        Inherited
+        ---------
+            function: lambda
+                - Calculate scaled mass from mass, Mmax, Mmin
+
+        Returns
+        -------
+            mass_scaled: arr of float  
+                - Scaled mass for each object in the array
+        '''
+
+        mass_scaled = self.function( mass, self.Mmax_interp((age, mh)), self.Mmin)
+    
+        return mass_scaled
+    
+class mUnscale():
+
+    '''
+    ##### NOT IN USE #####
+    mScale - Class for converting between scaled mass and mass with max and min mass interps.
+
+    Parameters
+    ----------
+        Mmax_interp: RGI
+            - Interpolant of maximum mass of isochrones over age and metallicity
+        Mmin: float
+            - Min mass of all isochrones (seems to be the same value for every isochrone
+    '''
+    
+    def __init__(self, Mmax_interp, Mmin):
+        
+        self.Mmax_interp = Mmax_interp
+        self.Mmin = Mmin
+        
+        self.function = lambda mass_scaled, Mmax, Mmin: mass_scaled*(Mmax-Mmin) + Mmin
+        
+    def __call__(self, age, mh, mass_scaled):
+
+        '''
+        __call__ - Return mass given age, metallicity and scaled mass
+
+        Parameters
+        ----------
+            age - array or float (same size array as mh, mass, s) (Gyr)
+                - ages of objects to be calculated
+            mh - array or float (dex)
+                - metallicity of objects to be calculated
+            mass_scaled - array or float in range [0, 1]
+                - scaled mass of objects to be calculated
+        Inherited
+        ---------
+            function: lambda
+                - Calculate scaled mass from mass, Mmax, Mmin
+
+        Returns
+        -------
+            mass - array or float (solar mass)
+                - mass of objects to be calculated
+        '''
+    
+        m = self.function( mass_scaled, self.Mmax_interp((age, mh)), self.Mmin)
+        
+        return m
