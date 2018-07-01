@@ -244,7 +244,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
 					# If column headers don't match spectro_coords, return error
 					print("Column headers are %s, \nbut spectro_coords suggests %s, \nplease resolve this.\n" %  (df.columns.values, self.spectro_coords))
 					good = False
-					if self.style = 'as': print("(Before running HealpixAssignment there won't be a 'fieldID' column)")
+					if self.style == 'as': print("(Before running HealpixAssignment there won't be a 'fieldID' column)")
 				else:
 					for i in range(len(self.spectro_coords)):
 						# Check that each coordinate has the right datatype.
@@ -378,16 +378,14 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
 		# 6) Test isochrone paths
 		print("6) Checking isochrone pickle files exist:")
 		good = True
-		if not os.path.exists(self.iso_data_path):
-			print("\nThe path to isochrone data, iso_data_path, does not exist: %s" % self.iso_data_path)
-			good = False
 		if not os.path.exists(self.iso_interp_path):
-			print("\nThe path to isochrone data, iso_interp_path, does not exist: %s" % self.iso_interp_path)
-			good = False
-		if not os.path.exists(self.iso_mag_path):
-			print("\nThe path to isochrone data, iso_mag_path, does not exist: %s" % self.iso_mag_path)
-			good = False
-		if good: print("OK")
+			print("The path to isochrone data, iso_interp_path, does not exist: %s" % self.iso_interp_path)
+			if not os.path.exists(self.iso_data_path):
+				print("The path to isochrone data, iso_data_path, does not exist: %s" % self.iso_data_path)
+				print("(At lease one of the above files mus exist to generate a selection function in intrinsic coordinates)")
+				good = False
+			else: print("The selection function will generate new isochrone interpolants using data from %s." % self.iso_data_file)
+		else: print("The premade interpolants (%s) will be automatically be used to calculate the selection function." % self.iso_intep_file)
 
 	def printValues(self):
 

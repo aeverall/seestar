@@ -1,3 +1,17 @@
+'''
+createNew - Generates a filestructure and template files for a new selection function.
+
+Functions
+---------
+create - Generates the new file structure. 
+
+
+Requirements
+------------
+
+surveyInfoPickler.py
+'''
+
 import os
 import numpy as np
 import pandas as pd
@@ -5,6 +19,20 @@ from seestar import surveyInfoPickler
 
 
 def create():
+
+	'''
+	create - Generates the new file structure. 
+
+	Parameters
+	----------
+		No input parameters
+			- Requests inputs from the user as the code is run.
+
+	Returns
+	-------
+		pklfile: str
+			- Path to the pickled survey information file.
+	'''
 
 	# Ask for a directory name
 	directory = raw_input("Where is the directory? ")
@@ -84,7 +112,7 @@ def create():
 	FileInfo.obsSF_pickle_fname = folder + '_obsSF.pickle'
 
 	# Folder and files containing isochrone data
-	FileInfo.iso_folder = "isoPARSEC"
+	FileInfo.iso_folder = os.path.join(folder, 'isochrones')
 	FileInfo.iso_data_file = "stellarprop_parsecdefault_currentmass.dill" 
 	FileInfo.iso_interp_file = "isochrone_interpolantinstances.pickle"
 	FileInfo.iso_mag_file = "isochrone_magnitudes.pickle"
@@ -120,6 +148,21 @@ Example csv files have been generated for you with the correct column headings.
 
 def createCSV(filelocation, headers, dtypes):
 
+	'''
+	createCSV - Producest a csv file with the required file structure
+
+	Parameters
+	----------
+		filelocation: str
+			- Path to the location where the file is going to be saved
+
+		headers: list of str
+			- Column headers for the table stored in the csv
+
+		dtypes: list of type
+			- Datatypes for each of the columns in the table.
+	'''
+
 	# create array with data
 	data = np.zeros((len(headers), 5))
 
@@ -134,6 +177,21 @@ def createCSV(filelocation, headers, dtypes):
 	df.to_csv(filelocation, index=False, header=True)
 
 def createPhoto(folderlocation, headers, dtypes):
+
+	'''
+	createPhoto - Produces a photometric data folder and template file.
+
+	Parameters
+	----------
+		folderlocation: str
+			- Path to the directory where the folder will be stored
+
+		headers: list of str
+			- Column headers for the table stored in the csv
+
+		dtypes: list of type
+			- Datatypes for each of the columns in the table.
+	'''
 
 	# Create photometric directory
 	os.makedirs( folderlocation )
