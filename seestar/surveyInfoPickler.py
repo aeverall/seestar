@@ -248,7 +248,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
 				else:
 					for i in range(len(self.spectro_coords)):
 						# Check that each coordinate has the right datatype.
-						if not df[self.spectro_coords[i]].dtype.type == self.spectro_dtypes[i]:
+						if not df[self.spectro_coords[i]].dtype == self.spectro_dtypes[i]:
 							print("Datatype of column %s given as %s but is actually %s." % (self.spectro_coords[i], str(self.spectro_dtypes[i]), str(df[self.spectro_coords[i]].dtype.type)))
 							self.spectro_dtypes[i] = df[self.spectro_coords[i]].dtype.type
 							print("Changed dtype to %s, run self.save() to keep these changes." % df[self.spectro_coords[i]].dtype.type)
@@ -285,7 +285,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
 				else:
 					for i in range(len(self.field_coords)):
 						# Check that each coordinate has the right datatype.
-						if not df[self.field_coords[i]].dtype.type == self.field_dtypes[i]:
+						if not df[self.field_coords[i]].dtype == self.field_dtypes[i]:
 							print("Datatype of column %s given as %s but is actually %s." % (self.field_coords[i], str(self.field_dtypes[i]), str(df[self.field_coords[i]].dtype.type)))
 							self.field_dtypes[i] = df[self.field_coords[i]].dtype.type
 							print("Changed dtype to %s, run self.save() to keep these changes." % df[self.field_coords[i]].dtype.type)
@@ -339,7 +339,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
 				else:
 					for i in range(len(self.photo_coords)):
 						# Check that each coordinate has the right datatype.
-						if not df[self.photo_coords[i]].dtype.type == self.photo_dtypes[i]:
+						if not df[self.photo_coords[i]].dtype == self.photo_dtypes[i]:
 							print("Datatype of column %s given as %s but is actually %s." % (self.photo_coords[i], str(self.photo_dtypes[i]), str(df[self.photo_coords[i]].dtype.type)))
 							self.photo_dtypes[i] = df[self.photo_coords[i]].dtype.type
 							print("Changed dtype to %s, run self.save() to keep these changes." % df[self.photo_coords[i]].dtype.type)
@@ -385,7 +385,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
 				print("(At lease one of the above files mus exist to generate a selection function in intrinsic coordinates)")
 				good = False
 			else: print("The selection function will generate new isochrone interpolants using data from %s." % self.iso_data_file)
-		else: print("The premade interpolants (%s) will be automatically be used to calculate the selection function." % self.iso_intep_file)
+		else: print("The premade interpolants (%s) will be automatically be used to calculate the selection function." % self.iso_interp_file)
 
 	def printValues(self):
 

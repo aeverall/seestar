@@ -1459,6 +1459,7 @@ def path_check(pickleFile):
                 else: # No premade observed selection function
                     print("No observed SF found at %s, we'll build observable seleciton function from scratch." % fileinfo.obsSF_pickle_path)
                     use_obssf = False
+                    good = True
 
         else: pass # sf_type is not in a, b, or c
 

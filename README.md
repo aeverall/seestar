@@ -165,10 +165,13 @@ This will request some inputs:
 ```
 Where is the directory? PATH/TO/DIRECTORY
 What survey? (will be used to label the folder and file contents) SURVEY
+Style of survey? a = multi-fibre fields, b = all-sky: a/b
 ```
 The PATH/TO/DIRECTORY is the directory where you wish to store folders for each survey.
 The SURVEY is the label you wish to give to the survey (e.g. APOGEE14).
 If a folder with SURVEY-NAME exists in PATH/TO/DIRECTORY/, you will have to provide a different name.
+Surveys, such as APOGEE and RAVE, are multi-fibre spectrographs for which field pointings provide a well defined set of fields.
+Gaia is an all-sky survey as it systematically scans the entire sky without predefined fields.
 
 A folder labeled SURVEY-NAME will be generated in the location PATH/TO/DIRECTORY and will contain the following:
 * SURVEY_fileinfo.pickle - pickled dictionary of survey information (file locations and data structures).
