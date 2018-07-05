@@ -387,6 +387,87 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
 			else: print("The selection function will generate new isochrone interpolants using data from %s." % self.iso_data_file)
 		else: print("The premade interpolants (%s) will be automatically be used to calculate the selection function." % self.iso_interp_file)
 
+	def photoTest(self, photo_files):
+
+		'''
+		photoTest - Test photometric files for field assignment to check data ranges and column headers etc.
+
+		Parameters
+		----------
+			photo_files: list of str
+		
+		**kwargs
+		--------
+
+
+		Returns
+		-------
+
+
+		'''
+
+		# 4) Test photo file - column headers, data types
+		print("Checking photometric catalogue file structure:")
+		good = True
+
+		# Pick a random file:
+		photo_file = photo_files[np.random.randint(len(photo_files))]
+		print("Checking %s:" % photo_file)
+		if os.path.exists(photo_file):
+			# Join with photo_path to find path to files
+			filepath = os.path.join(photo_file)
+			try:
+				# Load in dataframe
+				df = pd.read_csv(filepath, nrows=3)
+				df_in = True
+			except ValueError:
+				# Raise error if dataframe cannot be loaded in.
+				print("pd.read_csv('%s') failed for some reason. Please try to fix this." % filepath)
+				df_in = False
+				good = False
+			if df_in:
+				if not set(self.photo_coords).issubset(list(df)):
+					# If column headers don't match photo_coords, return error
+					print("Column headers are %s, \nbut photo_coords suggests %s, \nplease resolve this.\n" %  (df.columns.values, self.photo_coords))
+					good = False
+				else:
+					for i in range(len(self.photo_coords)):
+						# Check that each coordinate has the right datatype.
+						if not df[self.photo_coords[i]].dtype == self.photo_dtypes[i]:
+							print("Datatype of column %s given as %s but is actually %s." % (self.photo_coords[i], str(self.photo_dtypes[i]), str(df[self.photo_coords[i]].dtype.type)))
+							self.photo_dtypes[i] = df[self.photo_coords[i]].dtype.type
+							print("Changed dtype to %s, run self.save() to keep these changes." % df[self.photo_coords[i]].dtype.type)
+							good = False
+					# Check that longitude and latitude are in the right range
+					theta = df[self.photo_coords[1]]
+					phi = df[self.photo_coords[0]]
+					inrange = all(theta>=self.theta_rng[0])&all(theta<=self.theta_rng[1])&all(phi>=self.phi_rng[0])&all(phi<=self.phi_rng[1])
+					if not inrange:
+						print("photo_path angle range not correct. Should be -pi/2<=theta<=pi/2, 0<=pi<=2pi. Data gives %s<=theta=<%s, %s<=phi<=%s." % \
+							(str(min(theta)), str(max(theta)), str(min(phi)), str(max(phi))))
+						good = False
+			if good: 
+				print("File OK")	
+				forward_bool = True
+			else: 
+				good_response = False
+				while not good_response:
+					forward = raw_input("Tests on the files have raised some warnings. Would you like to continue anyway? (y/n)")		
+					if forward == 'n': 
+						forward_bool = False
+						good_response = True
+					elif forward == 'y':
+						forward_bool = True
+						good_response = True
+					else: pass # Bad response to input
+
+		else: # Photometric file not found
+			forward_bool=False
+			print("Path to folder of photometric files, %s, not found." % photo_file)
+		print('')
+
+		return forward_bool
+
 	def printValues(self):
 
 		print("Location of spectroscopic catalogue")

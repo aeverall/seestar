@@ -36,6 +36,7 @@ import pandas as pd
 import sys, gc
 
 from seestar import ArrayMechanics
+from seestar import FieldAssignment
 
 class FieldUnion():
 
@@ -294,7 +295,7 @@ class MatrixUnion():
 		self.Overlaps = overlapdata
 
 		
-def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcalc, 
+def GenerateMatrices_old(df, pointings, angle_coords, point_coords, halfangle, SFcalc, 
 					IDtype = str, Nsample = 10000, basis='intrinsic'):
 
 	'''
@@ -311,26 +312,28 @@ def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcal
         pointings: pd.DataFrame
             Contains an x, y, and r column corresponding to positions and radii of field pointings
 
-        Th: string
-            Column header for latitude coordinate (Dec or b)
+        angle_coords: tuple of str
+        	- Names of angle column headers in df
+        point_coords: tuple of str
+        	- Names of angle column headers in pointings
 
-        Phi: string
-            Column header for longitude coordinate (RA or l)
+        halfangle: string
+            - Column header for half-angle of plate on sky
 
-        halfange: string
-            Column header for half-angle of plate on sky
-
-        surveysf: Dictionary of interpolants
-        	Selection Function dictionary to be used to calculate selection function values for fields
+        SFcalc: lambda/function
+        	- Function for calculating probability of star being selected given field and coords
 
     kwargs
     ------
         IDtype: object
-            Type of python object used for field IDs 
+            - Type of python object used for field IDs 
 
         Nsample: int
-            Number of stars to be assigned per iterations
+            - Number of stars to be assigned per iterations
             Can't do too many at once due to computer memory constraints
+
+        basis='intrinsic': str
+			- (I don't think this is actually used)
 
     Returns
     -------
@@ -432,3 +435,118 @@ def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcal
 		else: newdf = pd.concat((newdf, dfi))
 
 	return newdf
+
+def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcalc, 
+					IDtype = str, Nsample = 10000, test=False):
+
+	'''
+	AnglePointsToPointingsMatrix - Adds a column to the df with the number of the field pointing
+	                             - Uses matrix algebra
+	                                - Fastest method for asigning field pointings
+	                                - Requires high memory usage to temporarily hold matrices
+
+	Parameters
+	----------
+	    df: pd.DataFrame
+	        Contains Theta and Phi column corresponding to the coordinates of points on the contingent axes (RA,Dec)
+
+	    pointings: pd.DataFrame
+	        Contains an x, y, and r column corresponding to positions and radii of field pointings
+
+	    angle_coords: tuple of str
+	    	- Names of angle column headers in df
+	    point_coords: tuple of str
+	    	- Names of angle column headers in pointings
+
+	    halfangle: string
+	        - Column header for half-angle of plate on sky
+
+	    SFcalc: lambda/function
+	    	- Function for calculating probability of star being selected given field and coords
+
+	kwargs
+	------
+	    IDtype: object
+	        - Type of python object used for field IDs 
+
+	    Nsample: int
+	        - Number of stars to be assigned per iterations
+	        Can't do too many at once due to computer memory constraints
+
+	    basis='intrinsic': str
+			- (I don't think this is actually used)
+
+	Returns
+	-------
+		df: pd.DataFrame
+			Same as input df with:
+				- 'points': list of field IDs for fields which the coordinates lie on
+				- 'field_info': list of tuples - (P(S|v), fieldID) - (float, fieldIDtype)
+	'''
+	Nsample = FieldAssignment.iterLimit(len(pointings))
+
+	pointings.rename(index=str, columns=dict(zip(point_coords, angle_coords)), inplace=True)
+	df = ArrayMechanics.AnglePointsToPointingsMatrix(df, pointings, angle_coords[0], angle_coords[1], halfangle,
+		    											IDtype = IDtype, Nsample=Nsample, progress=True)
+	# Dataframe of field probabilities
+	#arr = np.zeros((len(df), len(pointings))).astype(int) - 1 # -1 so that it's an impossible SFprob value
+	#dfprob = pd.DataFrame(arr, columns=pointings.fieldID.tolist())
+	dfprob = pd.DataFrame()
+
+	for field in pointings.fieldID:
+		sys.stdout.write("\rFieldID: "+str(field))
+		# Condition: Boolean series - field is in the points list
+		condition = np.array(df.points.map(lambda points: field in points))
+		# Create array for probability values
+		array = np.zeros(len(df)) - 1
+		# Calculate probabilities
+		if test: 
+			prob, col, mag = SFcalc(field, df[condition])
+			col_arr = np.zeros(len(df)) - 1
+			mag_arr = np.zeros(len(df)) - 1
+			col_arr[condition] = col
+			mag_arr[condition] = mag
+		else: prob = SFcalc(field, df[condition])
+		# Set probability values in array
+		if isinstance(prob, pd.Series):
+			array[condition] = prob.values
+		else: array[condition] = prob
+		# Add column to dfprob dataframe
+		dfprob[field] = array
+
+
+	if test:
+		df['col'] = col_arr
+		df['mag'] = mag_arr
+
+	# Remove 0 entries from the lists
+	def filtering(x, remove):
+		x = filter(lambda a: a!=remove, x)
+		return x
+	# Convert SFprob values into list of values in dataframe
+	arr = np.array(dfprob)
+	# Do filtering for fields
+	listoflists = arr.tolist()
+	listoflists = [filtering(x, -1) for x in listoflists]
+
+	# Lists of SF probabilities
+	SFprob = pd.DataFrame(pd.Series(listoflists), columns=['SFprob'])
+
+	# zip datatypes together - tupes of (sf, field)
+	field_info = map(zip, SFprob.SFprob, df.points)
+	field_info = pd.DataFrame(pd.Series(field_info), columns=['field_info'])
+
+	# Reset index to merge on position then bring index back
+	if 'index' in list(df): df.drop('index', axis=1, inplace=True)
+	df.reset_index(inplace=True)
+	df = df.merge(SFprob, how='inner', right_index=True, left_index=True)
+	df = df.merge(field_info, how='inner', right_index=True, left_index=True)
+	df.index = df['index']
+	df.drop('index', axis=1, inplace=True)
+
+	if test:
+		df['col'] = col_arr
+		df['mag'] = mag_arr
+		return df, col_arr, mag_arr
+
+	return df

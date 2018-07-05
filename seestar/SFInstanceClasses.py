@@ -59,6 +59,9 @@ class observableSF():
 
         SF = self.SF_interp((x, y))
 
+        SF[(x<self.SF_magrange[0])|(x>self.SF_magrange[1])|\
+            (y<self.SF_colrange[0])|(y>self.SF_colrange[1])] = 0.
+
         return SF
 
     def normalise(self):
@@ -154,6 +157,7 @@ class intrinsicSF():
         # Normalisation factors for IMF
         Norm = np.sum( weightgrid , axis=0 )
         SF = SF/Norm
+
 
         return SF
 

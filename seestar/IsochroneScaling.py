@@ -137,7 +137,7 @@ class IntrinsicToObservable():
 
         return Colour, Mapp
     
-    def CreateFromIsochrones(self):
+    def CreateFromIsochrones(self, file):
 
         '''
         CreateFromIsochrones - Generates a scaled mass regime, colour and magnitude
@@ -184,7 +184,7 @@ class IntrinsicToObservable():
         '''
         
         # Import isochrone dictionaries and generate isoage, isomh and isodict entries
-        isoage, isomh, isodict = ImportIsochrones(self.iso_pickle)
+        isoage, isomh, isodict = ImportIsochrones(file)
         self.isoage, self.isomh, self.isodict = isoage, isomh, isodict
         
         # Calculate interpolant of min and max mass values from isochrones
@@ -234,7 +234,7 @@ class IntrinsicToObservable():
         
         with open(pickle_path, 'wb') as handle:
             pickle.dump((self.Mmax_interp, self.Mmin_interp, 
-                         self.col_interp, self.magC_interp,
+                         self.col_interp, self.magA_interp, self.magB_interp, self.magC_interp,
                          self.magrng, self.colrng), handle)
 
     def pickleMagnitudes(self, pickle_path):
@@ -273,7 +273,7 @@ class IntrinsicToObservable():
         
         with open(pickle_path, "rb") as input:
             self.Mmax_interp, self.Mmin_interp, \
-            self.col_interp, self.magC_interp, \
+            self.col_interp, self.magA_interp, self.magB_interp, self.magC_interp, \
             self.magrng, self.colrng = pickle.load(input)
 
     def LoadMagnitudes(self, pickle_path):
@@ -372,7 +372,9 @@ class IntrinsicToObservable():
         # Convert mass to scaled mass
         m_scaled = self.massScaled(age, mh, mass)
         
-        Colour = self.col_interp((age, mh, m_scaled))
+        #Colour = self.col_interp((age, mh, m_scaled))
+        Colour = self.magA_interp((age, mh, m_scaled)) - self.magB_interp((age, mh, m_scaled))
+
         Mabs = self.magC_interp((age, mh, m_scaled))
         
         return Colour, Mabs
@@ -403,9 +405,9 @@ class IntrinsicToObservable():
         '''
 
         Colour, Mabs = self.ColourMabs(age, mh, mass)
-        
+        s = s.values # Convert from series to array
         Mapp = self.appmag(Mabs, s)
-        
+
         return Colour, Mapp
 
     def AbsMags(self, age, mh, mass):
@@ -536,8 +538,8 @@ def isoMaxMass(isoage, isomh, isodict):
     agemh_scale = []
     for age in isoage:
         for mh in isomh:
-            # Retrieve isochrones from pi
-            interpname  = "age"+str(age)+"mh"+str(mh) 
+
+            interpname = stringLength(age, mh, isodict)
             isochrone   = isodict[interpname]
 
             # Extract information from isochrones
@@ -602,7 +604,8 @@ def ScaledMasses(isoage, isomh, isodict, scaling,
 
     for age in isoage:
         for mh in isomh:
-            interpname  = "age"+str(age)+"mh"+str(mh) 
+
+            interpname = stringLength(age, mh, isodict)
             isochrone   = isodict[interpname]
 
             Mi = isochrone[:,columnMi]
@@ -713,7 +716,7 @@ def Redistribution(isoage, isomh, isodict,
     for age in isoage:
         for mh in isomh:
             # Retrieve isochrones from pi
-            interpname  = "age"+str(age)+"mh"+str(mh) 
+            interpname = stringLength(age, mh, isodict)
             isochrone   = isodict[interpname]
 
             # Extract information from isochrones
@@ -821,7 +824,8 @@ def cmInterpolation(isoage, isomh, iso_info, m_scaled,
     age_mh = pd.DataFrame(list(product(agegrid, mhgrid)), columns=['age','mh'])
 
     # Isochrone string identifiers
-    age_mh['isoname'] = "age"+age_mh.age.astype(str)+"mh"+age_mh.mh.astype(str)
+    #age_mh['isoname'] = "age"+age_mh.age.astype(str)+"mh"+age_mh.mh.astype(str)
+    age_mh['isoname'] = age_mh.apply(lambda row: stringLength(row.age, row.mh, iso_info), axis=1)
 
     # Absolute magnitude arrays from isodict
     age_mh['absA'] = age_mh.isoname.map(lambda x: iso_info[x].Aabs)
@@ -1051,6 +1055,22 @@ class NearestIsochrone:
         [j,k,h] = self.appmag([J,K,H], s)
         
         return j, k, h
+
+def stringLength(age, mh, isodict):
+
+        # Retrieve isochrones from pi
+        try:
+            interpname  = "age"+str(round(age, 14))+"mh"+"{}".format(mh)
+            isochrone   = isodict[interpname]
+        except KeyError:
+            try:
+                interpname  = "age"+str(round(age, 13))+"mh"+"{}".format(mh)
+                isochrone   = isodict[interpname]
+            except KeyError:
+                interpname  = "age"+str(round(age, 12))+"mh"+"{}".format(mh)
+                isochrone   = isodict[interpname]
+
+        return interpname
 
 class mScale():
 

@@ -56,14 +56,27 @@ import matplotlib.gridspec as gridspec
 from matplotlib.colors import LogNorm
 from matplotlib.ticker import LogFormatter
 
-from seestar import ArrayMechanics as AM
-from seestar import StatisticalModels
-from seestar import FieldUnions
-from seestar import SFInstanceClasses
-from seestar import IsochroneScaling
-from seestar import surveyInfoPickler
-from seestar import AngleDisks
-from seestar import FieldAssignment
+lg = raw_input('local or global')
+if lg == 'l':
+    sys.path.append("/home/andy/Documents/Research/SF/GitRepo/seestar/")
+    import ArrayMechanics as AM
+    import StatisticalModels
+    import FieldUnions
+    import SFInstanceClasses
+    import IsochroneScaling
+    import surveyInfoPickler
+    import AngleDisks
+    import FieldAssignment
+elif lg == 'g':
+    from seestar import ArrayMechanics as AM
+    from seestar import StatisticalModels
+    from seestar import FieldUnions
+    from seestar import SFInstanceClasses
+    from seestar import IsochroneScaling
+    from seestar import surveyInfoPickler
+    from seestar import AngleDisks
+    from seestar import FieldAssignment
+else: raise ValueError('Local or global?')
 
 class SFGenerator():
 
@@ -103,25 +116,26 @@ class SFGenerator():
         gen_intsf, use_intsf, gen_obssf, use_obssf, use_isointerp, use_overlap = path_check(pickleFile)
 
         # Load survey information from pickleFile
-        file_info = surveyInfoPickler.surveyInformation(pickleFile)
+        fileinfo = surveyInfoPickler.surveyInformation(pickleFile)
+        self.fileinfo = fileinfo
 
-        spectro_coords = file_info.spectro_coords
-        spectro_path = file_info.spectro_path
+        spectro_coords = fileinfo.spectro_coords
+        spectro_path = fileinfo.spectro_path
 
-        self.photo_coords = file_info.photo_coords
-        self.photo_path = file_info.photo_path
+        self.photo_coords = fileinfo.photo_coords
+        self.photo_path = fileinfo.photo_path
 
-        self.field_coords = file_info.field_coords
-        field_path = file_info.field_path
+        self.field_coords = fileinfo.field_coords
+        field_path = fileinfo.field_path
 
-        obsSF_pickle_path = file_info.obsSF_pickle_path
-        sf_pickle_path = file_info.sf_pickle_path
+        obsSF_pickle_path = fileinfo.obsSF_pickle_path
+        sf_pickle_path = fileinfo.sf_pickle_path
 
-        self.photo_tag = file_info.photo_tag
-        self.fieldlabel_type = file_info.field_dtypes[0]
+        self.photo_tag = fileinfo.photo_tag
+        self.fieldlabel_type = fileinfo.field_dtypes[0]
 
-        self.iso_pickle = file_info.iso_pickle_path
-        self.isocolmag_pickle = file_info.iso_interp_path
+        self.iso_pickle = fileinfo.iso_pickle_path
+        self.isocolmag_pickle = fileinfo.iso_interp_path
         self.use_isointerp = use_isointerp
 
         # Import the dataframe of pointings        
@@ -132,36 +146,6 @@ class SFGenerator():
         #pointings = pointings[pointings.fieldID==2001.0]
         self.pointings = pointings
 
-        if gen_obssf: # We want an observable selection function
-            if use_obssf: # Use the premade one
-                # Once Colour Magnitude selection functions have been created
-                # Unpickle colour-magnitude interpolants
-                print("Unpickling colour-magnitude interpolant dictionaries...")
-                with open(obsSF_pickle_path, "rb") as input:
-                    obsSF_dicts = pickle.load(input)
-                print("...done.\n")
-            else: # Create new observable selection function
-                print('Importing data for Colour-Magnitude Field interpolants...')
-                self.spectro_df = self.ImportDataframe(spectro_path, spectro_coords)
-                print("...done.\n")
-            
-                print('Creating Colour-Magnitude Field interpolants...')
-                obsSF_dicts = self.iterateAllFields()
-                print('\nnow pickling them...')
-                with open(obsSF_pickle_path, 'wb') as handle:
-                    pickle.dump(obsSF_dicts, handle)
-                print("...done\n.")
-
-            # Initialise dictionary
-            self.obsSF = {}
-            for field in obsSF_dicts: # Load classes from dictionaries
-                # Initialise class instance
-                obsSF_field = SFInstanceClasses.observableSF(field)
-                # Set class attributes from dictionary
-                SFInstanceClasses.setattrs(obsSF_field, **obsSF_dicts[field])
-                # Add class instance to dictionary
-                self.obsSF[field] = obsSF_field
-        
         if gen_intsf: # If we want to generate an intrinsic selection function    
             if use_intsf: # Use a premade intrinsic selection function
                 # Unpickle survey selection function
@@ -192,13 +176,45 @@ class SFGenerator():
                 self.instanceIMFSF=instanceIMFSF
                 self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
                 print("...done.\n")
+        else: # Still need cm_limits for obsSF
+            self.cm_limits = None
 
-        if self.style == 'mf': # Calculate field overlap for multifibre surveys (Healpix doesn't overlap)
+        if gen_obssf: # We want an observable selection function
+            if use_obssf: # Use the premade one
+                # Once Colour Magnitude selection functions have been created
+                # Unpickle colour-magnitude interpolants
+                print("Unpickling colour-magnitude interpolant dictionaries...")
+                with open(obsSF_pickle_path, "rb") as input:
+                    obsSF_dicts = pickle.load(input)
+                print("...done.\n")
+            else: # Create new observable selection function
+                print('Importing data for Colour-Magnitude Field interpolants...')
+                self.spectro_df = self.ImportDataframe(spectro_path, spectro_coords)
+                print("...done.\n")
+            
+                print('Creating Colour-Magnitude Field interpolants...')
+                obsSF_dicts = self.iterateAllFields()
+                print('\nnow pickling them...')
+                with open(obsSF_pickle_path, 'wb') as handle:
+                    pickle.dump(obsSF_dicts, handle)
+                print("...done\n.")
+
+            # Initialise dictionary
+            self.obsSF = {}
+            for field in obsSF_dicts: # Load classes from dictionaries
+                # Initialise class instance
+                obsSF_field = SFInstanceClasses.observableSF(field)
+                # Set class attributes from dictionary
+                SFInstanceClasses.setattrs(obsSF_field, **obsSF_dicts[field])
+                # Add class instance to dictionary
+                self.obsSF[field] = obsSF_field
+
+        if fileinfo.style == 'mf': # Calculate field overlap for multifibre surveys (Healpix doesn't overlap)
             if use_overlap: # Use the precalculated field overlaps
-                database = pd.read_csv(file_info.overlap_path)
+                database = pd.read_csv(fileinfo.overlap_path)
             elif len(self.pointings)>1: # Create the field intersection database from scratch
                     database = FieldUnions.CreateIntersectionDatabase(20000, pointings, self.fieldlabel_type, labels = ['phi', 'theta', 'halfangle'])
-                    database.to_csv(file_info.overlap_path)
+                    database.to_csv(fileinfo.overlap_path)
             else: # Cannot construct overlapping field system if only one field
                 raise ValueError('Cannot currently run this code with only one field, working on improving this!')
             self.FUInstance = FieldUnions.FieldUnion(database)
@@ -230,25 +246,29 @@ class SFGenerator():
             SFcalc = lambda field, df: np.array( self.obsSF[field]((df[coords[0]], df[coords[1]])) )
         elif method=='IMFint':
             SFcalc = lambda field, df: self.instanceIMFSF( (df[coords[0]], df[coords[1]], df[coords[2]]), self.obsSF[field] )
-        elif method=='int':
+        elif method=='intrinsic':
             SFcalc = lambda field, df: self.instanceSF( (df[coords[0]], df[coords[1]], df[coords[3]], df[coords[2]]), self.obsSF[field] )
         else: raise ValueError('Method is unknown')
 
-        # Not entirely sure what the point in this is.
-        point_coords = self.field_coords[1:3]
+        # Labels for angles in pointings (reset in ImportData)
+        point_coords = ['phi','theta']
 
-        if self.style == 'mf':
+        if self.fileinfo.style == 'mf':
+            # Drop column which will be readded if this has been calculated before.
+            if 'field_info' in list(catalogue): catalogue = catalogue.drop('field_info', axis=1)
             # catalogue[points] - list of pointings which coordinates lie on
             # catalogue[field_info] - list of tuples: (P(S|v), field)
             print('Calculating all SF values...')
-            catalogue = FieldUnions.GenerateMatrices(catalogue, self.pointings, angle_coords, point_coords, 'halfangle', SFcalc)
+            catalogue = FieldUnions.GenerateMatrices(catalogue, self.pointings, 
+                                                    angle_coords, point_coords, 'halfangle', 
+                                                    SFcalc, IDtype=self.fieldlabel_type)
             print('...done')
             # The SF probabilities and coordinates of overlapping fields are used to calculate
             # the field union.
             print('Calculating union contribution...')
             catalogue['union'] = catalogue.field_info.map(self.FUInstance.fieldUnion)
             print('...done')
-        elif self.style == 'as':
+        elif self.fileinfo.style == 'as':
             npixel = len(self.pointings)
             nside = hp.npix2nside( npixel )
             # Assign stars to fields then calculate selection functions
@@ -521,9 +541,9 @@ class SFGenerator():
         IsoCalculator = IsochroneScaling.IntrinsicToObservable()
 
         if self.use_isointerp:
-            print("Importing colour-magnitude isochrone interpolants...")
+            print "Importing colour-magnitude isochrone interpolants...",
             IsoCalculator.LoadColMag(self.isocolmag_pickle)
-            print("...done\n")
+            print "...done"
         else:
             IsoCalculator.iso_pickle = self.iso_pickle
             IsoCalculator.agerng = agerng
@@ -531,11 +551,11 @@ class SFGenerator():
 
             print("Calculating isochrone distributions...")
             IsoCalculator.CreateFromIsochrones()
-            print("...done\n")
+            print("...done")
 
             print("Pickling isochrone distributions...")
             IsoCalculator.pickleColMag(self.isocolmag_pickle)
-            print("...done\n")
+            print("...done")
 
         agerng = IsoCalculator.agerng
         mhrng = IsoCalculator.mhrng
@@ -717,7 +737,7 @@ class obsMultiFunction():
         return iterateField(self.spectro_df, self.photo_path, field, self.photo_tag, 
                             self.photo_coords, self.pointings.loc[field], self.cm_limits)
     
-def iterateField(spectro, photo_path, field, photo_tag, photo_coords, fieldpointing, cm_limits):
+def iterateField(spectro, photo_path, field, photo_tag, photo_coords, fieldpointing, cm_limits=None):
 
     '''
     iterateField- Generates a selection function instance for a given field
@@ -792,23 +812,23 @@ def iterateField(spectro, photo_path, field, photo_tag, photo_coords, fieldpoint
         # Use given limits to determine boundaries of dataset
         # apparent mag upper bound
         if fieldpointing.Magmin == "NoLimit":
-            mag_min = np.min(spectro_points.appC) - 2
-            max_min = cm_limits[0]
+            if cm_limits is None: mag_min = np.min(spectro_points.appC) - 2
+            else: mag_min = cm_limits[0]
         else: mag_min = fieldpointing.Magmin
         # apparent mag lower bound
         if fieldpointing.MagMax == "NoLimit":
-            mag_max = np.max(spectro_points.appC) + 2
-            mag_max = cm_limits[1]
+            if cm_limits is None: mag_max = np.max(spectro_points.appC) + 2
+            else: mag_max = cm_limits[1]
         else: mag_max = fieldpointing.MagMax
         # colour uppper bound
         if fieldpointing.Colmin == "NoLimit":
-            col_min = np.min(spectro_points.Colour) - 0.1
-            col_min = cm_limits[2]
+            if cm_limits is None: col_min = np.min(spectro_points.Colour) - 0.1
+            else: col_min = cm_limits[2]
         else: col_min = fieldpointing.Colmin
         # colour lower bound
         if fieldpointing.Colmax == "NoLimit":
-            col_max = np.max(spectro_points.Colour) + 0.1
-            col_max = cm_limits[3]
+            if cm_limits is None: col_max = np.max(spectro_points.Colour) + 0.1
+            else: col_max = cm_limits[3]
         else: col_max = fieldpointing.Colmax
 
         # Chose only photometric survey points within the colour-magnitude region.
@@ -1401,6 +1421,7 @@ def path_check(pickleFile):
                         use_intsf = False
                         good = True
                     else: pass # Good stays false cause input wasn't y/n
+            else: use_intsf = False
 
             if sftype == 'b': # Intrinsic only
                 if use_intsf: # If intrinsic SF already exists, don't need observable SF
@@ -1422,6 +1443,7 @@ def path_check(pickleFile):
                         else: # No premade observed selection function
                             print('No observed SF found at %s, therefore will start from scratch.' % fileinfo.obsSF_pickle_path)
                             use_obssf = False
+                            good = True
 
             elif sftype == 'c': # Intrinsic and observable
                 gen_obssf = True
@@ -1439,6 +1461,7 @@ def path_check(pickleFile):
                     else: # No premade observed selection function
                         print("No observed SF found at %s, we'll build observable seleciton function from scratch." % fileinfo.obsSF_pickle_path)
                         use_obssf = False
+                        good = True
 
         elif sftype == 'a': # Just observable
             good_type = True
@@ -1483,5 +1506,7 @@ def path_check(pickleFile):
             print("No field overlap information. This will be generated using the pointings data.")
             use_overlap = False
     else: use_overlap = 'na'
+
+    print('')
 
     return gen_intsf, use_intsf, gen_obssf, use_obssf, use_isointerp, use_overlap

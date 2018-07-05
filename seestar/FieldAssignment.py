@@ -79,28 +79,41 @@ class FieldAssignment():
         # surveyInformation instance
         self.fileinfo = surveyInfoPickler.surveyInformation(fileinfo_path)
 
-        # List of files with full galaxy data
-        # All files should be .csv format
-        self.photometric_files = photometric_files
+        # Test photometric file information - continue if forward is true
+        forward = self.fileinfo.photoTest(photometric_files)
+        if not forward: print("Resolve issues in the data then run again.")
+        else:
+            # List of files with full galaxy data
+            # All files should be .csv format
+            self.photometric_files = photometric_files
 
-        # Total number of stars in database
-        self.total = countStars(photometric_files)
-        
-        # Setup pointings dataframe containing unique field positions
-        pointings_path = self.fileinfo.field_path
-        pointings = pd.read_csv(pointings_path)
-        # Make pointings a class attribute
-        self.pointings = pointings
+            # Total number of stars in database
+            self.total = countStars(photometric_files)
+            
+            # Setup pointings dataframe containing unique field positions
+            pointings_path = self.fileinfo.field_path
+            pointings = pd.read_csv(pointings_path)
+            # Make pointings a class attribute
+            self.pointings = pointings
 
-        # ID type for fields in pointings
-        self.IDtype = self.fileinfo.field_dtypes[0]
+            # ID type for fields in pointings
+            self.IDtype = self.fileinfo.field_dtypes[0]
 
-        # Number of stars to be imported at once
-        self.N_import = importLimit(photometric_files)
+            # Number of stars to be imported at once
+            self.N_import = importLimit(photometric_files)
 
-        # Number of stars to be iterated over
-        Npoint = len(pointings)
-        self.N_iter = iterLimit(Npoint)
+            # Number of stars to be iterated over
+            Npoint = len(pointings)
+            self.N_iter = iterLimit(Npoint)
+
+            # Output information on processing
+            print "Total number of stars %d." % self.total
+            print "Importing {Nimport} stars at a time. Iterating {Niter} stars at a time.".format(Nimport=self.N_import, Niter=self.N_iter)
+
+            files = [os.path.join(self.fileinfo.photo_path, str(field))+'.csv' for field in self.pointings[self.fileinfo.field_coords[0]]]
+            print "Field file path for field {}: {}".format(self.pointings[self.fileinfo.field_coords[0]][0], files[0])
+
+            self.__call__()
 
     def __call__(self):
 
@@ -169,9 +182,11 @@ class FieldAssignment():
                 perc = round((starsanalysed/float(self.total))*100, 3)
                 duration = round((time.time() - start)/60., 1)
                 projected = round((time.time() - start)*self.total/((starsanalysed+1)*3600), 3)
+                hours = int(projected)
+                minutes = int((projected - hours)*60)
                 sys.stdout.write('\r'+'allsky file: '+fname+'  '+\
                                'Completion: '+str(starsanalysed)+'/'+str(self.total)+'('+
-                               str(perc)+'%)  Time='+str(duration)+'m  Projected: '+str(projected)+'h')
+                               str(perc)+'%)  Time='+str(duration)+'m  Projected: '+str(hours)+'h'+str(minutes)+'m          ')
                 sys.stdout.flush()
                     
                 # Column header labels in pointings
@@ -180,13 +195,14 @@ class FieldAssignment():
                 df_allsky = ArrayMechanics.\
                             AnglePointsToPointingsMatrix(df_allsky, self.pointings, phi, theta, halfangle,
                                                         IDtype = self.IDtype, Nsample = N_iterate)
-
                 
                 for field in self.pointings[self.fileinfo.field_coords[0]]:
 
                     # Check which rows are assigned to the right field
                     df_bool = df_allsky.points.apply(lambda x: field in x)
                     df = df_allsky[df_bool]
+
+                    df.drop('points', inplace=True, axis=1)
                     
                     df.to_csv(open_files[field], index=False, header=False)
 
@@ -271,10 +287,16 @@ def countStars(files):
     count = 0
     for filen in files:
         print ".",
-        with open(filen) as f:
-            for _ in f:
-                count += 1
-    
+        extension = os.path.splitext(filen)[-1]
+        if extension=='.gz':
+            with gzip.open(filen) as f:
+                for _ in f:
+                    count += 1         
+        else:
+            with open(filen) as f:
+                for _ in f:
+                    count += 1         
+
     print "done"
     return count
 
