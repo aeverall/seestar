@@ -3,9 +3,19 @@ SFInstanceClasses - Set of classes for defining and calculating selection functi
 
 Classes
 -------
+    observableSF - Selection Function in observable coordinates (magnitude and colour) for a single field.
+        - Returns the value of the SF interpolant of the given field at the given coordinates.
 
 Functions
 ---------
+    setattrs - Sets the attributes of a class from a dictionary
+
+    functionIMFKoupra - Calculate initial mass function weight of mass value.
+
+    intrinsicSF - Intrinsic selection function determined with Isochrone Calculator
+
+    intrinsicIMFSF - Intrinsic selection function determined with Isochrone Calculator
+        - Integrated over the initial mass function so not dependent on mass
 
 Requirements
 ------------
@@ -13,6 +23,33 @@ Requirements
 '''
 
 import numpy as np
+
+def obsSF_dicttoclass(obsSF_dicts):
+
+    '''
+    obsSF_dicttoclass - Convert dict-of-dicts to dict-of-class instances
+
+    Parameters
+    ----------
+        obsSF_dicts: dict of dicts
+            - Dictionary of dictrionaries of observableSF class instances
+
+    Returns
+    -------
+        obsSF_classes: dict of class instances
+            - Dictionary of instances of observableSF class
+    '''
+
+    for field in obsSF_dicts: # Load classes from dictionaries
+
+        # Initialise class instance
+        obsSF_field = observableSF(field)
+        # Set class attributes from dictionary
+        SFInstanceClasses.setattrs(obsSF_field, **obsSF_dicts[field])
+        # Add class instance to dictionary
+        obsSF[field] = obsSF_field
+
+        return obsSF_classes
 
 class observableSF():
 
@@ -127,6 +164,12 @@ class intrinsicSF():
     '''
     intrinsicSF - Intrinsic selection function determined with Isochrone Calculator
 
+    Functions
+    ---------
+        __call__ - Calculate the intrinsic selection function from the intrinsic coordinates.
+        save - Converts attributes of class to a dictionary and saves the dictionary.
+        load - Loads attributes of class from the saved dictionary.
+
     Dependencies
     ------------
         IsoCalculator: IsochroneScaling.IntrinsicToObservable instance
@@ -211,6 +254,12 @@ class intrinsicIMFSF():
     '''
     intrinsicIMFSF - Intrinsic selection function determined with Isochrone Calculator
         - Integrated over the initial mass function so not dependent on mass
+
+    Functions
+    ---------
+        __call__ - Calculate the intrinsic selection function from the intrinsic coordinates.
+        save - Converts attributes of class to a dictionary and saves the dictionary.
+        load - Loads attributes of class from the saved dictionary.
 
     Dependencies
     ------------
@@ -332,20 +381,14 @@ class intrinsicIMFSF():
 def setattrs(_self, **kwargs):
 
     '''
-
-
-    Parameters
-    ----------
-
+    setattrs - Sets the attributes of a class from a dictionary
 
     **kwargs
     --------
+        _self: class instance
+            - Instance of class having attributes set.
 
-
-    Returns
-    -------
-
-
+        dictionary containing all attributes of the class.
     '''
 
     for k,v in kwargs.items():
@@ -353,6 +396,20 @@ def setattrs(_self, **kwargs):
 
 # Koupra's initial mass function
 def functionIMFKoupra(mass):
+
+    '''
+    functionIMFKoupra - Calculate initial mass function weight of mass value.
+
+    Parameters
+    ----------
+        mass: float or array
+            - Initial mass of objects for calculating IMF weight.
+
+    Returns
+    -------
+        IMF: float or array
+            - Initial mass function value for given mass.
+    '''
 
     a = 10.44
     IMF = np.zeros(np.shape(mass))

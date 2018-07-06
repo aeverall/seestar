@@ -198,16 +198,8 @@ class SFGenerator():
                 with open(obsSF_pickle_path, 'wb') as handle:
                     pickle.dump(obsSF_dicts, handle)
                 print("...done\n.")
-
             # Initialise dictionary
-            self.obsSF = {}
-            for field in obsSF_dicts: # Load classes from dictionaries
-                # Initialise class instance
-                obsSF_field = SFInstanceClasses.observableSF(field)
-                # Set class attributes from dictionary
-                SFInstanceClasses.setattrs(obsSF_field, **obsSF_dicts[field])
-                # Add class instance to dictionary
-                self.obsSF[field] = obsSF_field
+            self.obsSF = SFInstanceClasses.obsSF_dicttoclass(obsSF_dicts)
 
         if fileinfo.style == 'mf': # Calculate field overlap for multifibre surveys (Healpix doesn't overlap)
             if use_overlap: # Use the precalculated field overlaps
