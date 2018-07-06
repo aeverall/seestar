@@ -156,8 +156,8 @@ class SFGenerator():
                 print("...done.\n") 
 
                 # Load class instance from saved dictionary
-                self.instanceSF = SFInstanceClasses.intMassSF_isocalc()
-                self.instanceIMFSF = SFInstanceClasses.intSF_isocalc()
+                self.instanceSF = SFInstanceClasses.intrinsicSF()
+                self.instanceIMFSF = SFInstanceClasses.intrinsicIMFSF()
                 SFInstanceClasses.setattrs(self.instanceSF, **instanceSF_dict)
                 SFInstanceClasses.setattrs(self.instanceIMFSF, **instanceIMFSF_dict)
 
@@ -563,13 +563,11 @@ class SFGenerator():
         colrng = IsoCalculator.colrng
 
         # Instance of class for creating mass dependent selection functions
-        intrinsicSF = SFInstanceClasses.intMassSF_isocalc()
-        SFInstanceClasses.setattrs(intrinsicSF, IsoCalculator=IsoCalculator,
-                                                agerng=agerng, mhrng=mhrng)
+        intrinsicSF = SFInstanceClasses.intrinsicSF()
+        SFInstanceClasses.setattrs(intrinsicSF, IsoCalculator=IsoCalculator)
         # Instance of class for creating mass independent selection functions
-        intrinsicIMFSF = SFInstanceClasses.intSF_isocalc()
-        SFInstanceClasses.setattrs(intrinsicIMFSF, IsoCalculator = IsoCalculator,
-                                                agerng=agerng, mhrng=mhrng)
+        intrinsicIMFSF = SFInstanceClasses.intrinsicIMFSF()
+        SFInstanceClasses.setattrs(intrinsicIMFSF, IsoCalculator = IsoCalculator)
 
         return intrinsicSF, intrinsicIMFSF, agerng, mhrng, magrng, colrng
 
@@ -655,11 +653,12 @@ class SFGenerator():
             df: Dataframe
                     - stars dataset with an additional column containing lists of field IDs for each point.
         '''
-        print("\nNote: this is iterating through 10k stars at a time.\n\
-        If lots of memory available, increase N for greater efficiency.")
+
+        # Decide based on available memory how many stars to iterate at once
+        Nsample = FieldAssignment.iterLimit(len(pointings))
         df = AM.AnglePointsToPointingsMatrix(stars, self.pointings,
                                           Phi, Th, 'halfangle', IDtype = self.fieldlabel_type,
-                                          Nsample = 10000)
+                                          Nsample=Nsample)
         
         return df
 

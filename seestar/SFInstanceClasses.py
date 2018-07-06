@@ -1,17 +1,14 @@
 '''
+SFInstanceClasses - Set of classes for defining and calculating selection functions in observable and intrinsic coordinates.
 
-
-Parameters
-----------
-
-
-**kwargs
---------
-
-
-Returns
+Classes
 -------
 
+Functions
+---------
+
+Requirements
+------------
 
 '''
 
@@ -20,20 +17,20 @@ import numpy as np
 class observableSF():
 
     '''
-
+    observableSF - Selection Function in observable coordinates (magnitude and colour) for a single field.
+        - Returns the value of the SF interpolant of the given field at the given coordinates.
 
     Parameters
     ----------
+        fieldID: IDtype --- Is this actually needed?
+            - The label of the field being iterated
 
-
-    **kwargs
-    --------
-
-
-    Returns
-    -------
-
-
+    Functions
+    ---------
+        __call__ - Calculate the value of the selection function interpolant at the given 
+            magnitude and colour (x and y).
+        save - Converts attributes of class to a dictionary and saves the dictionary.
+        load - Loads attributes of class from the saved dictionary.
     '''
 
     def __init__(self, fieldID):
@@ -57,6 +54,30 @@ class observableSF():
 
     def __call__(self, (x, y)):
 
+        '''
+        __call__ - Calculate the value of the selection function interpolant at the given 
+            magnitude and colour (x and y).
+
+        Parameters
+        ----------
+            (x, y): tuple of float or arrays
+                - x and y coordinates to be evaluated.
+
+        Inherited
+        ---------
+            SF_interp: RGI
+                - Selection function interpolant for field
+            SF_magrange: tuple of float
+                - Minimum and maximum magnitudes of observing window.
+            SF_colrange: tuple of float
+                - Minimum and maximum colours of observing window.
+
+        Returns
+        -------
+            SF: float or array
+                - Selection Function values for x and y coordinates
+        '''
+
         SF = self.SF_interp((x, y))
 
         SF[(x<self.SF_magrange[0])|(x>self.SF_magrange[1])|\
@@ -64,11 +85,16 @@ class observableSF():
 
         return SF
 
-    def normalise(self):
-        # Not sure what this is meant to do now that it's no longer calculated from spectro/photo
-        return self.SF_gridarea/self.DF_gridarea
-
     def save(self, filename):
+
+        '''
+        save - Converts attributes of class to a dictionary and saves the dictionary.
+
+        Parameters
+        ----------
+            filename: str
+                - File where data is saved.
+        '''
 
         # Convert attributes to dictionary
         attr_dict = vars(self)
@@ -78,6 +104,15 @@ class observableSF():
             pickle.dump(attr_dict, handle)
 
     def load(self, filename):
+
+        '''
+        load - Loads attributes of class from the saved dictionary.
+
+        Parameters
+        ----------
+            filename: str
+                - File where data is saved.
+        '''
 
         # Load pickled dictionary of attributes
         with open(filename, "rb") as input:
@@ -90,138 +125,97 @@ class observableSF():
 class intrinsicSF():
 
     '''
+    intrinsicSF - Intrinsic selection function determined with Isochrone Calculator
 
-
-    Parameters
-    ----------
-
-
-    **kwargs
-    --------
-
-
-    Returns
-    -------
-
-
+    Dependencies
+    ------------
+        IsoCalculator: IsochroneScaling.IntrinsicToObservable instance
+            - Class with functions for converting between intrinsic and observable coordinates
     '''
+
 
     def __init__(self):
 
-        self.col_interp = None
-        self.mag_interp = None
-
-        # Conversion of absolute to apparent magnitude
-        self.appmag = lambda absmag, s: absmag + 5*np.log10(s*1000/10)
-
-        # List of masses to integrate over
-        self.mass = np.linspace(0.001, 12., 500)
-        self.mass_scaled = np.linspace(0.01, 0.99, 500)
-
-        # Conversion from mass to scaled mass
-        self.MassScaling = None
-        self.MassUnscaling = None
-
-    def __call__(self, (age, mh, s), obsSF):
-
-        self.mass_scaled = np.linspace(0.01, 0.99, 500)
-
-        # Convert values into grids expanded over mass values
-        agegrid = np.repeat([age,], len(self.mass_scaled), axis=0)
-        mhgrid = np.repeat([mh,], len(self.mass_scaled), axis=0)
-        sgrid = np.repeat([s,], len(self.mass_scaled), axis=0)
-
-        massgrid = self.mass_scaled
-        Ndim = len(np.shape(age))
-        for i in range( Ndim ):
-            index = Ndim - (i+1)
-            massgrid = np.repeat([massgrid,], np.shape(age)[index], axis=0)
-        gridDim = len( np.shape(agegrid) )
-        axes = np.linspace(0, gridDim-1, gridDim).astype(int)
-        axes[0] = axes[len(axes)-1]
-        axes[1:] -= 1
-        massgrid = np.transpose( massgrid, axes=axes )
-
-        # Find colour and absolute magnitude values for age, mh, m_scaled
-        col = self.col_interp((agegrid, mhgrid, massgrid))
-        Mag = self.mag_interp((agegrid, mhgrid, massgrid))
-        # Convert absolute to apparent magnitude
-        mag = self.appmag(Mag, sgrid)
-
-        # Unscale the mass and calculate the IMF contribution
-        massgrid = self.MassUnscaling( agegrid, mhgrid, massgrid )
-        weightgrid = functionIMFKoupra( massgrid )
-
-        # Integrate over IMF
-        SF = np.sum( obsSF((mag, col)) * weightgrid , axis=0 )
-        # Normalisation factors for IMF
-        Norm = np.sum( weightgrid , axis=0 )
-        SF = SF/Norm
-
-
-        return SF
-
-class intrinsicMassSF():
-
-    '''
-
-
-    Parameters
-    ----------
-
-
-    **kwargs
-    --------
-
-
-    Returns
-    -------
-
-
-    '''
-
-    def __init__(self):
-
-        self.col_interp = None
-        self.mag_interp = None
-
-        # Conversion of absolute to apparent magnitude
-        self.appmag = lambda absmag, s: absmag + 5*np.log10(s*1000/10)
-
-        # Conversion from mass to scaled mass
-        self.MassScaling = None
+        # Calculator for getting col, mag from age, mh, s
+        self.IsoCalculator = None
 
     def __call__(self, (age, mh, mass, s), obsSF):
 
-        # Convert mass to scaled mass for each isochone(interpolated between)
-        m_scaled = self.MassScaling(age, mh, mass)
+        '''
+        __call__ - Calculate the intrinsic selection function from the intrinsic coordinates.
+
+        Parameters
+        ----------
+            (age, mh, mass, s): tuple of floats or arrays
+                - age, mh, mass and s of stars for which the selection function is being calculated
+            obsSF: observableSF instance
+                - Class for calculating the observable selection function from colour and magnitude
+
+        Inherited
+        ---------
+            IsoCalculator: IsochroneScaling.IntrinsicToObservable instance
+                - Class with functions for converting between intrinsic and observable coordinates
+
+        Returns
+        -------
+            SF: float or array
+                - Selection function for given intrinsic coordinates.
+        '''
+
         # Calculate colour and absolute magnitude from interpolants
-        col = self.col_interp((age, mh, m_scaled))
-        Mag = self.mag_interp((age, mh, m_scaled))
-        # Calculate apparent magnitude from distance conversion
-        mag = self.appmag(Mag, s)
+        col, mag = self.IsoCalculator(age, mh, mass, s)
         # Selection function from SF in observed coordinates
         SF = obsSF((mag, col))
 
         return SF
 
-class intSF_isocalc():
+    def save(self, filename):
+
+        '''
+        save - Converts attributes of class to a dictionary and saves the dictionary.
+
+        Parameters
+        ----------
+            filename: str
+                - File where data is saved.
+        '''
+
+        # Convert attributes to dictionary
+        attr_dict = vars(self)
+
+        # Dump pickled dictionary of attributes
+        with open(filename, 'wb') as handle:
+            pickle.dump(attr_dict, handle)
+
+    def load(self, filename):
+
+        '''
+        load - Loads attributes of class from the saved dictionary.
+
+        Parameters
+        ----------
+            filename: str
+                - File where data is saved.
+        '''
+
+        # Load pickled dictionary of attributes
+        with open(filename, "rb") as input:
+            file_dict  = pickle.load(input) 
+
+        # Convert dictionary to attributes  
+        for key in file_dict:
+            setattr(self, key, file_dict[key])
+
+class intrinsicIMFSF():
 
     '''
+    intrinsicIMFSF - Intrinsic selection function determined with Isochrone Calculator
+        - Integrated over the initial mass function so not dependent on mass
 
-
-    Parameters
-    ----------
-
-
-    **kwargs
-    --------
-
-
-    Returns
-    -------
-
-
+    Dependencies
+    ------------
+        IsoCalculator: IsochroneScaling.IntrinsicToObservable instance
+            - Class with functions for converting between intrinsic and observable coordinates
     '''
 
     def __init__(self):
@@ -229,14 +223,33 @@ class intSF_isocalc():
         # Calculator for getting col, mag from age, mh, s
         self.IsoCalculator = None
 
-        # Range inside which the interpolants give non-nan values
-        self.agerng=None
-        self.mhrng=None
-
         # List of masses to integrate over
         self.mass_scaled = np.linspace(0.01, 0.99, 500)
 
     def __call__(self, (age, mh, s), obsSF):
+
+        '''
+        __call__ - Calculate the intrinsic selection function from the intrinsic coordinates.
+
+        Parameters
+        ----------
+            (age, mh, s): tuple of floats or arrays
+                - age, mh, mass and s of stars for which the selection function is being calculated
+            obsSF: observableSF instance
+                - Class for calculating the observable selection function from colour and magnitude
+
+        Inherited
+        ---------
+            IsoCalculator: IsochroneScaling.IntrinsicToObservable instance
+                - Class with functions for converting between intrinsic and observable coordinates
+            mass_scaled: array
+                - Set of scaled mass values in range [0, 1] which will be integrated over with the IMF
+
+        Returns
+        -------
+            SF: float or array
+                - Selection function for given intrinsic coordinates.
+        '''
 
         self.mass_scaled = np.linspace(0.01, 0.99, 500)
 
@@ -275,6 +288,15 @@ class intSF_isocalc():
 
     def save(self, filename):
 
+        '''
+        save - Converts attributes of class to a dictionary and saves the dictionary.
+
+        Parameters
+        ----------
+            filename: str
+                - File where data is saved.
+        '''
+
         # Convert attributes to dictionary
         attr_dict = vars(self)
 
@@ -283,6 +305,15 @@ class intSF_isocalc():
             pickle.dump(attr_dict, handle)
 
     def load(self, filename):
+
+        '''
+        load - Loads attributes of class from the saved dictionary.
+
+        Parameters
+        ----------
+            filename: str
+                - File where data is saved.
+        '''
 
         # Load pickled dictionary of attributes
         with open(filename, "rb") as input:
@@ -296,62 +327,6 @@ class intSF_isocalc():
 
         # Dictionary of attributes
         return vars(self)
-
-class intMassSF_isocalc():
-
-    '''
-
-
-    Parameters
-    ----------
-
-
-    **kwargs
-    --------
-
-
-    Returns
-    -------
-
-
-    '''
-
-    def __init__(self):
-
-        # Calculator for getting col, mag from age, mh, s
-        self.IsoCalculator = None
-
-        # Range inside which the interpolants give non-nan values
-        self.agerng=None
-        self.mhrng=None
-
-    def __call__(self, (age, mh, mass, s), obsSF):
-
-        # Calculate colour and absolute magnitude from interpolants
-        col, mag = self.IsoCalculator(age, mh, mass, s)
-        # Selection function from SF in observed coordinates
-        SF = obsSF((mag, col))
-
-        return SF
-
-    def save(self, filename):
-
-        # Convert attributes to dictionary
-        attr_dict = vars(self)
-
-        # Dump pickled dictionary of attributes
-        with open(filename, 'wb') as handle:
-            pickle.dump(attr_dict, handle)
-
-    def load(self, filename):
-
-        # Load pickled dictionary of attributes
-        with open(filename, "rb") as input:
-            file_dict  = pickle.load(input) 
-
-        # Convert dictionary to attributes  
-        for key in file_dict:
-            setattr(self, key, file_dict[key])
 
 
 def setattrs(_self, **kwargs):
