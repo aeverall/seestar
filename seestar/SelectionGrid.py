@@ -255,6 +255,7 @@ class SFGenerator():
                                                     angle_coords, point_coords, 'halfangle', 
                                                     SFcalc, IDtype=self.fieldlabel_type)
             print('...done')
+            
             # The SF probabilities and coordinates of overlapping fields are used to calculate
             # the field union.
             print('Calculating union contribution...')

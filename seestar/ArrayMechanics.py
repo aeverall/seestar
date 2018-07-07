@@ -821,8 +821,6 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, halfangle,
         # Convert list to series then series to dataframe column
         field_series = pd.Series(field_listoflists)
         field_series = pd.DataFrame(field_series, columns=['points'])
-        print("field_series")
-        print(field_series[field_series.points.map(len)>0])
         # Reset index to merge on position then bring index back
         dfi = dfi.reset_index()
         dfi = dfi.merge(field_series, how='inner', right_index=True, left_index=True)

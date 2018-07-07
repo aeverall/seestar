@@ -30,7 +30,7 @@ Requirements
 ------------
 
 '''
-import itertools
+import itertools, functools
 import numpy as np
 import pandas as pd
 import sys, gc
@@ -130,6 +130,7 @@ class FieldUnion():
 
         # Creates a list of all combinations of fields from the overlapping fields.
         # A sum of the intersections of these fields (x-1^i) gives the field union.
+
         combos = self.fieldCombos(field_info)
 
         # Calculate the intersection of each field combo from the overlapping fields
@@ -182,8 +183,8 @@ class FieldUnion():
         '''
 
         # Calculate the product of all probabilities
-        sf_value = map(lambda tup: tup[0], list_of_tuples)
-        product = reduce(lambda x,y: x*y, sf_value)
+        sf_value = [tup[0] for tup in list_of_tuples]
+        product = functools.reduce(lambda x,y: x*y, sf_value)
 
         # Calculate the fraction of overlap between fields
         fieldIDs = map(lambda tup: tup[1], list_of_tuples)
@@ -241,7 +242,7 @@ def CalculateIntersections(coordsrand, fields, IDtype,  labels=['phi','theta','h
 
     # Add column with the list of fields which overlap at each point
     fields = ArrayMechanics.AnglePointsToPointingsMatrix(coordsrand, fields, labels[0], labels[1], labels[2], IDtype=IDtype)
-    
+
     # Only consider points with field
     intersections = fields[fields.points.map(len)>0]
 
@@ -378,9 +379,9 @@ def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcal
         df['col'] = col_arr
         df['mag'] = mag_arr
 
-    # Remove 0 entries from the lists
+    # Remove -1 entries from the lists
     def filtering(x, remove):
-        x = filter(lambda a: a!=remove, x)
+        x = [elem for elem in x if elem!=remove]
         return x
     # Convert SFprob values into list of values in dataframe
     arr = np.array(dfprob)
@@ -392,7 +393,7 @@ def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcal
     SFprob = pd.DataFrame(pd.Series(listoflists), columns=['SFprob'])
 
     # zip datatypes together - tupes of (sf, field)
-    field_info = map(zip, SFprob.SFprob, df.points)
+    field_info = [list(zip(SFprob.SFprob.iloc[i], df.points.iloc[i])) for i in range(len(df))]
     field_info = pd.DataFrame(pd.Series(field_info), columns=['field_info'])
 
     # Reset index to merge on position then bring index back

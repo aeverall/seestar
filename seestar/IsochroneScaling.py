@@ -81,17 +81,8 @@ class IntrinsicToObservable():
         # Storage of isochrone information
         self.isoage, self.isomh, self.isodict = (None, None, None)
     
-        # Mass scaling relation
-        self.scaling = lambda mass, Mmax, Mmin: (mass-Mmin)/(Mmax-Mmin)
-        # Mass unscaling relation
-        self.unscaling = lambda mass_scaled, Mmax, Mmin: mass_scaled*(Mmax-Mmin) + Mmin
         # Storage of scaled mass values
         self.m_scaled = None
-    
-        # Conversion of absolute to apparent magnitude
-        self.appmag = lambda absmag, s: absmag + 5*np.log10(s*1000/10)
-        # Conversion of apparent to absolute magnitude
-        self.absmag = lambda appmag, s: appmag - 5*np.log10(s*1000/10)
 
         # Columns for A, B and C magnitudes in iso_pickle file
         # Colour = A-B
@@ -482,6 +473,20 @@ class IntrinsicToObservable():
 
         return Aapp, Bapp, Capp
 
+    def appmag(self, absmag, s):
+        """ Conversion of absolute to apparent magnitude """
+        return absmag + 5*np.log10(s*1000/10)
+    def absmag(self, appmag, s):
+        """ Conversion of apparent to absolute magnitude """
+        return appmag - 5*np.log10(s*1000/10)
+
+    def scaling(self, mass, Mmax, Mmin):
+        """ Mass scaling relation """
+        return (mass-Mmin)/(Mmax-Mmin)
+    def unscaling(self, mass_scaled, Mmax, Mmin):
+        """ Mass unscaling relation """
+        return mass_scaled*(Mmax-Mmin) + Mmin
+
 
 
 def ImportIsochrones(iso_pickle):
@@ -505,14 +510,14 @@ def ImportIsochrones(iso_pickle):
 
     # Extract isochrones
     print(iso_pickle)
-    print("Undilling isochrone interpolants...")
-    with open(iso_pickle, "rb") as input:
-        pi = dill.load(input)
+    print("Unpickling isochrone dictionaries...")
+    with open(iso_pickle, "rb") as f:
+        pi = pickle.load(f)
     print("...done.\n")
 
-    isoage    = pi.isoage
-    isomh     = pi.isomh
-    isodict   = pi.isodict
+    isoage    = pi['isoage']
+    isomh     = pi['isomh']
+    isodict   = pi['isodict']
     
     return isoage, isomh, isodict
 
@@ -906,13 +911,13 @@ class NearestIsochrone:
     
     def __init__(self, isoFile):
         
-        # Undill Isochrone interpolants
-        with open(iso_pickle, "rb") as input:
-            pi = dill.load(input)
+        # Unpickle Isochrone files
+        with open(iso_pickle, "rb") as f:
+            pi = pickle.load(f)
         # Assign interpolant properties to class attributes
-        self.isoage    = np.copy(pi.isoage)
-        self.isomh    = np.copy(pi.isomh)
-        self.isodict   = pi.isodict
+        self.isoage    = np.copy(pi['isoage'])
+        self.isomh    = np.copy(pi['isomh'])
+        self.isodict   = pi['isodict']
         # Clear pi from memory
         del(pi)
         gc.collect()
