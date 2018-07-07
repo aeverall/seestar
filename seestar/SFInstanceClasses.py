@@ -39,15 +39,15 @@ def obsSF_dicttoclass(obsSF_dicts):
         obsSF_classes: dict of class instances
             - Dictionary of instances of observableSF class
     '''
-
+    obsSF_classes = {}
     for field in obsSF_dicts: # Load classes from dictionaries
 
         # Initialise class instance
         obsSF_field = observableSF(field)
         # Set class attributes from dictionary
-        SFInstanceClasses.setattrs(obsSF_field, **obsSF_dicts[field])
+        setattrs(obsSF_field, **obsSF_dicts[field])
         # Add class instance to dictionary
-        obsSF[field] = obsSF_field
+        obsSF_classes[field] = obsSF_field
 
         return obsSF_classes
 

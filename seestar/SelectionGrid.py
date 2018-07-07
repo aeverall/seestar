@@ -329,7 +329,7 @@ class SFGenerator():
         if data_source=='spectro': 
             coords = ['fieldID','phi', 'theta', 'appA', 'appB', 'appC']
         elif data_source=='field':
-            coords = ['fieldID', 'phi', 'theta', 'halfangle', 'Magmin', 'MagMax', 'Colmin', 'Colmax']
+            coords = ['fieldID', 'phi', 'theta', 'halfangle', 'Magmin', 'Magmax', 'Colmin', 'Colmax']
             #coords.extend(['halfangle'])
 
         # Replace given coordinates with standardised ones
@@ -807,10 +807,10 @@ def iterateField(spectro, photo_path, field, photo_tag, photo_coords, fieldpoint
             else: mag_min = cm_limits[0]
         else: mag_min = fieldpointing.Magmin
         # apparent mag lower bound
-        if fieldpointing.MagMax == "NoLimit":
+        if fieldpointing.Magmax == "NoLimit":
             if cm_limits is None: mag_max = np.max(spectro_points.appC) + 2
             else: mag_max = cm_limits[1]
-        else: mag_max = fieldpointing.MagMax
+        else: mag_max = fieldpointing.Magmax
         # colour uppper bound
         if fieldpointing.Colmin == "NoLimit":
             if cm_limits is None: col_min = np.min(spectro_points.Colour) - 0.1
@@ -989,14 +989,14 @@ def PoissonLikelihood(points,
 
         # Number of Gaussian components
         if datatype == "spectro": nComponents = 1
-        elif datatype == "photo": nComponents = 2
+        elif datatype == "photo": nComponents = 1
 
         # Generate the model
         model = StatisticalModels.GaussianMM(x, y, nComponents, mag_range, col_range)
         # Add in SFxDF<DF constraint for the spectrograph distribution
         if datatype == "spectro": 
             model.photoDF, model.priorDFbool = (photoDF, True)
-        model.runningL = False
+        model.runningL = True
         model.optimizeParams()
         # Test integral if you want to see the value/error in the integral when calculated
         # model.testIntegral()
