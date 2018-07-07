@@ -1,6 +1,6 @@
 '''
 FieldUnions - Package of functions used to calculate the union of overlapping fields given the 
-			coordinates of a star which has been randomly generated.
+            coordinates of a star which has been randomly generated.
 
 
 Classes
@@ -10,21 +10,21 @@ Classes
 
 Functions
 ---------
-	FieldToTuple - Converts from a field and coordinates on the field to
-				   a selection probability and angular coordinates of the field.
+    FieldToTuple - Converts from a field and coordinates on the field to
+                   a selection probability and angular coordinates of the field.
 
-	pointsListMap - Runs FieldToTuple for every item in the list of fields which are overlapping
-					on the point.
+    pointsListMap - Runs FieldToTuple for every item in the list of fields which are overlapping
+                    on the point.
 
-	fieldUnion - The field union on a point of overlapping fields with selection function
-				 for each field already calculated									 
+    fieldUnion - The field union on a point of overlapping fields with selection function
+                 for each field already calculated                                     
 
-	fieldCombos - Generate list of combinations of the overlapping fields
-				  which will be used to calculate the intersections.
+    fieldCombos - Generate list of combinations of the overlapping fields
+                  which will be used to calculate the intersections.
 
-	fieldIntersection - Calculate the intersection of any group of fields
+    fieldIntersection - Calculate the intersection of any group of fields
 
-	FieldOverlap - Calculation of the fraction of N fields which are overlapping.
+    FieldOverlap - Calculation of the fraction of N fields which are overlapping.
 
 Requirements
 ------------
@@ -40,184 +40,182 @@ from seestar import FieldAssignment
 
 class FieldUnion():
 
-	def __init__(self, overlapdata):
+    def __init__(self, overlapdata):
 
-		self.Overlaps = overlapdata
-		
+        self.Overlaps = overlapdata
+        
 
-	def pointsListMap(self, sf, row):
+    def pointsListMap(self, sf, row):
 
-		'''
-		NO LONGER USED
-		pointsListMap - Runs FieldToTuple for every item in the list of fields which are overlapping
-						on the point.
+        '''
+        NO LONGER USED
+        pointsListMap - Runs FieldToTuple for every item in the list of fields which are overlapping
+                        on the point.
 
-		Parameters
-		----------
-			row - row from DataFrame
+        Parameters
+        ----------
+            row - row from DataFrame
 
-			row["points"] - list
-				- list of fields which overlap on a given point in Galactic/Equatorial coordinates.
+            row["points"] - list
+                - list of fields which overlap on a given point in Galactic/Equatorial coordinates.
 
-			sf - dictionary of interpolants
-				- self.surveysf from the selection function which can be used to determine the selection
-				 probability given those parameters on that field.
+            sf - dictionary of interpolants
+                - self.surveysf from the selection function which can be used to determine the selection
+                 probability given those parameters on that field.
 
-		Returns
-		-------
-			list of tuples
-				- for every field in row["points"], the (SFprobability, Glongitude, Glatitude)
-		'''
-		return [self.FieldToTuple(sf, item, (row['age'], row['mh'], row['s'])) for item in row.points]
-
-
-	def FieldToTuple(self, selectionfunction, fieldID, (age, mh, s)):
-
-	 	'''
-	 	NO LONGER USED
-		FieldToTuple - Converts from a field and coordinates on the field to
-					   a selection probability and angular coordinates of the field.
-
-	 	Parameters
-	 	----------
-	 		selectionfunction - Dictionary/DataFrame
-	 					- The full distribution of selection functions in age-mh-s space for each field
-
-	 		fieldID - object type depends on survey
-	 					- The field label
-
-	 		(age, mh, s) - tuple of floats
-						- Parameters of the star for which we're calculating the selection function probability
-
-	 	Returns
-	 	-------
-	 		sf - float
-	 				 - Value of the selection function probability for these coordinates
-
-	 		info.l, info.b - floats
-	 				- Galactic longitude & latitude of the field
-	 	'''
-	    
-		info = selectionfunction.loc[fieldID]
-
-		# selection function value
-		interp = info.agemhssf
-		try:
-		    sf = interp((age, mh, s))
-		except (ValueError, IndexError): 
-		    sf = 0.
-		    
-		sys.stdout.write("\r"+str(sf)+'...'+str(fieldID))
-		return sf, fieldID
+        Returns
+        -------
+            list of tuples
+                - for every field in row["points"], the (SFprobability, Glongitude, Glatitude)
+        '''
+        return [self.FieldToTuple(sf, item, (row['age'], row['mh'], row['s'])) for item in row.points]
 
 
-	def fieldUnion(self, field_info):
+    def FieldToTuple(self, selectionfunction, fieldID, age, mh, s):
+        '''
+        NO LONGER USED
+        FieldToTuple - Converts from a field and coordinates on the field to
+                   a selection probability and angular coordinates of the field.
 
-		'''
-		fieldUnion - The field union on a point of overlapping fields with selection function
-					 for each field already calculated
+        Parameters
+        ----------
+         selectionfunction - Dictionary/DataFrame
+                     - The full distribution of selection functions in age-mh-s space for each field
 
-		Parameters
-		----------
-			field_info - list of tuples
-				- tuples contain SFvalue and galactic coordinates of field
+         fieldID - object type depends on survey
+                     - The field label
 
-		Returns
-		-------
-			union - float
-				- Final value of selection function for given star.
-		'''
+         (age, mh, s) - tuple of floats
+                    - Parameters of the star for which we're calculating the selection function probability
 
-		# Creates a list of all combinations of fields from the overlapping fields.
-		# A sum of the intersections of these fields (x-1^i) gives the field union.
-		combos = self.fieldCombos(field_info)
+        Returns
+        -------
+         sf - float
+                  - Value of the selection function probability for these coordinates
 
-		# Calculate the intersection of each field combo from the overlapping fields
-		union_contributions = map(self.fieldIntersection, combos)
+        info.l, info.b - floats
+                - Galactic longitude & latitude of the field
+        '''
+        info = selectionfunction.loc[fieldID]
 
-		# Find the sum of contributions from each combination intersection to the total union
-		union = sum(union_contributions)
+        # selection function value
+        interp = info.agemhssf
+        try:
+            sf = interp((age, mh, s))
+        except (ValueError, IndexError): 
+            sf = 0.
 
-		return union
+        sys.stdout.write("\r"+str(sf)+'...'+str(fieldID))
+        return sf, fieldID
 
-	def fieldCombos(self, field_info):
 
-		'''
-		fieldCombos - Generate list of combinations of the overlapping fields
-					  which will be used to calculate the intersections.
+    def fieldUnion(self, field_info):
 
-		Parameters
-		----------
-			field_info - list of tuples
-					- Each tuple has the SFprob, l and b of the field
+        '''
+        fieldUnion - The field union on a point of overlapping fields with selection function
+                     for each field already calculated
 
-		Returns
-		-------
-			list of lists of combos of tuples
-		'''
+        Parameters
+        ----------
+            field_info - list of tuples
+                - tuples contain SFvalue and galactic coordinates of field
 
-		combos = []
-		for i in range(len(field_info)):
-			combos.extend(list(itertools.combinations(field_info, i+1)))
-		    
-		return combos
+        Returns
+        -------
+            union - float
+                - Final value of selection function for given star.
+        '''
 
-	def fieldIntersection(self, list_of_tuples):
+        # Creates a list of all combinations of fields from the overlapping fields.
+        # A sum of the intersections of these fields (x-1^i) gives the field union.
+        combos = self.fieldCombos(field_info)
 
-		'''
-		fieldIntersection - Calculate the intersection of any group of fields
+        # Calculate the intersection of each field combo from the overlapping fields
+        union_contributions = map(self.fieldIntersection, combos)
 
-		Parameters
-		----------
-			list_of_tuples - list of tuples of floats
-					- list of tuples of SFprob, fieldID for each field which is in the
-					particular combination
+        # Find the sum of contributions from each combination intersection to the total union
+        union = sum(union_contributions)
 
-		Returns
-		-------
-			product*sign - float
-					- contribution to the field union from this field intersection
-					out of all of the combos
-					- contributions of all combos are summed in fieldUnion
-		'''
+        return union
 
-		# Calculate the product of all probabilities
-		sf_value = map(lambda tup: tup[0], list_of_tuples)
-		product = reduce(lambda x,y: x*y, sf_value)
+    def fieldCombos(self, field_info):
 
-		# Calculate the fraction of overlap between fields
-		fieldIDs = map(lambda tup: tup[1], list_of_tuples)
-		f = self.FractionOverlap(fieldIDs)
-		# Currently this just returns 1 but we need to calculate this
+        '''
+        fieldCombos - Generate list of combinations of the overlapping fields
+                      which will be used to calculate the intersections.
 
-		# Include correct sign for the union calculation
-		sign = (-1)**(len(list_of_tuples)+1)
+        Parameters
+        ----------
+            field_info - list of tuples
+                    - Each tuple has the SFprob, l and b of the field
 
-		return product*sign
+        Returns
+        -------
+            list of lists of combos of tuples
+        '''
 
-	def FractionOverlap(self, fieldIDs):
+        combos = []
+        for i in range(len(field_info)):
+            combos.extend(list(itertools.combinations(field_info, i+1)))
+            
+        return combos
 
-		'''
-		FieldOverlap - Calculation of the fraction of N fields which are overlapping.
+    def fieldIntersection(self, list_of_tuples):
 
-		Parameters
-		----------
-			l, b - list of floats
-				- Galactic coordinates of fields for which we're calculating the overlap
+        '''
+        fieldIntersection - Calculate the intersection of any group of fields
 
-			SA - float
-				- The solid angle of the fields 
+        Parameters
+        ----------
+            list_of_tuples - list of tuples of floats
+                    - list of tuples of SFprob, fieldID for each field which is in the
+                    particular combination
 
-		Returns
-		-------
-			ratio - float
-				- The ratio of the overlap area of the fields to the total area of both fields
-		'''
+        Returns
+        -------
+            product*sign - float
+                    - contribution to the field union from this field intersection
+                    out of all of the combos
+                    - contributions of all combos are summed in fieldUnion
+        '''
 
-		try: ratio = self.Overlaps.loc[str(fieldIDs)].fraction
-		except KeyError: ratio = 0.
+        # Calculate the product of all probabilities
+        sf_value = map(lambda tup: tup[0], list_of_tuples)
+        product = reduce(lambda x,y: x*y, sf_value)
 
-		return ratio
+        # Calculate the fraction of overlap between fields
+        fieldIDs = map(lambda tup: tup[1], list_of_tuples)
+        f = self.FractionOverlap(fieldIDs)
+        # Currently this just returns 1 but we need to calculate this
+
+        # Include correct sign for the union calculation
+        sign = (-1)**(len(list_of_tuples)+1)
+
+        return product*sign
+
+    def FractionOverlap(self, fieldIDs):
+
+        '''
+        FieldOverlap - Calculation of the fraction of N fields which are overlapping.
+
+        Parameters
+        ----------
+            l, b - list of floats
+                - Galactic coordinates of fields for which we're calculating the overlap
+
+            SA - float
+                - The solid angle of the fields 
+
+        Returns
+        -------
+            ratio - float
+                - The ratio of the overlap area of the fields to the total area of both fields
+        '''
+
+        try: ratio = self.Overlaps.loc[str(fieldIDs)].fraction
+        except KeyError: ratio = 0.
+
+        return ratio
 
 
 
@@ -290,122 +288,122 @@ def CreateIntersectionDatabase(N, fields, IDtype, labels=['phi', 'theta', 'halfa
 
 class MatrixUnion():
 
-	def __init__(self, overlapdata):
+    def __init__(self, overlapdata):
 
-		self.Overlaps = overlapdata
+        self.Overlaps = overlapdata
 
 
 def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcalc, 
-					IDtype = str, Nsample = 10000, test=False):
+                    IDtype = str, Nsample = 10000, test=False):
 
-	'''
-	AnglePointsToPointingsMatrix - Adds a column to the df with the number of the field pointing
-	                             - Uses matrix algebra
-	                                - Fastest method for asigning field pointings
-	                                - Requires high memory usage to temporarily hold matrices
+    '''
+    AnglePointsToPointingsMatrix - Adds a column to the df with the number of the field pointing
+                                 - Uses matrix algebra
+                                    - Fastest method for asigning field pointings
+                                    - Requires high memory usage to temporarily hold matrices
 
-	Parameters
-	----------
-	    df: pd.DataFrame
-	        Contains Theta and Phi column corresponding to the coordinates of points on the contingent axes (RA,Dec)
+    Parameters
+    ----------
+        df: pd.DataFrame
+            Contains Theta and Phi column corresponding to the coordinates of points on the contingent axes (RA,Dec)
 
-	    pointings: pd.DataFrame
-	        Contains an x, y, and r column corresponding to positions and radii of field pointings
+        pointings: pd.DataFrame
+            Contains an x, y, and r column corresponding to positions and radii of field pointings
 
-	    angle_coords: tuple of str
-	    	- Names of angle column headers in df
-	    point_coords: tuple of str
-	    	- Names of angle column headers in pointings
+        angle_coords: tuple of str
+            - Names of angle column headers in df
+        point_coords: tuple of str
+            - Names of angle column headers in pointings
 
-	    halfangle: string
-	        - Column header for half-angle of plate on sky
+        halfangle: string
+            - Column header for half-angle of plate on sky
 
-	    SFcalc: lambda/function
-	    	- Function for calculating probability of star being selected given field and coords
+        SFcalc: lambda/function
+            - Function for calculating probability of star being selected given field and coords
 
-	kwargs
-	------
-	    IDtype: object
-	        - Type of python object used for field IDs 
+    kwargs
+    ------
+        IDtype: object
+            - Type of python object used for field IDs 
 
-	    Nsample: int
-	        - Number of stars to be assigned per iterations
-	        Can't do too many at once due to computer memory constraints
+        Nsample: int
+            - Number of stars to be assigned per iterations
+            Can't do too many at once due to computer memory constraints
 
-	    basis='intrinsic': str
-			- (I don't think this is actually used)
+        basis='intrinsic': str
+            - (I don't think this is actually used)
 
-	Returns
-	-------
-		df: pd.DataFrame
-			Same as input df with:
-				- 'points': list of field IDs for fields which the coordinates lie on
-				- 'field_info': list of tuples - (P(S|v), fieldID) - (float, fieldIDtype)
-	'''
-	Nsample = FieldAssignment.iterLimit(len(pointings))
+    Returns
+    -------
+        df: pd.DataFrame
+            Same as input df with:
+                - 'points': list of field IDs for fields which the coordinates lie on
+                - 'field_info': list of tuples - (P(S|v), fieldID) - (float, fieldIDtype)
+    '''
+    Nsample = FieldAssignment.iterLimit(len(pointings))
 
-	pointings.rename(index=str, columns=dict(zip(point_coords, angle_coords)), inplace=True)
-	df = ArrayMechanics.AnglePointsToPointingsMatrix(df, pointings, angle_coords[0], angle_coords[1], halfangle,
-		    											IDtype = IDtype, Nsample=Nsample, progress=True)
-	# Dataframe of field probabilities
-	#arr = np.zeros((len(df), len(pointings))).astype(int) - 1 # -1 so that it's an impossible SFprob value
-	#dfprob = pd.DataFrame(arr, columns=pointings.fieldID.tolist())
-	dfprob = pd.DataFrame()
+    pointings.rename(index=str, columns=dict(zip(point_coords, angle_coords)), inplace=True)
+    df = ArrayMechanics.AnglePointsToPointingsMatrix(df, pointings, angle_coords[0], angle_coords[1], halfangle,
+                                                        IDtype = IDtype, Nsample=Nsample, progress=True)
+    # Dataframe of field probabilities
+    #arr = np.zeros((len(df), len(pointings))).astype(int) - 1 # -1 so that it's an impossible SFprob value
+    #dfprob = pd.DataFrame(arr, columns=pointings.fieldID.tolist())
+    dfprob = pd.DataFrame()
 
-	for field in pointings.fieldID:
-		sys.stdout.write("\rFieldID: "+str(field))
-		# Condition: Boolean series - field is in the points list
-		condition = np.array(df.points.map(lambda points: field in points))
-		# Create array for probability values
-		array = np.zeros(len(df)) - 1
-		# Calculate probabilities
-		if test: 
-			prob, col, mag = SFcalc(field, df[condition])
-			col_arr = np.zeros(len(df)) - 1
-			mag_arr = np.zeros(len(df)) - 1
-			col_arr[condition] = col
-			mag_arr[condition] = mag
-		else: prob = SFcalc(field, df[condition])
-		# Set probability values in array
-		if isinstance(prob, pd.Series):
-			array[condition] = prob.values
-		else: array[condition] = prob
-		# Add column to dfprob dataframe
-		dfprob[field] = array
+    for field in pointings.fieldID:
+        sys.stdout.write("\rFieldID: "+str(field))
+        # Condition: Boolean series - field is in the points list
+        condition = np.array(df.points.map(lambda points: field in points))
+        # Create array for probability values
+        array = np.zeros(len(df)) - 1
+        # Calculate probabilities
+        if test: 
+            prob, col, mag = SFcalc(field, df[condition])
+            col_arr = np.zeros(len(df)) - 1
+            mag_arr = np.zeros(len(df)) - 1
+            col_arr[condition] = col
+            mag_arr[condition] = mag
+        else: prob = SFcalc(field, df[condition])
+        # Set probability values in array
+        if isinstance(prob, pd.Series):
+            array[condition] = prob.values
+        else: array[condition] = prob
+        # Add column to dfprob dataframe
+        dfprob[field] = array
 
 
-	if test:
-		df['col'] = col_arr
-		df['mag'] = mag_arr
+    if test:
+        df['col'] = col_arr
+        df['mag'] = mag_arr
 
-	# Remove 0 entries from the lists
-	def filtering(x, remove):
-		x = filter(lambda a: a!=remove, x)
-		return x
-	# Convert SFprob values into list of values in dataframe
-	arr = np.array(dfprob)
-	# Do filtering for fields
-	listoflists = arr.tolist()
-	listoflists = [filtering(x, -1) for x in listoflists]
+    # Remove 0 entries from the lists
+    def filtering(x, remove):
+        x = filter(lambda a: a!=remove, x)
+        return x
+    # Convert SFprob values into list of values in dataframe
+    arr = np.array(dfprob)
+    # Do filtering for fields
+    listoflists = arr.tolist()
+    listoflists = [filtering(x, -1) for x in listoflists]
 
-	# Lists of SF probabilities
-	SFprob = pd.DataFrame(pd.Series(listoflists), columns=['SFprob'])
+    # Lists of SF probabilities
+    SFprob = pd.DataFrame(pd.Series(listoflists), columns=['SFprob'])
 
-	# zip datatypes together - tupes of (sf, field)
-	field_info = map(zip, SFprob.SFprob, df.points)
-	field_info = pd.DataFrame(pd.Series(field_info), columns=['field_info'])
+    # zip datatypes together - tupes of (sf, field)
+    field_info = map(zip, SFprob.SFprob, df.points)
+    field_info = pd.DataFrame(pd.Series(field_info), columns=['field_info'])
 
-	# Reset index to merge on position then bring index back
-	if 'index' in list(df): df.drop('index', axis=1, inplace=True)
-	df.reset_index(inplace=True)
-	df = df.merge(SFprob, how='inner', right_index=True, left_index=True)
-	df = df.merge(field_info, how='inner', right_index=True, left_index=True)
-	df.index = df['index']
-	df.drop('index', axis=1, inplace=True)
+    # Reset index to merge on position then bring index back
+    if 'index' in list(df): df.drop('index', axis=1, inplace=True)
+    df.reset_index(inplace=True)
+    df = df.merge(SFprob, how='inner', right_index=True, left_index=True)
+    df = df.merge(field_info, how='inner', right_index=True, left_index=True)
+    df.index = df['index']
+    df.drop('index', axis=1, inplace=True)
 
-	if test:
-		df['col'] = col_arr
-		df['mag'] = mag_arr
-		return df, col_arr, mag_arr
+    if test:
+        df['col'] = col_arr
+        df['mag'] = mag_arr
+        return df, col_arr, mag_arr
 
-	return df
+    return df

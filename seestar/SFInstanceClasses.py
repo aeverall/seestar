@@ -23,6 +23,7 @@ Requirements
 '''
 
 import numpy as np
+from seestar import StatisticalModels
 
 def obsSF_dicttoclass(obsSF_dicts):
 
@@ -40,14 +41,27 @@ def obsSF_dicttoclass(obsSF_dicts):
             - Dictionary of instances of observableSF class
     '''
 
+    obsSF_classes = {}
+
     for field in obsSF_dicts: # Load classes from dictionaries
 
         # Initialise class instance
         obsSF_field = observableSF(field)
         # Set class attributes from dictionary
-        SFInstanceClasses.setattrs(obsSF_field, **obsSF_dicts[field])
+        setattrs(obsSF_field, **obsSF_dicts[field])
+
+        # Load models from DF and SF dictionaries
+        DF_model = getattr(StatisticalModels, obsSF_field.DF_model['modelname'])
+        SF_model = getattr(StatisticalModels, obsSF_field.SF_model['modelname'])
+        # Set attributes in models
+        setattrs(DF_model, **obsSF_field.DF_model)
+        setattrs(SF_model, **obsSF_field.SF_model)
+        # Reassign model class instance to obsSF class
+        obsSF_field.DF_model = DF_model
+        obsSF_field.SF_model = SF_model
+
         # Add class instance to dictionary
-        obsSF[field] = obsSF_field
+        obsSF_classes[field] = obsSF_field
 
         return obsSF_classes
 
@@ -76,20 +90,14 @@ class observableSF():
 
         # mag_range, col_range are now the maximum and minimum values of grid centres used in the RGI.
         self.DF_interp = None
-        self.DF_gridarea = None
         self.DF_magrange = None
         self.DF_colrange = None
-        self.DF_Nside = None
         # mag_range, col_range are now the maximum and minimum values of grid centres used in the RGI.
         self.SF_interp = None
-        self.SF_gridarea = None
         self.SF_magrange = None
         self.SF_colrange = None
-        self.SF_Nside = None
-        
-        self.grid_points = None
 
-    def __call__(self, (x, y)):
+    def __call__(self, xy):
 
         '''
         __call__ - Calculate the value of the selection function interpolant at the given 
@@ -97,7 +105,7 @@ class observableSF():
 
         Parameters
         ----------
-            (x, y): tuple of float or arrays
+            xy: tuple of float or arrays
                 - x and y coordinates to be evaluated.
 
         Inherited
@@ -114,7 +122,7 @@ class observableSF():
             SF: float or array
                 - Selection Function values for x and y coordinates
         '''
-
+        x, y = xy
         SF = self.SF_interp((x, y))
 
         SF[(x<self.SF_magrange[0])|(x>self.SF_magrange[1])|\
@@ -182,14 +190,14 @@ class intrinsicSF():
         # Calculator for getting col, mag from age, mh, s
         self.IsoCalculator = None
 
-    def __call__(self, (age, mh, mass, s), obsSF):
+    def __call__(self, agemhmasss, obsSF):
 
         '''
         __call__ - Calculate the intrinsic selection function from the intrinsic coordinates.
 
         Parameters
         ----------
-            (age, mh, mass, s): tuple of floats or arrays
+            agemhmasss: tuple of floats or arrays: (age, mh, mass, s)
                 - age, mh, mass and s of stars for which the selection function is being calculated
             obsSF: observableSF instance
                 - Class for calculating the observable selection function from colour and magnitude
@@ -204,7 +212,7 @@ class intrinsicSF():
             SF: float or array
                 - Selection function for given intrinsic coordinates.
         '''
-
+        age, mh, mass, s = agemhmasss
         # Calculate colour and absolute magnitude from interpolants
         col, mag = self.IsoCalculator(age, mh, mass, s)
         # Selection function from SF in observed coordinates
@@ -275,14 +283,14 @@ class intrinsicIMFSF():
         # List of masses to integrate over
         self.mass_scaled = np.linspace(0.01, 0.99, 500)
 
-    def __call__(self, (age, mh, s), obsSF):
+    def __call__(self, agemhs, obsSF):
 
         '''
         __call__ - Calculate the intrinsic selection function from the intrinsic coordinates.
 
         Parameters
         ----------
-            (age, mh, s): tuple of floats or arrays
+            agemhs: tuple of floats or arrays: (age, mh, s)
                 - age, mh, mass and s of stars for which the selection function is being calculated
             obsSF: observableSF instance
                 - Class for calculating the observable selection function from colour and magnitude
@@ -299,6 +307,8 @@ class intrinsicIMFSF():
             SF: float or array
                 - Selection function for given intrinsic coordinates.
         '''
+
+        age, mh, s = agemhs
 
         self.mass_scaled = np.linspace(0.01, 0.99, 500)
 

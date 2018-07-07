@@ -72,6 +72,9 @@ class GaussianMM():
     
     def __init__(self, x, y, nComponents, rngx, rngy):
 
+        # Name of the model to used for reloading from dictionary
+        self.modelname = self.__class__.__name__
+
         # Distribution from photometric survey for maximum prior
         self.photoDF = None
         self.priorDFbool = False
@@ -97,14 +100,8 @@ class GaussianMM():
 
         # Print out likelihood values as calculated
         self.runningL = True
-
-        # Values of SD in rotated frame with rho' = 0 - to be used as constraints
-        self.sigxtilda = lambda sigx, sigy, r: np.sqrt( ( 2*(sigx**2)*(sigy**2) ) / \
-        ( sigx**2 + sigy**2 + np.sqrt((sigy**2 - sigx**2)**2 + (2*r*sigx*sigy)**2)) )
-        self.sigytilda = lambda sigx, sigy, r: np.sqrt( ( 2*(sigx**2)*(sigy**2) ) / \
-        ( sigx**2 + sigy**2 - np.sqrt((sigy**2 - sigx**2)**2 + (2*r*sigx*sigy)**2)) )
         
-    def __call__(self, (x, y)):
+    def __call__(self, x, y):
 
         '''
         __call__ - Returns the value of the smooth GMM distribution at the points x, y
@@ -290,15 +287,15 @@ class GaussianMM():
             param_set.append( params[i*6:(i+1)*6] )
 
         # If the DF has already been calculated, directly optimise the SF
-        if self.priorDFbool: function = lambda (a, b): self.photoDF((a,b)) * self.distribution(param_set, a, b, self.nComponents)
-        else: function = lambda (a, b): self.distribution(param_set, a, b, self.nComponents)
+        if self.priorDFbool: function = lambda a, b: self.photoDF(*(a,b)) * self.distribution(param_set, a, b, self.nComponents)
+        else: function = lambda a, b: self.distribution(param_set, a, b, self.nComponents)
         
         # Point component of poisson log likelihood: contPoints \sum(\lambda(x_i))
-        model = function((self.x, self.y))
+        model = function(*(self.x, self.y))
         contPoints = np.sum( np.log(model) )
         
         # Integral of the smooth function over the entire region
-        contInteg = integrationRoutine(function, param_set, self.nComponents, (self.rngx, self.rngy))
+        contInteg = integrationRoutine(function, param_set, self.nComponents, *(self.rngx, self.rngy))
 
         lnL = contPoints - contInteg
 
@@ -338,8 +335,8 @@ class GaussianMM():
         if prior:
             # Prior on spectro distribution that it must be less than the photometric distribution
             if self.priorDFbool:
-                function = lambda (a, b): self.distribution(param_set, a, b, self.nComponents)
-                prior_df = SFprior(function, (self.rngx, self.rngy))
+                function = lambda a, b: self.distribution(param_set, a, b, self.nComponents)
+                prior_df = SFprior(function, *(self.rngx, self.rngy))
             else: prior_df = True
 
             if prior & prior_df:
@@ -441,10 +438,10 @@ class GaussianMM():
         Also prints out the values and errors of each calculation automatically
         '''
 
-        function = lambda (a, b): self.distribution(self.params_f, a, b, self.nComponents)
+        function = lambda a, b: self.distribution(self.params_f, a, b, self.nComponents)
 
         real_val, err = cubature(function, 2, 1, (self.rngx[0], self.rngy[0]), (self.rngx[1], self.rngy[1]))
-        calc_val = integrationRoutine(function, self.params_f, self.nComponents, (self.rngx, self.rngy), integration=integration)
+        calc_val = integrationRoutine(function, self.params_f, self.nComponents, *(self.rngx, self.rngy), integration=integration)
 
         percent = ((calc_val - float(real_val))/calc_val)*100
         cubature_percent = 100*float(err)/float(real_val)
@@ -454,8 +451,18 @@ class GaussianMM():
 
         return calc_val, real_val, err
 
+    def sigxtilda(self, sigx, sigy, r):
+        # Values of SD in rotated frame with rho' = 0 - to be used as constraints
+        return np.sqrt( ( 2*(sigx**2)*(sigy**2) ) / \
+        ( sigx**2 + sigy**2 + np.sqrt((sigy**2 - sigx**2)**2 + (2*r*sigx*sigy)**2)) )
 
-def SFprior(function, (rngx, rngy)):
+    def sigytilda(self, sigx, sigy, r):
+        # Values of SD in rotated frame with rho' = 0 - to be used as constraints
+        return np.sqrt( ( 2*(sigx**2)*(sigy**2) ) / \
+        ( sigx**2 + sigy**2 - np.sqrt((sigy**2 - sigx**2)**2 + (2*r*sigx*sigy)**2)) )
+
+
+def SFprior(function, rngx, rngy):
 
     '''
     SFprior - The selection function has to be between 0 and 1 everywhere.
@@ -483,7 +490,7 @@ def SFprior(function, (rngx, rngy)):
     x_2d = np.tile(x_coords, ( len(y_coords), 1 ))
     y_2d = np.tile(y_coords, ( len(x_coords), 1 )).T
 
-    SF = function((x_2d, y_2d))
+    SF = function(*(x_2d, y_2d))
 
     prior = not np.max(SF)>1
 
@@ -674,7 +681,7 @@ def cdf(func, xmin, xmax, N, **kwargs):
     return value_interp
 
 
-def integrationRoutine(function, param_set, nComponents, (rngx, rngy), integration = "trapezium"):
+def integrationRoutine(function, param_set, nComponents, rngx, rngy, integration = "trapezium"):
 
     '''
     integrationRoutine - Chose the method by which the integrate the distribution over the specified region
@@ -709,9 +716,9 @@ def integrationRoutine(function, param_set, nComponents, (rngx, rngy), integrati
     # analytic if we have analytic solution to the distribution - this is the fastest
     if integration == "analytic": contInteg = multiIntegral(param_set, nComponents)
     # trapezium is a simple approximation for the integral - fast - ~1% accurate
-    elif integration == "trapezium": contInteg = numericalIntegrate(function, (rngx, rngy))
+    elif integration == "trapezium": contInteg = numericalIntegrate(function, *(rngx, rngy))
     # simpson is a quadratic approximation to the integral - reasonably fast - ~1% accurate
-    elif integration == "simpson": contInteg = simpsonIntegrate(function, (rngx, rngy))
+    elif integration == "simpson": contInteg = simpsonIntegrate(function, *(rngx, rngy))
     # cubature is another possibility but this is far slower!
     elif integration == "cubature": 
         contInteg, err = cubature(func2d, 2, 1, (rngx[0], rngy[0]), (rngx[1], rngy[1]))
@@ -719,7 +726,7 @@ def integrationRoutine(function, param_set, nComponents, (rngx, rngy), integrati
 
     return contInteg
 
-def numericalIntegrate(function, (rngx, rngy), SFprior=False):
+def numericalIntegrate(function, rngx, rngy, SFprior=False):
     
     '''
     
@@ -749,7 +756,7 @@ def numericalIntegrate(function, (rngx, rngy), SFprior=False):
 
     x_2d = np.tile(x_coords, ( len(y_coords), 1 ))
     y_2d = np.tile(y_coords, ( len(x_coords), 1 )).T
-    z_2d = function((x_2d, y_2d))
+    z_2d = function(*(x_2d, y_2d))
 
     volume1 = ( (z_2d[:-1, :-1] + z_2d[1:, 1:])/2 ) * dx * dy
     volume2 = ( (z_2d[:-1, 1:] + z_2d[1:, :-1])/2 ) * dx * dy
@@ -757,7 +764,7 @@ def numericalIntegrate(function, (rngx, rngy), SFprior=False):
 
     return integral
 
-def simpsonIntegrate(function, (rngx, rngy)):
+def simpsonIntegrate(function, rngx, rngy):
 
     '''
 
@@ -787,10 +794,10 @@ def simpsonIntegrate(function, (rngx, rngy)):
 
     x_2d = np.tile(x_coords, ( len(y_coords), 1 ))
     y_2d = np.tile(y_coords, ( len(x_coords), 1 )).T
-    z_2d = function((x_2d, y_2d))
+    z_2d = function(*(x_2d, y_2d))
     
-    z_intx = function((x_2d + dx/2, y_2d))[:-1, :]
-    z_inty = function((x_2d, y_2d + dy/2))[:,:-1]                                      
+    z_intx = function(*(x_2d + dx/2, y_2d))[:-1, :]
+    z_inty = function(*(x_2d, y_2d + dy/2))[:,:-1]                                      
 
     volume1 = ( (z_2d[:-1, :] + z_intx*4 + z_2d[1:, :] ) /6 ) * dx * dy
     volume2 = ( (z_2d[:, :-1] + z_inty*4 + z_2d[:, 1:] ) /6 ) * dx * dy
@@ -805,7 +812,7 @@ Functions for penalised grid fitting models
 '''
 
 
-def gridDistribution((nx, ny), (rngx, rngy), params):
+def gridDistribution(nx, ny, rngx, rngy, params):
     
     '''
 
@@ -837,11 +844,11 @@ def gridDistribution((nx, ny), (rngx, rngy), params):
     inst = interp.interp2d(boundsy, boundsx, params, kind="cubic")
     #inst = interp.RectBivariateSpline(boundsx, boundsy, params)
 
-    profile = lambda (a, b): np.diag(inst(a, b))
+    profile = lambda a, b: np.diag(inst(a, b))
 
     return profile, inst
 
-def gridIntegrate(function, (rngx, rngy)):
+def gridIntegrate(function, rngx, rngy):
     
     '''
 
@@ -886,6 +893,9 @@ class PenalisedGridModel():
 
     def __init__(self, xi, yi, Nside, rngx, rngy, zero_bounds = True):
 
+
+        # Name of the model to used for reloading from dictionary
+        self.modelname = self.__class__.__name__
         
         self.nx, self.ny = Nside
         self.rngx = rngx
@@ -916,7 +926,7 @@ class PenalisedGridModel():
         # Function which calculates the actual distribution
         self.distribution = gridDistribution
         
-    def __call__(self, (xi, yi)):
+    def __call__(self,xi, yi):
         
         '''
 
@@ -1219,3 +1229,60 @@ class PenalisedGridModel():
         if solution == 0:
             return True
         else: return False
+
+
+# Used when Process == "Number"
+class FlatRegion:
+
+    '''
+
+
+    Parameters
+    ----------
+
+
+    **kwargs
+    --------
+
+
+    Returns
+    -------
+
+
+    '''
+
+    def __init__(self, value, rangex, rangey):
+
+        # Name of the model to used for reloading from dictionary
+        self.modelname = self.__class__.__name__
+
+        self.value = value
+        self.rangex = rangex
+        self.rangey = rangey
+
+    def __call__(self, x, y):
+
+        '''
+
+
+        Parameters
+        ----------
+
+
+        **kwargs
+        --------
+
+
+        Returns
+        -------
+
+
+        '''
+
+        result = np.zeros(np.shape(x))
+        result[(x>self.rangex[0]) & \
+                (x<self.rangex[1]) & \
+                (y>self.rangey[0]) & \
+                (y<self.rangey[1])] = self.value
+
+        return result

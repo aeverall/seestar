@@ -56,7 +56,7 @@ import matplotlib.gridspec as gridspec
 from matplotlib.colors import LogNorm
 from matplotlib.ticker import LogFormatter
 
-lg = raw_input('local or global')
+lg = input('local or global')
 if lg == 'l':
     sys.path.append("/home/andy/Documents/Research/SF/GitRepo/seestar/")
     import ArrayMechanics as AM
@@ -476,8 +476,6 @@ class SFGenerator():
 
                 fieldN+=1
 
-        print("Parallel done")
-
         return obsSF_dicts
 
 
@@ -533,9 +531,9 @@ class SFGenerator():
         IsoCalculator = IsochroneScaling.IntrinsicToObservable()
 
         if self.use_isointerp:
-            print "Importing colour-magnitude isochrone interpolants...",
+            print("Importing colour-magnitude isochrone interpolants...")
             IsoCalculator.LoadColMag(self.isocolmag_pickle)
-            print "...done"
+            print("...done")
         else:
             IsoCalculator.iso_pickle = self.iso_pickle
             IsoCalculator.agerng = agerng
@@ -834,33 +832,28 @@ def iterateField(spectro, photo_path, field, photo_tag, photo_coords, fieldpoint
                                     (spectro_points.Colour <= col_max)]
 
         # Interpolate for photo data - Calculates the distribution function
-        DF_interpolant, DF_gridarea, DF_magrange, DF_colrange = CreateInterpolant(photo_points,
-                                                                                 (mag_min, mag_max), (col_min, col_max),
-                                                                                 range_limited=True,
-                                                                                 datatype = "photo")
+        DF_model, DF_magrange, DF_colrange = CreateInterpolant(photo_points,
+                                                                     (mag_min, mag_max), (col_min, col_max),
+                                                                     range_limited=True,
+                                                                     datatype = "photo")
         # Interpolate for spectro data - Calculates the selection function
-        SF_interpolant, SF_gridarea, SF_magrange, SF_colrange = CreateInterpolant(spectro_points,
-                                                                                  (mag_min, mag_max), (col_min, col_max),
-                                                                                  datatype = "spectro", photoDF=DF_interpolant)
+        SF_model, SF_magrange, SF_colrange = CreateInterpolant(spectro_points,
+                                                              (mag_min, mag_max), (col_min, col_max),
+                                                              datatype = "spectro", photoDF=DF_model)
 
         # Store information inside an SFInstanceClasses.observableSF instance where the selection function is calculated.
         instanceSF = SFInstanceClasses.observableSF(field)
         SFInstanceClasses.setattrs(instanceSF,
-                                    DF_interp = DF_interpolant,
-                                    DF_gridarea = DF_gridarea,
+                                    DF_model = vars(DF_model),
                                     DF_magrange = DF_magrange,
                                     DF_colrange = DF_colrange,
-                                    SF_interp = SF_interpolant,
-                                    SF_gridarea = SF_gridarea,
+                                    SF_model = vars(SF_model),
                                     SF_magrange = SF_magrange,
-                                    SF_colrange = SF_colrange,
-                                    grid_points = True)
-
+                                    SF_colrange = SF_colrange)
 
     else:
         # There are no stars on the field plate
         instanceSF = SFInstanceClasses.observableSF(field)
-        instanceSF.grid_points = False
         
 
     return instanceSF, field
@@ -891,21 +884,8 @@ def CreateInterpolant(points,
 
     Returns
     -------
-        interp: RGI instance
+        model: StatisticalModels: GaussianMM, PenalisedGrid or FlatRegion instance
                 - Interpolant of the spectroscopic survey stars on the field in col-mag space
-
-        
-    if Grid... 
-        pop_grid: array
-                - Interpolation grid values
-        mag: array
-                - Array of values used for grid
-        col: array
-                - Array of values used for grid
-
-    else...
-        grid_area: float
-                - Area per grid square in the interp grid
         mag_range: tuple
                 - Min and max of magnitudes in interpolant
         col_range: tuple
@@ -919,41 +899,22 @@ def CreateInterpolant(points,
     if Process == "Poisson":
 
         if datatype == "photo":
-            profile = PoissonLikelihood(points, mag_range, col_range,
+            model = PoissonLikelihood(points, mag_range, col_range,
                                         'appC', 'Colour',
                                         datatype=datatype)
         elif datatype == "spectro":
-            profile = PoissonLikelihood(points, mag_range, col_range,
+            model = PoissonLikelihood(points, mag_range, col_range,
                                         'appC', 'Colour',
                                         datatype=datatype, photoDF=photoDF)            
 
-
-        grid_area = np.nan
-        return profile, grid_area, mag_range, col_range
+        return model, mag_range, col_range
 
     # Ratio of number of stars in the field.
     elif Process == "Number":
 
-        grid_area = np.nan
-        profile = FlatRegion(len(points), mag_range, col_range)
+        model = StatisticalModels.FlatRegion(len(points), mag_range, col_range)
 
-        return profile, grid_area, mag_range, col_range
-
-    # Histogram grid density process
-    elif Process == "Grid":
-        Nside_grid = 8
-        interp, pop_grid, mag_centers, col_centers = IndexColourMagSG(points, 
-                                                                     (Nside_grid, Nside_grid),
-                                                                     mag_range, col_range,
-                                                                     'Hmag', 'Colour',
-                                                                     range_limited=range_limited)
-
-        grid_area = (mag_centers[1] - mag_centers[0]) * (col_centers[1] - col_centers[0])
-        mag_range = (np.min(mag_centers), np.max(mag_centers))
-        col_range = (np.min(col_centers), np.max(col_centers))
-
-        if Grid: return interp, pop_grid, mag, col
-        else: return interp, grid_area, mag_range, col_range
+        return model, mag_range, col_range
 
 # Used when Process == Poisson
 def PoissonLikelihood(points,
@@ -1014,141 +975,6 @@ def PoissonLikelihood(points,
         raise ValueError("A valid modelType has not been provided - either \"Gaussian\" for GMM or \"Grid\" for PenalisedGridModel")
 
     return model
-
-# Used when Process == "Number"
-class FlatRegion:
-
-    def __init__(self, value, rangex, rangey):
-        self.value = value
-        self.rangex = rangex
-        self.rangey = rangey
-
-    def __call__(self, (x, y)):
-
-        result = np.zeros(np.shape(x))
-        result[(x>self.rangex[0]) & \
-                (x<self.rangex[1]) & \
-                (y>self.rangey[0]) & \
-                (y<self.rangey[1])] = self.value
-
-        return result
-
-# Used when Process == Grid
-def IndexColourMagSG(points, N_2D, 
-                     mag_range, col_range,
-                     mag_label, col_label,
-                     range_limited=False):
-
-    '''
-    IndexColourMagSG - Creates an interpolant of the RAVE star density in col-mag space
-                     - For the points given which are from one specific observation plate
-
-    Parameters
-    ----------
-        points: DataFrame
-                - data on points from one observation plate (including magnitudes and colours)
-
-        N_2D: tuple of ints
-                - (Nmags, Ncols) number of grid boundaries used to disperse data into a col-mag grid
-                - NB this is #boundaries = #gridsections + 1
-
-    **kwargs
-    --------
-        GoodRange: bool - True
-                - Specifies whether the range of colours and magnitudes is large enough to use to specify grid
-                - If False, col/mag range from the entire database is used to define the range
-
-        mag_range: tuple of floats - (0.,0.)
-                - Defines the range of magnitudes in the grid if GoodRange=False
-
-        col_range: tuple of floats - (0.,0.)
-                - Defines the range of colours in the grid if GoodRange=False
-
-    Returns
-    -------
-        interpolation: scipy.interpolate.RegularGridInterpolator object
-                - Function which returns the interpolated star number density at a point is given coordinates
-
-        selection_grid: array of ints
-                - Colour Magnitude grid with number of stars per grid square as the entries
-
-        mag_centers: 1D array of floats
-                - Centre coordinates of grid sections in selection_grid
-
-        col_centers: 1D array of floats
-                - Centre coordinates of grid sections in selection_grid
-    '''
-
-    Nmags = N_2D[0]
-    Ncolours = N_2D[1]
-
-    # Make copy of points in order to save gc.collect runtime
-    points = pd.DataFrame(np.copy(points), columns=list(points))
-
-    magnitudes = np.linspace(mag_range[0], mag_range[1], Nmags)
-    colours = np.linspace(col_range[0], col_range[1], Ncolours)
-
-
-    # Assign points to the correct index coordinates
-    mag_mintomax = (magnitudes[Nmags-1] - magnitudes[0])
-    col_mintomax = (colours[Ncolours-1] - colours[0])
-
-    mag_values = (Nmags-1) * (getattr(points,mag_label) - magnitudes[0])/mag_mintomax
-    col_values = (Ncolours-1) * (getattr(points,col_label)- colours[0])/col_mintomax
-    mag_index = np.floor(np.float64(mag_values))
-    col_index = np.floor(np.float64(col_values))
-    points['Mag_index'] = mag_index.astype(int)
-    points['Col_index'] = col_index.astype(int)
-    points['count'] = np.zeros(len(points)) # used for labelling later
-        
-    # Create a dataframe of counts per coordinate
-    counts = points.groupby(['Col_index', 'Mag_index']).count()
-
-    # Create a template dataframe which governs the shape of the selection grid
-    iterables = [np.arange(0,Ncolours-1,1), np.arange(0,Nmags-1,1)]
-    index = pd.MultiIndex.from_product(iterables, names = ['Col_index', 'Mag_index'])
-    template = pd.DataFrame(np.zeros(((Nmags-1)*(Ncolours-1),1)), index=index)
-
-    # Merge counts and template together
-    counts = template.merge(counts, how='outer', right_index=True, left_index=True)['count']
-
-    # Unstack counts to create the selection grid (nan values - 0)
-    selection_grid = counts.unstack()
-    selection_grid[pd.isnull(selection_grid)]=0.
-    selection_grid = np.array(selection_grid).astype(int)
-
-
-    # Find grid square centre coordinates
-    mag_centers = AM.BoundaryToCentre(magnitudes)
-    col_centers = AM.BoundaryToCentre(colours)
-
-    # Extend grids to deal with boundary effects
-    # For 2MASS, range is limited by RAVE range therefore we need to extend non-zero values out
-
-    if range_limited:
-
-        dmag = mag_centers[1]-mag_centers[0]
-        mag_lb, mag_ub = mag_centers[0]-dmag, mag_centers[len(mag_centers)-1]+dmag
-        dcol = col_centers[1]-col_centers[0]
-        col_lb, col_ub = col_centers[0]-dcol, col_centers[len(col_centers)-1]+dcol
-        selection_grid, mag_centers = AM.extendGrid(selection_grid, mag_centers, axis=0,
-                                                x_lbound=True, x_lb=mag_lb,
-                                                x_ubound=True, x_ub=mag_ub)
-        selection_grid, col_centers = AM.extendGrid(selection_grid, col_centers, axis=1,
-                                                x_lbound=True, x_lb=col_lb,
-                                                x_ubound=True, x_ub=col_ub)
-    # For RAVE, region is limited by population therefore we need to extend zeros out
-    else:
-        selection_grid, mag_centers = AM.extendGrid(selection_grid,
-                                                mag_centers, axis=0)
-        selection_grid, col_centers = AM.extendGrid(selection_grid,
-                                                col_centers, axis=1)
-
-
-    # Use scipy.RegularGridInterpolator to interpolate
-    interpolation = RGI((mag_centers, col_centers), np.transpose(selection_grid))
-
-    return interpolation, selection_grid, mag_centers, col_centers
 
 def fieldInterp(fieldInfo, agegrid, mhgrid, sgrid, 
                 age_mh, col, mag, weight, obsSF,
@@ -1393,7 +1219,7 @@ def path_check(pickleFile):
     good_type = False
     while not good_type:
         # Intrinsic or observable
-        sftype = raw_input("Would you like the selection function in: a) observable, b) intrinsic, c) both? (return a, b or c)")
+        sftype = input("Would you like the selection function in: a) observable, b) intrinsic, c) both? (return a, b or c)")
 
         if sftype in ('b', 'c'): # Intrinsic or both
             good_type = True
@@ -1403,7 +1229,7 @@ def path_check(pickleFile):
 
                 good = False
                 while not good:
-                    use_sf = raw_input("Path to intrinsic SF (%s) exists. Load SF in from here? (y/n)" % fileinfo.sf_pickle_fname)
+                    use_sf = input("Path to intrinsic SF (%s) exists. Load SF in from here? (y/n)" % fileinfo.sf_pickle_fname)
                     if use_sf == 'y':
                         use_intsf = True
                         good = True
@@ -1423,7 +1249,7 @@ def path_check(pickleFile):
                     good = False
                     while not good:
                         if os.path.exists(fileinfo.obsSF_pickle_path):
-                            use_sf = raw_input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
+                            use_sf = input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
                             if use_sf == 'y':
                                 use_obssf = True
                                 good = True
@@ -1441,7 +1267,7 @@ def path_check(pickleFile):
                 good = False
                 while not good:
                     if os.path.exists(fileinfo.obsSF_pickle_path):
-                        use_sf = raw_input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
+                        use_sf = input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
                         if use_sf == 'y':
                             use_obssf = True
                             good = True
@@ -1462,7 +1288,7 @@ def path_check(pickleFile):
             good = False
             while not good:
                 if os.path.exists(fileinfo.obsSF_pickle_path):
-                    use_sf = raw_input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
+                    use_sf = input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
                     if use_sf == 'y':
                         use_obssf = True
                         good = True
