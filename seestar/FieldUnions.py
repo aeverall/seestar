@@ -35,8 +35,10 @@ import numpy as np
 import pandas as pd
 import sys, gc
 
-from seestar import ArrayMechanics
-from seestar import FieldAssignment
+#from seestar import ArrayMechanics
+#from seestar import FieldAssignment
+import ArrayMechanics
+import FieldAssignment
 
 class FieldUnion():
 
