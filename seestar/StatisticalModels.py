@@ -65,6 +65,9 @@ class GaussianMM():
     
     def __init__(self, x, y, nComponents, rngx, rngy):
 
+        # Name of the model to used for reloading from dictionary
+        self.modelname = self.__class__.__name__
+
         # Distribution from photometric survey for maximum prior
         self.photoDF = None
         self.priorDFbool = False
@@ -96,7 +99,7 @@ class GaussianMM():
         # Print out likelihood values as calculated
         self.runningL = True
         
-    def __call__(self, (x, y)):
+    def __call__(self, x, y):
 
         '''
         __call__ - Returns the value of the smooth GMM distribution at the points x, y
@@ -231,14 +234,15 @@ class GaussianMM():
         '''
 
         # If the DF has already been calculated, directly optimise the SF
-        if self.priorDFbool: function = lambda (a, b): self.photoDF((a,b)) * self.distribution(params, a, b)
-        else: function = lambda (a, b): self.distribution(params, a, b)
-
+        if self.priorDFbool: function = lambda a, b: self.photoDF(*(a,b)) * self.distribution(param_set, a, b)
+        else: function = lambda a, b: self.distribution(param_set, a, b)
+        
         # Point component of poisson log likelihood: contPoints \sum(\lambda(x_i))
-        model = function((self.x_s, self.y_s))
+        model = function(*(self.x_s, self.y_s))
         contPoints = np.sum( np.log(model) )
         # Integral of the smooth function over the entire region
-        contInteg = integrationRoutine(function, params, self.nComponents, (self.rngx_s, self.rngy_s))
+        contInteg = integrationRoutine(function, params, self.nComponents, *(self.rngx, self.rngy))
+
         lnL = contPoints - contInteg
 
         #if self.runningL:
@@ -278,8 +282,8 @@ class GaussianMM():
 
         # Prior on spectro distribution that it must be less than the photometric distribution
         if self.priorDFbool:
-            function = lambda (a, b): self.distribution(params, a, b)
-            prior = prior & SFprior(function, (self.rngx_s, self.rngy_s))
+            function = lambda a, b: self.distribution(params, a, b)
+            prior = prior & SFprior(function, *(self.rngx_s, self.rngy_s))
             if not prior: return -np.inf
 
         # All prior tests satiscied
@@ -364,10 +368,10 @@ class GaussianMM():
         Also prints out the values and errors of each calculation automatically
         '''
 
-        function = lambda (a, b): self.distribution(self.params_f, a, b)
+        function = lambda a, b: self.distribution(self.params_f, a, b)
 
         real_val, err = cubature(function, 2, 1, (self.rngx_s[0], self.rngy_s[0]), (self.rngx_s[1], self.rngy_s[1]))
-        calc_val = integrationRoutine(function, self.params_f, self.nComponents, (self.rngx_s, self.rngy_s), integration=integration)
+        calc_val = integrationRoutine(function, self.params_f, self.nComponents, *(self.rngx_s, self.rngy_s), integration=integration)
 
         percent = ((calc_val - float(real_val))/calc_val)*100
         cubature_percent = 100*float(err)/float(real_val)
@@ -376,6 +380,16 @@ class GaussianMM():
         print("\nThe cubature calculation error is quoted as %.3E or %.3E%%" % (float(err), cubature_percent)  )
 
         return calc_val, real_val, err
+
+    def sigxtilda(self, sigx, sigy, r):
+        # Values of SD in rotated frame with rho' = 0 - to be used as constraints
+        return np.sqrt( ( 2*(sigx**2)*(sigy**2) ) / \
+        ( sigx**2 + sigy**2 + np.sqrt((sigy**2 - sigx**2)**2 + (2*r*sigx*sigy)**2)) )
+
+    def sigytilda(self, sigx, sigy, r):
+        # Values of SD in rotated frame with rho' = 0 - to be used as constraints
+        return np.sqrt( ( 2*(sigx**2)*(sigy**2) ) / \
+        ( sigx**2 + sigy**2 - np.sqrt((sigy**2 - sigx**2)**2 + (2*r*sigx*sigy)**2)) )
 
 
 def initParams(nComponents, rngx, rngy, priorDF):
@@ -446,7 +460,7 @@ def feature_scaling(x, y):
     return scale
 
 
-def SFprior(function, (rngx, rngy)):
+def SFprior(function, rngx, rngy):
 
     '''
     SFprior - The selection function has to be between 0 and 1 everywhere.
@@ -474,7 +488,7 @@ def SFprior(function, (rngx, rngy)):
     x_2d = np.tile(x_coords, ( len(y_coords), 1 ))
     y_2d = np.tile(y_coords, ( len(x_coords), 1 )).T
 
-    SF = function((x_2d, y_2d))
+    SF = function(*(x_2d, y_2d))
 
     prior = not np.max(SF)>1
 
@@ -623,7 +637,7 @@ INTEGRATION ROUTINES
 
 """
 
-def integrationRoutine(function, param_set, nComponents, (rngx, rngy), integration = "trapezium"):
+def integrationRoutine(function, param_set, nComponents, rngx, rngy, integration = "trapezium"):
 
     '''
     integrationRoutine - Chose the method by which the integrate the distribution over the specified region
@@ -658,9 +672,9 @@ def integrationRoutine(function, param_set, nComponents, (rngx, rngy), integrati
     # analytic if we have analytic solution to the distribution - this is the fastest
     if integration == "analytic": contInteg = multiIntegral(param_set, nComponents)
     # trapezium is a simple approximation for the integral - fast - ~1% accurate
-    elif integration == "trapezium": contInteg = numericalIntegrate(function, (rngx, rngy))
+    elif integration == "trapezium": contInteg = numericalIntegrate(function, *(rngx, rngy))
     # simpson is a quadratic approximation to the integral - reasonably fast - ~1% accurate
-    elif integration == "simpson": contInteg = simpsonIntegrate(function, (rngx, rngy))
+    elif integration == "simpson": contInteg = simpsonIntegrate(function, *(rngx, rngy))
     # cubature is another possibility but this is far slower!
     elif integration == "cubature": 
         contInteg, err = cubature(func2d, 2, 1, (rngx[0], rngy[0]), (rngx[1], rngy[1]))
@@ -714,7 +728,7 @@ def bivariateIntegral(params):
     contInteg = 2*np.pi * A * np.abs(sigmax * sigmay) * np.sqrt(1-rho**2)
     return contInteg
 
-def numericalIntegrate(function, (rngx, rngy), SFprior=False):
+def numericalIntegrate(function, rngx, rngy, SFprior=False):
     
     '''
     
@@ -744,7 +758,7 @@ def numericalIntegrate(function, (rngx, rngy), SFprior=False):
 
     x_2d = np.tile(x_coords, ( len(y_coords), 1 ))
     y_2d = np.tile(y_coords, ( len(x_coords), 1 )).T
-    z_2d = function((x_2d, y_2d))
+    z_2d = function(*(x_2d, y_2d))
 
     volume1 = ( (z_2d[:-1, :-1] + z_2d[1:, 1:])/2 ) * dx * dy
     volume2 = ( (z_2d[:-1, 1:] + z_2d[1:, :-1])/2 ) * dx * dy
@@ -752,7 +766,7 @@ def numericalIntegrate(function, (rngx, rngy), SFprior=False):
 
     return integral
 
-def simpsonIntegrate(function, (rngx, rngy)):
+def simpsonIntegrate(function, rngx, rngy):
 
     '''
 
@@ -782,13 +796,495 @@ def simpsonIntegrate(function, (rngx, rngy)):
 
     x_2d = np.tile(x_coords, ( len(y_coords), 1 ))
     y_2d = np.tile(y_coords, ( len(x_coords), 1 )).T
-    z_2d = function((x_2d, y_2d))
+    z_2d = function(*(x_2d, y_2d))
     
-    z_intx = function((x_2d + dx/2, y_2d))[:-1, :]
-    z_inty = function((x_2d, y_2d + dy/2))[:,:-1]                                      
+    z_intx = function(*(x_2d + dx/2, y_2d))[:-1, :]
+    z_inty = function(*(x_2d, y_2d + dy/2))[:,:-1]                                      
 
     volume1 = ( (z_2d[:-1, :] + z_intx*4 + z_2d[1:, :] ) /6 ) * dx * dy
     volume2 = ( (z_2d[:, :-1] + z_inty*4 + z_2d[:, 1:] ) /6 ) * dx * dy
     integral = ( np.sum(volume1.flatten()) + np.sum(volume2.flatten()) ) /2
 
     return integral
+
+'''
+
+Functions for penalised grid fitting models
+
+'''
+
+
+def gridDistribution(nx, ny, rngx, rngy, params):
+    
+    '''
+
+
+    Parameters
+    ----------
+
+
+    **kwargs
+    --------
+
+
+    Returns
+    -------
+
+
+    '''
+
+    # nx, ny - number of x and y cells
+    # rngx, rngy - ranges of x and y coordinates
+    # params - nx x ny array of cell parameters
+    
+    boundsx = np.linspace(rngx[0], rngx[1], nx+1)
+    boundsy = np.linspace(rngy[0], rngy[1], ny+1)
+
+    #profile = interp.RegularGridInterpolator((boundsx, boundsy), params)
+    #profile = interp.griddata((boundsx, boundsy), params, (boundsx, boundsy), method='cubic')
+   
+    inst = interp.interp2d(boundsy, boundsx, params, kind="cubic")
+    #inst = interp.RectBivariateSpline(boundsx, boundsy, params)
+
+    profile = lambda a, b: np.diag(inst(a, b))
+
+    return profile, inst
+
+def gridIntegrate(function, rngx, rngy):
+    
+    '''
+
+
+    Parameters
+    ----------
+
+
+    **kwargs
+    --------
+
+
+    Returns
+    -------
+
+
+    '''
+
+    #compInteg = integ.dblquad(function, rngx[0], rngx[1], rngy[0], rngy[1])
+    compInteg, err = cubature(function, 2, 1, (rngx[0], rngy[0]), (rngx[1], rngy[1]))
+    
+    return compInteg
+
+class PenalisedGridModel():
+    
+    '''
+
+
+    Parameters
+    ----------
+
+
+    **kwargs
+    --------
+
+
+    Returns
+    -------
+
+
+    '''
+
+    def __init__(self, xi, yi, Nside, rngx, rngy, zero_bounds = True):
+
+
+        # Name of the model to used for reloading from dictionary
+        self.modelname = self.__class__.__name__
+        
+        self.nx, self.ny = Nside
+        self.rngx = rngx
+        self.rngy = rngy
+
+        # Starting values for parameters
+        self.zero_bounds = zero_bounds
+        if not zero_bounds:
+        	self.params_i = np.zeros((self.ny+1, self.nx+1)) + 0.01
+        else:
+        	self.params_i = np.zeros((self.ny-1, self.nx-1)) + 0.01
+        	self.grid = np.zeros((self.nx+1, self.ny+1))
+
+        # Final optimal values for parameters
+        self.params_f = []
+        # Min value of parameters as prior
+        #self.underPriors = np.zeros((self.ny+1, self.nx+1)) + 1e-10
+        self.underPriors = 1e-10
+        # Max value of parameters as prior
+        #self.overPriors = np.zeros((self.ny+1, self.nx+1)) + 1e10
+        self.overPriors = 1e10
+
+        self.xi = xi
+        self.yi = yi
+
+        self.penWeight = 0.
+        
+        # Function which calculates the actual distribution
+        self.distribution = gridDistribution
+        
+    def __call__(self,xi, yi):
+        
+        '''
+
+
+        Parameters
+        ----------
+
+
+        **kwargs
+        --------
+
+
+        Returns
+        -------
+
+
+        '''
+
+        # Final interpolant is set after generateInterpolant is called
+        
+        return self.finalInterpolant((xi, yi))
+        
+    def generateInterpolant(self):
+        
+        '''
+
+
+        Parameters
+        ----------
+
+
+        **kwargs
+        --------
+
+
+        Returns
+        -------
+
+
+        '''
+
+        """
+        boundsx = np.linspace(self.rngx[0], self.rngx[1], self.nx+1)
+        boundsy = np.linspace(self.rngy[0], self.rngy[1], self.ny+1)
+        
+        profile = interp.RegularGridInterpolator((boundsx, boundsy), self.params_f)#, kind='cubic')
+        #profile = interp.griddata((boundsx, boundsy), params, (boundsx, boundsy), method='cubic')
+		"""
+
+        profile = self.distribution((self.nx,self.ny), (self.rngx, self.rngy), self.params_f)
+        
+        self.finalInterpolant = profile[0]
+
+        self.instInterpolant = profile[1]
+
+    def integral(self, params):
+
+        '''
+
+
+        Parameters
+        ----------
+
+
+        **kwargs
+        --------
+
+
+        Returns
+        -------
+
+
+        '''
+
+        dx = ( self.rngx[1]-self.rngx[0] )/self.nx
+        dy = ( self.rngy[1]-self.rngy[0] )/self.ny
+        volume1 = ( (params[:-1, :-1] + params[1:, 1:])/2 ) * dx * dy
+        volume2 = ( (params[:-1, 1:] + params[1:, :-1])/2 ) * dx * dy
+        integral = ( np.sum(volume1.flatten()) + np.sum(volume2.flatten()) ) /2
+
+        """
+		function = self.distribution((self.nx,self.ny), (self.rngx, self.rngy), params)
+		y0 = lambda input: self.rngy[0]
+		y1 = lambda input: self.rngy[1]
+
+		integral = quad(function, self.rngx, self.rngy)
+		#integral = integrate.dblquad(function, self.rngx[0], self.rngx[1], y0, y1)
+		"""
+
+        return integral
+
+    def curvatureIntegral(self, params):
+
+        '''
+
+
+        Parameters
+        ----------
+
+
+        **kwargs
+        --------
+
+
+        Returns
+        -------
+
+
+        '''
+
+        dx = ( self.rngx[1]-self.rngx[0] )/self.nx
+        dy = ( self.rngy[1]-self.rngy[0] )/self.ny
+        ddiag = np.sqrt(dx**2 + dy**2)
+
+        # Curvature in x=y direction
+        c1 = ( params[2:, 2:] - 2*params[1:-1, 1:-1] + params[:-2, :-2] ) / (ddiag**2)
+
+        # Curvature in x=-y direction
+        c2 = ( params[2:, :-2] - 2*params[1:-1, 1:-1] + params[:-2, 2:] ) / (ddiag**2)
+
+        # Curvature in y direction
+        c3 = ( params[2:, :] - 2*params[1:-1, :] + params[:-2, :] ) / (dy**2)
+
+        # Curvature in x direction
+        c4 = ( params[:, 2:] - 2*params[:, 1:-1] + params[:, :-2] ) / (dx**2)
+
+        integral = (np.sum( np.abs(c1.flatten()) ) +\
+                    np.sum( np.abs(c2.flatten()) ) + \
+                    np.sum( np.abs(c3.flatten()) ) + \
+                    np.sum( np.abs(c4.flatten()) ) ) / 4
+
+        return integral
+
+
+    def optimizeParams(self):
+
+        '''
+
+
+        Parameters
+        ----------
+
+
+        **kwargs
+        --------
+
+
+        Returns
+        -------
+
+
+        '''
+
+        # nll is the negative lnlike distribution
+        nll = lambda *args: -self.lnprob(*args)
+        ll = lambda *args: self.lnprob(*args)
+
+        # result is the set of theta parameters which optimise the likelihood given x, y, yerr
+        result = op.minimize(nll, self.params_i.flatten(), method = 'Powell')
+        #opt = Optimizers.nonMarkovOptimizer(ll, self.params_i.flatten())
+        #result = opt()
+
+        # Save evaluated parameters to internal values
+        if not self.zero_bounds:
+            self.params_f = result['x'].reshape((self.nx+1, self.ny+1))
+        else:
+            self.params_f = self.grid
+            self.params_f[1:-1, 1:-1] = result['x'].reshape((self.nx-1, self.ny-1))
+        
+    # ln(Likelihood) based on a Poisson likelihood distribution
+    def lnlike(self, params):
+        
+        '''
+
+
+        Parameters
+        ----------
+
+
+        **kwargs
+        --------
+
+
+        Returns
+        -------
+
+
+        '''
+
+        # Reshape the parameters to make the next stage easy
+        if not self.zero_bounds:
+            param_set = params.reshape((self.nx+1, self.ny+1))
+        else:
+            param_set = self.grid
+            param_set[1:-1, 1:-1] = params.reshape((self.nx-1, self.ny-1))
+
+        model = self.distribution((self.nx, self.ny), (self.rngx, self.rngy), param_set)[0]
+        contPoints = np.sum( np.log( model( (self.xi, self.yi) ) ) )
+            
+        # Integral over region for 2D Gaussian distribution
+        contInteg = gridIntegrate(model, (self.rngx, self.rngy))
+        #contInteg = self.integral(param_set)
+
+        penWeight = self.penWeight#0#0.7
+        curveInteg = self.curvatureIntegral(param_set)
+
+        lnL = contPoints - contInteg - penWeight*curveInteg
+        sys.stdout.write("\rlogL: %.2f, sum log(f(xi)): %.2f, integral: %.2f, curve pen: %.2f" % (lnL, contPoints, contInteg, curveInteg))
+        sys.stdout.flush()
+
+        return lnL
+
+    # "uninformative prior" - uniform and non-zero within a specified range of parameter values
+    def lnprior(self, params):
+        
+        '''
+
+
+        Parameters
+        ----------
+
+
+        **kwargs
+        --------
+
+
+        Returns
+        -------
+
+
+        '''
+
+        param_set = params
+        # Reshape the parameters to make the next stage easy
+        
+        prior = self.priorTest(param_set)
+        
+        if prior:
+            return 0.0
+        else: 
+            return -np.inf
+
+    # posterior probability function is proportional to the prior times the likelihood
+    # lnpost = lnprior + lnlike
+    def lnprob(self, params):
+
+        '''
+
+
+        Parameters
+        ----------
+
+
+        **kwargs
+        --------
+
+
+        Returns
+        -------
+
+
+        '''
+
+        lp = self.lnprior(params)
+        if not np.isfinite(lp):
+            return -np.inf
+        return lp + self.lnlike(params)
+    
+    # Returns a boolean true or false for whether all parameters lie within their range
+    def priorTest(self, params):
+        
+        '''
+
+
+        Parameters
+        ----------
+
+
+        **kwargs
+        --------
+
+
+        Returns
+        -------
+
+
+        '''
+
+        Val = np.array(params).flatten()
+        #minVal = np.array(self.underPriors).flatten()
+        #maxVal = np.array(self.overPriors).flatten()
+        minVal = self.underPriors
+        maxVal = self.overPriors
+
+        minBool = Val > minVal
+        maxBool = Val < maxVal
+        rngBool = minBool*maxBool
+        
+        solution = np.sum(rngBool) - len(Val)
+        if solution == 0:
+            return True
+        else: return False
+
+
+# Used when Process == "Number"
+class FlatRegion:
+
+    '''
+
+
+    Parameters
+    ----------
+
+
+    **kwargs
+    --------
+
+
+    Returns
+    -------
+
+
+    '''
+
+    def __init__(self, value, rangex, rangey):
+
+        # Name of the model to used for reloading from dictionary
+        self.modelname = self.__class__.__name__
+
+        self.value = value
+        self.rangex = rangex
+        self.rangey = rangey
+
+    def __call__(self, x, y):
+
+        '''
+
+
+        Parameters
+        ----------
+
+
+        **kwargs
+        --------
+
+
+        Returns
+        -------
+
+
+        '''
+
+        result = np.zeros(np.shape(x))
+        result[(x>self.rangex[0]) & \
+                (x<self.rangex[1]) & \
+                (y>self.rangey[0]) & \
+                (y<self.rangey[1])] = self.value
+
+        return result

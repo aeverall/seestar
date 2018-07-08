@@ -107,11 +107,11 @@ class FieldAssignment():
             self.N_iter = iterLimit(Npoint)
 
             # Output information on processing
-            print "Total number of stars %d." % self.total
-            print "Importing {Nimport} stars at a time. Iterating {Niter} stars at a time.".format(Nimport=self.N_import, Niter=self.N_iter)
+            print("Total number of stars %d." % self.total)
+            print("Importing {Nimport} stars at a time. Iterating {Niter} stars at a time.".format(Nimport=self.N_import, Niter=self.N_iter))
 
             files = [os.path.join(self.fileinfo.photo_path, str(field))+'.csv' for field in self.pointings[self.fileinfo.field_coords[0]]]
-            print "Field file path for field {}: {}".format(self.pointings[self.fileinfo.field_coords[0]][0], files[0])
+            print("Field file path for field {}: {}".format(self.pointings[self.fileinfo.field_coords[0]][0], files[0]))
 
             self.__call__()
 
@@ -132,7 +132,7 @@ class FieldAssignment():
             fileinfo - class instance of surveyInformation
         '''
         
-        print 'Clearing field files...',
+        print('Clearing field files...')
         
         # Take headers from source files (photometric catalogue)
         headers = pd.read_csv(self.photometric_files[0], nrows = 1)[:0]
@@ -142,7 +142,7 @@ class FieldAssignment():
             headers.to_csv(os.path.join(self.fileinfo.photo_path, str(field))+'.csv',
                           index=False, mode = 'w')
             
-        print '...done\n'
+        print('...done\n')
         
 
     def RunAssignmentAPTPM(self, N_import=100000, N_iterate=1000):
@@ -282,11 +282,11 @@ def countStars(files):
             - Total number of stars in photometric catalogue
     '''
 
-    print "Counting total number of stars",
+    print("Counting total number of stars")
 
     count = 0
     for filen in files:
-        print ".",
+        print(".")
         extension = os.path.splitext(filen)[-1]
         if extension=='.gz':
             with gzip.open(filen) as f:
@@ -297,7 +297,7 @@ def countStars(files):
                 for _ in f:
                     count += 1         
 
-    print "done"
+    print("done")
     return count
 
 class HealpixAssignment():
@@ -399,10 +399,10 @@ class HealpixAssignment():
         while not good_mag:
             try:
                 # Take each value as an input from the user
-                mag_l = input("Survey lower limit on H-band apparent magnitude (if not given, type None): ")
-                mag_u = input("Survey upper limit on H-band apparent magnitude (if not given, type None): ")
-                col_l = input("Survey lower limit on J-K colour (if not given, type None): ")
-                col_u = input("Survey upper limit on J-K colour (if not given, type None): ")
+                mag_l = eval(input("Survey lower limit on H-band apparent magnitude (if not given, type None): "))
+                mag_u = eval(input("Survey upper limit on H-band apparent magnitude (if not given, type None): "))
+                col_l = eval(input("Survey lower limit on J-K colour (if not given, type None): "))
+                col_u = eval(input("Survey upper limit on J-K colour (if not given, type None): "))
             except NameError:
                 # If a non-assigned object input is used
                 print("Return float or None.")
@@ -610,7 +610,7 @@ def numberPixels(npixel):
         good_pix = False
         while not good_pix:
             # Ask for another value of npixel to be given
-            x = input("%d is an invalid number of pixels for healpix, can do %d or %d?" %(pix, rd_down, rd_up))
+            x = eval(input("%d is an invalid number of pixels for healpix, can do %d or %d?" %(pix, rd_down, rd_up)))
 
             if type(x)==int:
                 pix=x

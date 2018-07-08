@@ -452,7 +452,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
 			else: 
 				good_response = False
 				while not good_response:
-					forward = raw_input("Tests on the files have raised some warnings. Would you like to continue anyway? (y/n)")		
+					forward = input("Tests on the files have raised some warnings. Would you like to continue anyway? (y/n)")		
 					if forward == 'n': 
 						forward_bool = False
 						good_response = True

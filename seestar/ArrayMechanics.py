@@ -765,7 +765,7 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, halfangle,
     if 'points' in list(df): df.drop('points', axis=1, inplace=True)
 
     # Iterate over portions of size, Nsample to constrain memory usage.
-    for i in range(len(df)/Nsample + 1):
+    for i in range(int(len(df)/Nsample) + 1):
 
         if progress: sys.stdout.write("\r"+str(i)+"..."+str(i*Nsample)+'/'+str(len(df)))
         dfi = df.iloc[i*Nsample:(i+1)*Nsample]
@@ -808,7 +808,7 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, halfangle,
         Mplates = Mplates*Mbool
         # Remove "" entries from the lists
         def filtering(x, remove):
-            x = filter(lambda a: a!=remove, x)
+            x = [elem for elem in x if elem!=remove]
             return x
         # Do filtering for fields
         field_listoflists = Mplates.values.tolist()
@@ -817,8 +817,7 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, halfangle,
         del(Mplates)
         gc.collect()
         # Convert type of all field IDs back to correct type
-        dtypeMap = lambda row: map(IDtype, row)
-        field_listoflists = map(dtypeMap, field_listoflists)
+        field_listoflists = [[IDtype(elem) for elem in row] for row in field_listoflists]   
         # Convert list to series then series to dataframe column
         field_series = pd.Series(field_listoflists)
         field_series = pd.DataFrame(field_series, columns=['points'])
