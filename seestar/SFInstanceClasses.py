@@ -23,7 +23,7 @@ Requirements
 '''
 
 import numpy as np
-from seestar import StatisticalModels
+import StatisticalModels
 
 def obsSF_dicttoclass(obsSF_dicts):
 
