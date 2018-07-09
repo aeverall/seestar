@@ -56,27 +56,14 @@ import matplotlib.gridspec as gridspec
 from matplotlib.colors import LogNorm
 from matplotlib.ticker import LogFormatter
 
-lg = raw_input('local or global')
-if lg == 'l':
-    sys.path.append("/home/andy/Documents/Research/SF/GitRepo/seestar/")
-    import ArrayMechanics as AM
-    import StatisticalModels
-    import FieldUnions
-    import SFInstanceClasses
-    import IsochroneScaling
-    import surveyInfoPickler
-    import AngleDisks
-    import FieldAssignment
-elif lg == 'g':
-    from seestar import ArrayMechanics as AM
-    from seestar import StatisticalModels
-    from seestar import FieldUnions
-    from seestar import SFInstanceClasses
-    from seestar import IsochroneScaling
-    from seestar import surveyInfoPickler
-    from seestar import AngleDisks
-    from seestar import FieldAssignment
-else: raise ValueError('Local or global?')
+from seestar import ArrayMechanics as AM
+from seestar import StatisticalModels
+from seestar import FieldUnions
+from seestar import SFInstanceClasses
+from seestar import IsochroneScaling
+from seestar import surveyInfoPickler
+from seestar import AngleDisks
+from seestar import FieldAssignment
 
 class SFGenerator():
 
