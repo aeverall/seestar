@@ -129,6 +129,10 @@ class surveyInformation():
 
 		self.fileinfo_path = ''
 
+		self.photo_field_files = ['']
+		self.photo_field_paths = ['']
+		self.photo_field_starcount = {}
+
 		if path is not None:
 			self.load(path)
 
@@ -147,6 +151,8 @@ class surveyInformation():
 
 		self.iso_data_path = os.path.join(self.survey_folder, self.iso_folder, self.iso_data_file)
 		self.iso_interp_path = os.path.join(self.survey_folder, self.iso_folder, self.iso_interp_file)
+
+		self.photo_field_paths = [os.path.join(self.photo_path, fieldfile) for fieldfile in self.photo_field_files]
 
 		self.example_string = \
 """

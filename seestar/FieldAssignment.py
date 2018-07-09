@@ -164,11 +164,18 @@ class FieldAssignment():
         start = time.time()
         # For analysing the progress
         starsanalysed = 0
-        
+
+        # Photometric file names
+        field_files = [str(field)+'.csv' for field in self.pointings[self.fileinfo.field_coords[0]]]
+
         # Open files for writing
         open_files = {}
-        for field in self.pointings[self.fileinfo.field_coords[0]]:
-            open_files[field] = open(os.path.join(self.fileinfo.photo_path, str(field))+'.csv', 'a+')
+        for field_file in field_files:
+            open_files[field] = open(os.path.join(self.fileinfo.photo_path, field_file), 'a+')
+
+        # Count dictionary for number of stars per field (all entries start at 0)
+        starcount = {field: 0 for field in self.pointings[self.fileinfo.field_coords[0]]}
+        total = 0
 
         # Iterate over full directory files
         for filename in self.photometric_files:
@@ -202,9 +209,21 @@ class FieldAssignment():
                     df_bool = df_allsky.points.apply(lambda x: field in x)
                     df = df_allsky[df_bool]
 
+                    # Add to star count
+                    starcount[field] += len(df)
+                    total += len(df)
+
                     df.drop('points', inplace=True, axis=1)
                     
                     df.to_csv(open_files[field], index=False, header=False)
+
+        print("\nTotal stars assigned to fields: %d.\n\
+         Dictionary of stars per field in fileinfo.photo_field_starcount.")
+
+        self.fileinfo.photo_field_files = field_files
+        self.fileinfo.photo_field_starcount = starcount
+        self.fileinfo()
+        self.fileinfo.save()
 
 def importLimit(files, proportion=0.1):
 
