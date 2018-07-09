@@ -352,7 +352,7 @@ def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcal
     dfprob = pd.DataFrame()
 
     for field in pointings.fieldID:
-        sys.stdout.write("\rFieldID: "+str(field))
+    	
         # Condition: Boolean series - field is in the points list
         condition = np.array(df.points.map(lambda points: field in points))
         # Create array for probability values
