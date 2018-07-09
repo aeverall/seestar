@@ -85,7 +85,7 @@ To initialise prebuilt selection function:
 from seestar import SelectionGrid
 
 # To initialise the prebuilt selection function:
-Galaxia_sf = SeletionGrid.SFGenerator('home/USER/PATH/Galaxia3/Galaxia3_fileinfo.pickle')
+Galaxia_sf = SeletionGrid.SFGenerator('/home/USER/PATH/Galaxia3/Galaxia3_fileinfo.pickle')
 ```
 
 Having created the selection function instance for Galaxia, we now wish to calculate selection probabilities of stars:
@@ -178,12 +178,13 @@ A folder labeled SURVEY-NAME will be generated in the location PATH/TO/DIRECTORY
 * SURVEY_survey.csv - spectroscopic catalogue template.
 * SURVEY_fieldinfo.csv - spectroscopic field pointing catalogue template.
 * photometric/field1.csv - folder for photometric catalogue files for each field in the spectroscopic survey (an example template file, field1.csv, is also included).
+* isochrones/ - folder for isochrone files (You'll need to move these in yourself)
 
 Once you have created this folder, you must replace the template files with real field files:
 * Spectroscopic catalogue (SURVEY_survey.csv). This file will be a comma separated file with at least the following five columns (appropriately labelled): galactic longitude in radians ('glon'), galactic latitude in radians ('glat'), apparent magnitudes ('Happ', 'Japp', 'Kapp'), field id tag for the star ('fieldID'). The file can have other columns too but they won't be used.
-* Photometric catalogue for each field in the spectroscopic catalogue (photometric/FIELD-ID.csv). Comma separated file listing all starts on the field pointing in the photometric catalogue. It will have at least the following four columns (appropriately labelled): galactic longitude in radians ('glon'), galactic latitude in radians ('glat'), apparent magnitudes ('Happ', 'Japp', 'Kapp'). The file can have other columns too but they won't be used.
+* Photometric catalogue for each field in the spectroscopic catalogue (photometric/FIELD-ID.csv). Comma separated file listing all stars on the field pointing in the photometric catalogue. It will have at least the following four columns (appropriately labelled): galactic longitude in radians ('glon'), galactic latitude in radians ('glat'), apparent magnitudes ('Happ', 'Japp', 'Kapp'). The file can have other columns too but they won't be used.
 * Locations and IDs of the spectroscopic field pointings (SURVEY_fieldinfo.csv). This file gives the central galactic longitude in radians ('glon') and galactic latitude in radians ('glat') of each field, half angle in radians ('halfangle') and the color and magnitude limits imposed by the spectroscopic survey ('Magmin', 'Magmax', 'Colmin', 'Colmax'). If none are imposed, write "NoLimit".
-
+* PARSEC isochrone files can extracted from [isoPARSEC.tar.gz](https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing). Move isochrone_interpolantinstances.pickle into the isochrones/ folder. Without the isochrones, you can still generate the selection function in observable coordinates.
 
 
 The information held in SURVEY-NAME_fileinfo.pickle need to now be updated with the file locations, and some other bits of information in order to calculate the selection function.
@@ -204,29 +205,51 @@ file_info.testFiles()
 file_info.save()
 ```
 
+### Field Assignment
 
-### Isochrone data
+As mentioned previously, the folder, photometric/, in the survey directory stores the photometric survey data as a file for every field in the survey with the photometric stars which are on that field. You can generate these stars yourself, or use the given field assignment code:
 
-To generate the selection function as a function of the intrinsic coordinates distance, metallicity, age, and mass, isoPARSEC.tar.gz must be downloaded and extracted from [here](https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing).from 
+```python
+from seestar import FieldAssignment
+# Path to fileinfo.pickle file generated when running createNew
+fileinfo_path = '/home/PATH/TO/DIRECTORY/SURVEY/SURVEY_fileinfo.pickle'
+# List of paths to all photometric catalogue files (photometric catalogues can be large so often multiple files are used)
+files = ["/home/path/to/photo_cat/photofile1", "/home/path/to/photo_cat/photofile2", "/home/path/to/photo_cat/photofile3"]
+# Run the field assignment
+FA = FieldAssignment.FieldAssignment(fileinfo_path, files)
+```
+This may raise some warnings if the datastructure in the files is not the same as suggested in fileinfo.
+Respond n to stop running and fix the warnings (such as changing column headers and coordinates to radians).
+Respond y to ignore the warnings and continue.
 
+The size of iteration steps is decided by checking the memory available on your system. 
+(Hasn't been tested on a cluster so not sure how well it works there.)
 
-### Generating the selection function as a function of colour and magnitude
+### Generating the selection function in observable coordinates (as a function of colour and magnitude)
 
 Generate the selection function.
 ```python
 from seestar import SelectionGrid
 
-Survey_sf = SeletionGrid.SFGenerator('PATH/TO/DIRECTORY/SURVEY-NAME/SURVEY-NAME_fileinfo.pickle', 
-						ColMagSF_exists=False)
+Survey_sf = SeletionGrid.SFGenerator('/home/PATH/TO/DIRECTORY/SURVEY/SURVEY_fileinfo.pickle')
 ```
-
-
-
-On completion, this automatically saves the selection function, after which it can be reloaded much faster:
-```python
-Survey_sf = SelectionGrid.SFGenerator('PATH/TO/DIRECTORY/SURVEY-NAME/SURVEY-NAME_fileinfo.pickle', 
-						ColMagSF_exists=True)
+This will raise the question:
 ```
+Would you like the selection function in: a) observable, b) intrinsic, c) both? (return a, b or c)
+```
+* a - Generates a selection function in observable coordinates (magnitude, colour). Doesn't require Isochrone data if this is unavailable.
+* b - Generates a selection function in intrinsic coordinates (age, metallicity, mass, distance). Requires the isochrone files.
+* c - Generates both of the above and keeps them loaded in to be used when wanted.
+
+If the selection function has been previously run, the following will automatically appear:
+```
+Path to intrinsic SF (Galaxia3_new_SF.pickle) exists. Load SF in from here? (y/n)
+Path to observable SF (Galaxia3_new_obsSF.pickle) exists. Use this to ? (y/n)
+```
+* y - Loads in the previously generated selection function (done in seconds)
+* n - Generates a new selection function which will overwrite the previous ones. 
+(Calculating the observable SF from scratch can take hours depending on the survey)
+
 
 Having created the selection function instance for SURVEY-NAME, we now wish to calculate selection probabilities of stars:
 
@@ -245,9 +268,9 @@ dataframe = pd.DataFrame(array, columns=['glon', 'glat', 's', 'age', 'mh', 'mass
 
 # Calculation of selection function
 # - the dataframe is returned with columns for the fields of the stars and selection probability.
-dataframe = Galaxia_sf(dataframe, method='int',
+dataframe = Galaxia_sf(dataframe, method='intrinsic',
 				coords=['age', 'mh', 's', 'mass'], angle_coords=['glon', 'glat'])
-# method='int' means calculating the selection function using intrinsic properties (i.e. age, metallicity, distance and mass).
+# method='intrinsic' means calculating the selection function using intrinsic properties (i.e. age, metallicity, distance and mass).
 
 dataframe.union # The column of selection function probabilities
 ```
