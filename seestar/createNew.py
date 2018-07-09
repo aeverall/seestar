@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 from seestar import surveyInfoPickler
 
-
 def create():
 
 	# Ask for a directory name
@@ -66,10 +65,9 @@ def create():
 	FileInfo.obsSF_pickle_fname = folder + '_obsSF.pickle'
 
 	# Folder and files containing isochrone data
-	FileInfo.iso_folder = "isoPARSEC"
-	FileInfo.iso_data_file = "stellarprop_parsecdefault_currentmass.dill" 
+	FileInfo.iso_folder = "isochrones"
+	FileInfo.iso_data_file = "iso_fulldata.pickle" 
 	FileInfo.iso_interp_file = "isochrone_interpolantinstances.pickle"
-	FileInfo.iso_mag_file = "isochrone_magnitudes.pickle"
 	# File location for storing information on area overlap of individual fields
 	FileInfo.overlap_fname = folder + '_fieldoverlapdatabase'
 
@@ -82,12 +80,14 @@ def create():
 	createCSV(FileInfo.field_path, FileInfo.field_coords, FileInfo.field_dtypes)
 	# Generate photometric catalogue file
 	createPhoto(FileInfo.photo_path, FileInfo.photo_coords, FileInfo.photo_dtypes)
+	# Generate isochrone folder
+	os.makedirs(os.path.join(FileInfo.survey_folder, FileInfo.iso_folder))
 
 	# Location of pickle file which the file information will be stored in
 	pklfile = os.path.join(directory, folder, folder+"_fileinfo.pickle")
 	FileInfo.fileinfo_path = pklfile
 	# Pickle the file information
-	FileInfo.save(pklfile)
+	FileInfo.saveas(pklfile)
 
 	message = """
 The files for the project have been generated.

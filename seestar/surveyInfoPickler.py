@@ -118,10 +118,10 @@ class surveyInformation():
 		self.photo_tag = None
 		self.fieldlabel_type = None #self.spectro_dtypes[0]
 
+		self.iso_folder = ''
 		self.iso_pickle_file = ''
-		self.iso_pickle_path = os.path.join(self.data_path, self.iso_pickle_file)
+		self.iso_pickle_path = os.path.join(self.survey_folder, self.iso_folder, self.iso_pickle_file)
 		self.iso_interp_file = ''
-		self.iso_interp_path = os.path.join(self.data_path, self.iso_interp_file)
 
 		self.overlap_fname = ''
 
@@ -141,9 +141,8 @@ class surveyInformation():
 		self.obsSF_pickle_path = os.path.join(self.survey_folder, self.obsSF_pickle_fname)
 		self.overlap_path = os.path.join(self.survey_folder, self.overlap_fname)
 
-		self.iso_data_path = os.path.join(self.data_path, self.iso_folder, self.iso_data_file)
-		self.iso_interp_path = os.path.join(self.data_path, self.iso_folder, self.iso_interp_file)
-		self.iso_mag_path = os.path.join(self.data_path, self.iso_folder, self.iso_mag_file)
+		self.iso_data_path = os.path.join(self.survey_folder, self.iso_folder, self.iso_data_file)
+		self.iso_interp_path = os.path.join(self.survey_folder, self.iso_folder, self.iso_interp_file)
 
 		self.example_string = \
 """

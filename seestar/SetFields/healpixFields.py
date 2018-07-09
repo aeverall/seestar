@@ -1,6 +1,5 @@
 from seestar import surveyInfoPickler
 from seestar import createNew
-
 import healpy as hp
 import os
 from shutil import copyfile
@@ -39,7 +38,7 @@ class allSkySurvey():
 		# List of photometric data files
 		self.photo_files = input("List of paths to all photometric data files (Can be just one item in the list): ")
 		allfiles = False
-		while not allfiles
+		while not allfiles:
 			for path in self.photo_files:
 				if not os.path.exists(path):
 					allfiles=False
