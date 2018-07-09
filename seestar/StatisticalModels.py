@@ -20,17 +20,17 @@ import numpy
 import scipy.interpolate as interp
 import scipy.integrate as integrate
 import scipy.optimize as op
-import sys
+import sys, os, time
 from mpmath import *
 
 # Import cubature for integrating over regions
 from cubature import cubature
 
 
-class GaussianMM():
+class GaussianEM():
 
     '''
-    GaussianMM - Class for calculating bivariate Gaussian mixture model which best fits
+    GaussianEM - Class for calculating bivariate Gaussian mixture model which best fits
                  the given poisson point process data.
 
     Parameters
@@ -68,9 +68,9 @@ class GaussianMM():
         # Name of the model to used for reloading from dictionary
         self.modelname = self.__class__.__name__
 
-        # Distribution from photometric survey for maximum prior
+        # Distribution from photometric survey for calculation of SF
         self.photoDF = None
-        self.priorDFbool = False
+        self.priorDF = False
         
         # Number of components of distribution
         self.nComponents = nComponents
@@ -88,13 +88,16 @@ class GaussianMM():
         self.y = y
         self.rngx, self.rngy = rngx, rngy
 
+        # Statistics for feature scaling
+        self.mux, self.sx = np.mean(x), np.std(x)
+        self.muy, self.sy = np.mean(y), np.std(y)
+
         # Scaled parameters
-        self.f_scale = feature_scaling(x, y)
-        self.x_s, self.y_s = self.f_scale(x, y)
-        self.rngx_s, self.rngy_s = self.f_scale(np.array(rngx), np.array(rngy))
+        self.x_s, self.y_s = feature_scaling(x, y, self.mux, self.muy, self.sx, self.sy)
+        self.rngx_s, self.rngy_s = feature_scaling(np.array(rngx), np.array(rngy), self.mux, self.muy, self.sx, self.sy)
 
         # Function which calculates the actual distribution
-        self.distribution = multiDistributionVector
+        self.distribution = bivGaussMix
 
         # Print out likelihood values as calculated
         self.runningL = True
@@ -108,15 +111,17 @@ class GaussianMM():
         ----------
             x, y - float or np.array of floats
                 - x and y coordinates of points at which to take the value of the GMM
+                - From input - x is magnitude, y is colour
 
         Returns
         -------
-            self.distribution(...) - float or np.array of floats
+            GMMval: float or np.array of floats
                 - The value of the GMM at coordinates x, y
         '''
 
         # Scale x and y to correct region
-        x, y = self.f_scale(x, y)
+        x, y = feature_scaling(x, y, self.mux, self.muy, self.sx, self.sy)
+        rngx, rngy = feature_scaling(np.array(self.rngx), np.array(self.rngy), self.mux, self.muy, self.sx, self.sy)
         
         # Value of coordinates x, y in the Gaussian mixture model
         GMMval = self.distribution(self.params_f, x, y)
@@ -125,19 +130,149 @@ class GaussianMM():
             # Not-nan input values
             notnan = (~np.isnan(x))&(~np.isnan(y))
             # Any values outside range - 0
-            constraint = (x[notnan]>=self.rngx[0])&(x[notnan]<=self.rngx[1])&(y[notnan]>=self.rngy[0])&(y[notnan]<=self.rngy[1])
+            constraint = (x[notnan]>=rngx[0])&(x[notnan]<=rngx[1])&(y[notnan]>=rngy[0])&(y[notnan]<=rngy[1])
             GMMval[~notnan] = np.nan
             GMMval[notnan][~constraint] = 0.
         elif (type(GMMval) == float) | (type(GMMval) == np.float64):
             if (np.isnan(x))|(np.isnan(y)): GMMval = np.nan
             else: 
-                constraint = (x>=self.rngx[0])&(x<=self.rngx[1])&(y>=self.rngy[0])&(y<=self.rngy[1])
+                constraint = (x>=rngx[0])&(x<=rngx[1])&(y>=rngy[0])&(y<=rngy[1])
                 if not constraint:
                     GMMval = 0.
         else: raise TypeError('The type of the input variables is '+str(type(GMMval)))
 
         return GMMval
-        
+
+    def EM(self, params, prior=False): 
+
+        '''
+        EM - Expectation maximisation algorithm for Gaussian mixture model
+            - Currently only gives correct result for photometric DF
+            - Can't weight calculation of mu, sigma, w for a prior distribution (needed for SF)
+
+        Parameters
+        ----------
+            params: array of floats - nx6 - where n is the number of components of the mixture
+                - Initial/current parameters of Gaussian mixture model
+
+        **kwargs
+        --------
+            prior=False: boolean
+                - Is there a prior distribution to use (Such as the photoDF)
+                - Don't actually know how to impose a prior yet
+
+        Returns
+        -------
+            params: array of floats - nx6 - where n is the number of components of the mixture
+                - New estimate of parameters of Gaussian mixture
+        '''
+
+        improvement = 100
+        it = 0
+        lnlike_old = self.lnlike(params)
+        # Whilst improving by greater than 0.1%
+        while improvement > 0.001:
+            it+=1
+            response = self.Expectation(params) 
+            params = self.Maximisation(response, prior=prior)
+
+            lnlike_new = self.lnlike(params)
+            if 'lnlike_old' in locals():
+                improvement = 100 * (lnlike_new - lnlike_old)/np.abs(lnlike_old)
+            
+            sys.stdout.write('\rold: %d, new: %d, improvement: %d' % (lnlike_old, lnlike_new, improvement))
+
+            lnlike_old = lnlike_new
+
+        print("\nIterations: %d" % it)
+        return params
+
+    def Expectation(self, params):
+
+        '''
+        Expectation - Expectation step of Expectation maximisation algorithm
+            - Calculates the assosciation of each point with each component of the mixture (response)
+
+        Parameters
+        ----------
+            params: array of floats - nx6 - where n is the number of components of the mixture
+                - Initial/current parameters of Gaussian mixture model
+
+        Inherited
+        ---------
+            x_s, y_s: array of float
+                - Feature scaled x and y coordinates of points
+
+        Returns
+        -------
+            response: array of floats - nxm
+                - Assosciation of each point with each component of the mixture
+                - n is the number of components
+                - m is the number of points
+        '''
+
+        response = np.empty((params.shape[0], *self.x_s.shape))
+        for i in range(params.shape[0]):
+            component = bivariateGauss(params[i,:], self.x_s, self.y_s)
+            full = bivGaussMix(params, self.x_s, self.y_s)
+
+            response[i,:] = component/full
+
+        return response
+
+    def Maximisation(self, response, prior=False):
+
+        '''
+        Maximisation - Maximisation step of Expectation maximisation algorithm
+            - Calculates the parameters of mixture components using the points weighted by
+            their assosciations with each component.
+
+        Parameters
+        ----------
+            response: array of floats - nxm
+                - Assosciation of each point with each component of the mixture
+                - n is the number of components
+                - m is the number of points
+
+        kwargs
+        ------
+            prior: bool
+                - Whether to use a prior distribution function when calculating parameters
+                - Not yet sure how this is done
+
+        Inherited
+        ---------
+            x_s, y_s: array of float
+                - Feature scaled x and y coordinates of points
+
+        Returns
+        -------
+            params: array of floats - nx6 - where n is the number of components of the mixture
+                - Improved estimate for parameters of Gaussian mixture model
+
+        '''
+
+        shape = self.x_s.shape
+        X = np.vstack((self.x_s.ravel(), self.y_s.ravel())).T
+
+        params = np.empty(self.params_i.shape)
+        for i in range(response.shape[0]):
+
+            MU = np.dot(response[i,:], X) / np.sum(response[i,:]) 
+
+            diff = X-MU
+            XX = np.array([np.outer(elem, elem) for elem in diff])
+            # Weight matrices by response
+            XX = (response[i,:]*XX.T).T
+            sigma = np.sum(XX, axis=0) / np.sum(response[i,:])
+            determinant = np.linalg.det(sigma)
+
+            weight = np.sum(response[i,:])
+            if prior: weight /= len(self.x_s.ravel())
+
+            params[i,:] = np.array((MU[0], sigma[0,0], MU[1], sigma[1,1], weight, sigma[1,0]))
+
+        return params
         
     def optimizeParams(self, method = "Powell"):
 
@@ -158,29 +293,71 @@ class GaussianMM():
         '''
 
         # Set initial parameters
-        #self.params_i, self.params_l, self.params_u = self.initParams()
-        self.params_i, self.params_l, self.params_u = initParams(self.nComponents, self.rngx_s, self.rngy_s, self.priorDFbool)
-
+        self.params_i, self.params_l, self.params_u = initParams(self.nComponents, self.rngx_s, self.rngy_s, self.priorDF)
         self.param_shape = self.params_i.shape
-        self.s_min = 0.1
+        self.s_min = self.params_l[0,1] # same as sxx lower bound
 
-        # nll is the negative lnlike distribution
-        nll = lambda *args: -self.lnprob(*args)
-        # result is the set of theta parameters which optimise the likelihood given x, y, yerr
-        result = op.minimize(self.nll, self.params_i.ravel(), method = method, bounds=zip(self.params_l.ravel(), self.params_u.ravel()))
+        params = self.params_i
+
+        if method == 'SLSQP': bounds = list(zip(self.params_l.ravel(), self.params_u.ravel()))
+        else: bounds={}
+
+        """
+        start = time.time()
+        bounds = list(zip(self.params_l.ravel(), self.params_u.ravel()))
+        # Run scipy optimizer
+        resultSLSQP = self.optimize(params, "SLSQP", bounds)
+        paramsSLSQP = resultSLSQP["x"].reshape(self.param_shape)
+        # Check likelihood for parameters
+        lnlikeSLSQP = self.lnlike(paramsSLSQP)
+        print("\n %s: lnprob=%d, time=%d" % ("SLSQP", self.lnprob(paramsSLSQP), time.time()-start))
+
+        start = time.time()
+        # Run expectation max
+        paramsEM = self.EM(params, prior=self.priorDF)
+        # Run scipy optimiser
+        resultEM = self.optimize(paramsEM, method, bounds)
+        paramsEM = resultEM["x"].reshape(self.param_shape)
+        # Check likelihood for parameters
+        lnlikeEM = self.lnlike(paramsEM)
+        print("\n EM + %s: lnprob=%d, time=%d" % (method, self.lnprob(paramsEM), time.time()-start))
+        """
+
+        start = time.time()
+        # Run scipy optimizer
+        resultOP = self.optimize(params, method, bounds)
+        paramsOP = resultOP["x"].reshape(self.param_shape)
+        # Check likelihood for parameters
+        lnlikeOP = self.lnlike(paramsOP)
+        print("\n %s: lnprob=%d, time=%d" % (method, self.lnprob(paramsOP), time.time()-start))
+
+        #if lnlikeOP>lnlikeEM: result = resultOP
+        #else: result = resultEM
+        result = resultOP
 
         # Save evaluated parameters to internal values
         self.params_f = result["x"].reshape(self.param_shape)
        
         return result
 
+    def optimize(self, params, method, bounds):
+
+
+        # To clean up any warnings from optimize
+        invalid = np.seterr()['invalid']
+        divide = np.seterr()['divide']
+        np.seterr(invalid='ignore', divide='ignore')
+        # result is the set of theta parameters which optimise the likelihood given x, y, yerr
+        result = op.minimize(self.nll, params.ravel(), method = method, bounds=bounds)
+        # To clean up any warnings from optimize
+        np.seterr(invalid=invalid, divide=divide)
+        print("")
+
+        return result
+
     def nll(self, *args):
 
         lp = -self.lnprob(*args)
-
-        if self.runningL:
-            sys.stdout.write("\rlp: %.2f" % (lp))
-            sys.stdout.flush()
 
         return lp
 
@@ -205,9 +382,6 @@ class GaussianMM():
 
         # Reshape parameters for testing
         params = params.reshape(self.param_shape)
-
-        if np.sum(np.isnan(params))>0:
-            print('fu*k')
 
         lp = self.lnprior(params)
 
@@ -234,24 +408,19 @@ class GaussianMM():
         '''
 
         # If the DF has already been calculated, directly optimise the SF
-        if self.priorDFbool: function = lambda a, b: self.photoDF(*(a,b)) * self.distribution(param_set, a, b)
-        else: function = lambda a, b: self.distribution(param_set, a, b)
+        if self.priorDF: function = lambda a, b: self.photoDF(*(a,b)) * self.distribution(params, a, b)
+        else: function = lambda a, b: self.distribution(params, a, b)
         
         # Point component of poisson log likelihood: contPoints \sum(\lambda(x_i))
         model = function(*(self.x_s, self.y_s))
         contPoints = np.sum( np.log(model) )
         # Integral of the smooth function over the entire region
-        contInteg = integrationRoutine(function, params, self.nComponents, *(self.rngx, self.rngy))
+        contInteg = integrationRoutine(function, params, self.nComponents, *(self.rngx_s, self.rngy_s))
 
         lnL = contPoints - contInteg
-
-        #if self.runningL:
-        #    sys.stdout.write("\rlogL: %.2f, sum log(f(xi)): %.2f, integral: %.2f            " % (lnL, contPoints, contInteg))
-        #    sys.stdout.flush()
-            
-        #if np.isnan(lnL): 
-        #    print("\n"+str(params))
-        #    print(function((self.x_s, self.y_s)))
+        if self.runningL:
+            sys.stdout.write("\rlogL: %.2f, sum log(f(xi)): %.2f, integral: %.2f            " % (lnL, contPoints, contInteg))
+            sys.stdout.flush()
 
         return contPoints - contInteg
 
@@ -281,7 +450,7 @@ class GaussianMM():
         if not prior: return -np.inf
 
         # Prior on spectro distribution that it must be less than the photometric distribution
-        if self.priorDFbool:
+        if self.priorDF:
             function = lambda a, b: self.distribution(params, a, b)
             prior = prior & SFprior(function, *(self.rngx_s, self.rngy_s))
             if not prior: return -np.inf
@@ -315,31 +484,25 @@ class GaussianMM():
         return prior
 
     def sigma_bound(self, params):
-
-        '''
-        varTest - tests whether variance is constrained within prior limits
-
-        Parameters
-        ----------
-            params - array of floats
-                - Values of parameters in the Gaussian Mixture model
-        Returns
-        -------
-             - bool
-                - True if parameters satisfy constraints. False if not.
-        '''
-
+        
         for i in range(params.shape[0]):
             sigma = np.array([[params[i,1], params[i,5]], [params[i,5], params[i,3]]])
-            try: eigvals = np.linalg.eigvals(sigma)
+            try: 
+                eigvals = np.linalg.eigvals(sigma)
+                det = np.linalg.det(sigma)
             except np.linalg.LinAlgError:
                 print(params)
                 print(sigma)
                 raise ValueError('bad sigma')
+                
+            # Eigenvalues in allowed region
             result = np.sum(eigvals < self.s_min)
-
-        if result == 0: return True
-        else: return False
+            if result != 0: return False
+            
+            # Non-negative determinant
+            if det<0: return False
+            
+        return True
 
 
     def testIntegral(self, integration='trapezium'):
@@ -369,6 +532,7 @@ class GaussianMM():
         '''
 
         function = lambda a, b: self.distribution(self.params_f, a, b)
+        cub_func = lambda X: self.distribution(self.params_f, X[0], X[1])
 
         real_val, err = cubature(function, 2, 1, (self.rngx_s[0], self.rngy_s[0]), (self.rngx_s[1], self.rngy_s[1]))
         calc_val = integrationRoutine(function, self.params_f, self.nComponents, *(self.rngx_s, self.rngy_s), integration=integration)
@@ -381,15 +545,35 @@ class GaussianMM():
 
         return calc_val, real_val, err
 
-    def sigxtilda(self, sigx, sigy, r):
-        # Values of SD in rotated frame with rho' = 0 - to be used as constraints
-        return np.sqrt( ( 2*(sigx**2)*(sigy**2) ) / \
-        ( sigx**2 + sigy**2 + np.sqrt((sigy**2 - sigx**2)**2 + (2*r*sigx*sigy)**2)) )
+    def stats(self):
+        
+        print("Parameters:")
+        for i in range(self.params_f.shape[0]):
+            print("Parameters for component %d:" % i)
+            mu = np.array((self.params_f[i,0], self.params_f[i,2]))
+            sigma = np.array([[self.params_f[i,1], self.params_f[i,5]], [self.params_f[i,5], self.params_f[i,3]]])
 
-    def sigytilda(self, sigx, sigy, r):
-        # Values of SD in rotated frame with rho' = 0 - to be used as constraints
-        return np.sqrt( ( 2*(sigx**2)*(sigy**2) ) / \
-        ( sigx**2 + sigy**2 - np.sqrt((sigy**2 - sigx**2)**2 + (2*r*sigx*sigy)**2)) )
+            X = np.vstack((self.x_s.ravel(), self.y_s.ravel())).T
+            p = self.params_f[i,4]*bivariateGaussVector(X, mu, sigma)
+
+            print("mu x and y: {}, {}".format(*mu))
+            print("covariance matrix: {}".format(str(sigma)))
+            print("Weight: {}".format(self.params_f[i,4]))
+            print("Contribution: {}.\n".format(p))
+
+
+        nll = -self.lnprob(self.params_f)
+        print("Negative log likelihood: {:.3f}".format(nll))
+        lnlike = self.lnlike(self.params_f)
+        print("Log likelihood: {:.3f}".format(lnlike))
+        lnprior = self.lnprior(self.params_f)
+        print("Log prior: {:.3f}".format(lnprior))
+        #int_calc, int_real, err = self.testIntegral()
+        #print("Integration: Used - {:.3f}, Correct - {:.3f} (Correct undertainty: {:.2f})".format(int_calc, int_real, err))
+        function = lambda a, b: self.distribution(self.params_f, a, b)
+        calc_val = numericalIntegrate(function, *(self.rngx_s, self.rngy_s))
+        calc_val2 = numericalIntegrate(function, *(self.rngx_s, self.rngy_s), Nx_int=500, Ny_int=500)
+        print("Integration: Used {:.3f}, Half spacing {:.3f}".format(calc_val, calc_val2))
 
 
 def initParams(nComponents, rngx, rngy, priorDF):
@@ -409,16 +593,14 @@ def initParams(nComponents, rngx, rngy, priorDF):
     '''
 
     # Initial guess parameters for a bivariate Gaussian
-    # Mean in middle of range
-    mux_i, muy_i = 0, 0
+    # Randomly initialise mean between -1 and 1
+    mux_i, muy_i = np.random.rand(2, nComponents)*2-1
     # SD as 1/10 of range
     sxx_i, syy_i = 1., 1.
     # 0. covariance
     sxy_i = 0.
-    # SF with DF prior - use 0.1/ncomponent start (can only really max to 1)
-    if priorDF: A_i =  0.1 / nComponents 
-    # DF component - can go up to the number of photometric stars
-    else: A_i = 1.
+    # Weights sum to 1
+    w_i = 1. / nComponents
 
     # Lower and upper bounds on parameters
     # Mean at edge of range
@@ -428,36 +610,20 @@ def initParams(nComponents, rngx, rngy, priorDF):
     sxx_l, syy_l = 0, 0
     sxx_u, syy_u = rngx[1]-rngx[0], rngy[1]-rngy[0]
     # Covariance must be in range -1., 1.
-    sxy_l, sxy_u = -1., 1.
-    # Zero amplitude
-    A_l = 0.
-    # If calculating SF, A_o cannot be larger than 1
-    if priorDF: A_u = 1.
-    else: A_u = np.inf
+    sxy_l, sxy_u = -np.inf, np.inf
+    # Zero weight
+    w_l = 0.
+    w_u = np.inf
 
-    params_i = np.array((mux_i, sxx_i, muy_i, syy_i, A_i, sxy_i))
-    params_l = np.array((mux_l, sxx_l, muy_l, syy_l, A_l, sxy_l))
-    params_u = np.array((mux_u, sxx_u, muy_u, syy_u, A_u, sxy_u))
-
-    # Initial parameters for a Double bivariate Gaussian
-    params_i = np.tile(params_i, (nComponents, 1))
-    params_l = np.tile(params_l, (nComponents, 1))
-    params_u = np.tile(params_u, (nComponents, 1))
+    params_i = np.empty((nComponents, 6))
+    params_l = np.empty((nComponents, 6))
+    params_u = np.empty((nComponents, 6))
+    for i in range(nComponents):
+        params_i[i,:] = np.array((mux_i[i], sxx_i, muy_i[i], syy_i, w_i, sxy_i))
+        params_l[i,:] = np.array((mux_l, sxx_l, muy_l, syy_l, w_l, sxy_l))
+        params_u[i,:] = np.array((mux_u, sxx_u, muy_u, syy_u, w_u, sxy_u))
 
     return params_i, params_l, params_u
-
-
-def feature_scaling(x, y):
-
-    mux = np.mean(x)
-    sx = np.std(x)
-
-    muy = np.mean(y)
-    sy = np.std(y)
-
-    scale = lambda x, y: ((x-mux)/sx, (y-muy)/sy)
-
-    return scale
 
 
 def SFprior(function, rngx, rngy):
@@ -494,7 +660,7 @@ def SFprior(function, rngx, rngy):
 
     return prior
 
-def bivariateGaussVector(x, mu, covariance):
+def bivariateGauss(params, x, y):
 
     '''
     bivariateGaussVector
@@ -507,10 +673,17 @@ def bivariateGaussVector(x, mu, covariance):
 
     '''
 
+    shape = x.shape
+    X = np.vstack((x.ravel(), y.ravel())).T
+
+    mu = np.array((params[0], params[2]))
+    sigma = np.array([[params[1], params[5]], [params[5], params[3]]])
+    weight= params[4]
+
     # Inverse covariance
-    inv_cov = np.linalg.inv(covariance)
+    inv_cov = np.linalg.inv(sigma)
     # Separation of X from mean
-    X = x-mu
+    X = X-mu
     # X^T * Sigma
     X_cov = np.dot(X, inv_cov)
     # X * Sigma * X
@@ -519,12 +692,13 @@ def bivariateGaussVector(x, mu, covariance):
     e = np.exp(-X_cov_X/2)
 
     # Normalisation term
-    det_cov = np.linalg.det(covariance)
+    det_cov = np.linalg.det(sigma)
     norm = 1/np.sqrt( ((2*np.pi)**2) * det_cov)
 
-    return norm*e
+    p = weight*norm*e
+    return p.reshape(shape)
 
-def multiDistributionVector(params, x, y):
+def bivGaussMix(params, x, y):
 
     '''
     multiDistribution 
@@ -541,94 +715,19 @@ def multiDistributionVector(params, x, y):
     -------
         p - Value of the GMM at coordinates x, y
     '''
-    shape = x.shape
-    X = np.vstack((x.ravel(), y.ravel())).T
     
     p = 0
     for i in range(params.shape[0]):
-        mu = np.array((params[i,0], params[i,2]))
-        sigma = np.array([[params[i,1], params[i,5]], [params[i,5], params[i,3]]])
-        p += params[i,4]*bivariateGaussVector(X, mu, sigma)
+        p += bivariateGauss(params[i,:], x, y)
 
-    return p.reshape(shape)
-    
-# Gaussian function for generating error distributions
-def Gauss(x, mu=0, sigma=1):
+    return p
 
-    '''
-    Gauss - Calculates the value of the 1D Gaussian defined by parameters at point x
-    (used for recovering posterior distributions from burnt in Monte Carlo Markov Chains)
+def feature_scaling(x, y, mux, muy, sx, sy):
 
-    Parameters
-    ----------
-        x - float or np.array of floats
-            - Coordinate at which the Gaussian is calculated.
+    scalex = (x-mux)/sx
+    scaley = (y-muy)/sy
 
-    **kwargs
-    --------
-        mu = 0 - float
-            - Value of mean of Gaussian
-        sigma=1 - float
-            - Value of standard deviation of Gaussian
-
-    Returns
-    -------
-        G - float or np.array of floats
-            - Value of Gaussian at coordinate x.
-    '''
-
-    G = np.exp(-((x-mu)**2)/(2*sigma**2))
-    return G
-
-# Create cumulative distribution from Gauss(x)
-def cdf(func, xmin, xmax, N, **kwargs):
-
-    '''
-    cdf - Normalised cumulative distribution function of 1D dunction between limits.
-
-    Parameters
-    ----------
-        func - function or interpolant
-            - The 1D function which is being integrated over
-
-        xmin, xmax - float
-            - min and max values for the range of the distribution
-
-        N - int
-            - Number of steps to take in CDF.
-
-    **kwargs
-    --------
-
-    Returns
-    -------
-        value_interp - interp.interp1d
-            - Interpolant of the CDF over specified range.
-    '''
-
-    points = np.linspace(xmin, xmax, N)
-    
-    # Use trapezium rule to calculate the integrand under individual components
-    dx = points[1:] - points[:len(points)-1]
-    h1 = func(points[:len(points)-1], **kwargs)
-    h2 = func(points[1:], **kwargs)
-    volumes = dx * ( h2 + h1 ) / 2
-    
-    # cumulative distribution function = sum of integrands
-    cdf = np.zeros_like(volumes)
-    for i in range(len(volumes)):
-        cdf[i] = np.sum(volumes[:i+1])
-    
-    # normalisation of cdf
-    cdf *= 1/cdf[-1]
-    cdf[0] = 0.
-
-    # Linear interpolation of cumulative distribution
-    #interpolant = interp.interp1d(points[1:], cdf)
-    # Inverse interpolate to allw generation of probability weighted distributions.
-    value_interp = interp.interp1d(cdf, points[1:], bounds_error=False, fill_value=np.nan)
-    
-    return value_interp
+    return scalex, scaley
 
 
 """
@@ -728,7 +827,7 @@ def bivariateIntegral(params):
     contInteg = 2*np.pi * A * np.abs(sigmax * sigmay) * np.sqrt(1-rho**2)
     return contInteg
 
-def numericalIntegrate(function, rngx, rngy, SFprior=False):
+def numericalIntegrate(function, rngx, rngy, SFprior=False, Nx_int=250, Ny_int=250):
     
     '''
     
@@ -748,7 +847,7 @@ def numericalIntegrate(function, rngx, rngy, SFprior=False):
     '''
 
     #compInteg = integrate.dblquad(function, rngx[0], rngx[1], rngy[0], rngy[1])
-    Nx_int, Ny_int = 100, 250
+    Nx_int, Ny_int = 250, 250
 
     x_coords = np.linspace(rngx[0], rngx[1], Nx_int)
     y_coords = np.linspace(rngy[0], rngy[1], Ny_int)
@@ -807,49 +906,6 @@ def simpsonIntegrate(function, rngx, rngy):
 
     return integral
 
-'''
-
-Functions for penalised grid fitting models
-
-'''
-
-
-def gridDistribution(nx, ny, rngx, rngy, params):
-    
-    '''
-
-
-    Parameters
-    ----------
-
-
-    **kwargs
-    --------
-
-
-    Returns
-    -------
-
-
-    '''
-
-    # nx, ny - number of x and y cells
-    # rngx, rngy - ranges of x and y coordinates
-    # params - nx x ny array of cell parameters
-    
-    boundsx = np.linspace(rngx[0], rngx[1], nx+1)
-    boundsy = np.linspace(rngy[0], rngy[1], ny+1)
-
-    #profile = interp.RegularGridInterpolator((boundsx, boundsy), params)
-    #profile = interp.griddata((boundsx, boundsy), params, (boundsx, boundsy), method='cubic')
-   
-    inst = interp.interp2d(boundsy, boundsx, params, kind="cubic")
-    #inst = interp.RectBivariateSpline(boundsx, boundsy, params)
-
-    profile = lambda a, b: np.diag(inst(a, b))
-
-    return profile, inst
-
 def gridIntegrate(function, rngx, rngy):
     
     '''
@@ -873,6 +929,12 @@ def gridIntegrate(function, rngx, rngy):
     compInteg, err = cubature(function, 2, 1, (rngx[0], rngy[0]), (rngx[1], rngy[1]))
     
     return compInteg
+
+'''
+
+Functions for penalised grid fitting models
+
+'''
 
 class PenalisedGridModel():
     
@@ -1232,6 +1294,48 @@ class PenalisedGridModel():
             return True
         else: return False
 
+def gridDistribution(nx, ny, rngx, rngy, params):
+    
+    '''
+
+
+    Parameters
+    ----------
+
+
+    **kwargs
+    --------
+
+
+    Returns
+    -------
+
+
+    '''
+
+    # nx, ny - number of x and y cells
+    # rngx, rngy - ranges of x and y coordinates
+    # params - nx x ny array of cell parameters
+    
+    boundsx = np.linspace(rngx[0], rngx[1], nx+1)
+    boundsy = np.linspace(rngy[0], rngy[1], ny+1)
+
+    #profile = interp.RegularGridInterpolator((boundsx, boundsy), params)
+    #profile = interp.griddata((boundsx, boundsy), params, (boundsx, boundsy), method='cubic')
+   
+    inst = interp.interp2d(boundsy, boundsx, params, kind="cubic")
+    #inst = interp.RectBivariateSpline(boundsx, boundsy, params)
+
+    profile = lambda a, b: np.diag(inst(a, b))
+
+    return profile, inst
+
+"""
+
+
+
+"""
+
 
 # Used when Process == "Number"
 class FlatRegion:
@@ -1288,3 +1392,88 @@ class FlatRegion:
                 (y<self.rangey[1])] = self.value
 
         return result
+
+"""
+
+Functions which I don't think are used any more
+
+"""
+
+
+# Gaussian function for generating error distributions
+def Gauss(x, mu=0, sigma=1):
+
+    '''
+    Gauss - Calculates the value of the 1D Gaussian defined by parameters at point x
+    (used for recovering posterior distributions from burnt in Monte Carlo Markov Chains)
+
+    Parameters
+    ----------
+        x - float or np.array of floats
+            - Coordinate at which the Gaussian is calculated.
+
+    **kwargs
+    --------
+        mu = 0 - float
+            - Value of mean of Gaussian
+        sigma=1 - float
+            - Value of standard deviation of Gaussian
+
+    Returns
+    -------
+        G - float or np.array of floats
+            - Value of Gaussian at coordinate x.
+    '''
+
+    G = np.exp(-((x-mu)**2)/(2*sigma**2))
+    return G
+
+# Create cumulative distribution from Gauss(x)
+def cdf(func, xmin, xmax, N, **kwargs):
+
+    '''
+    cdf - Normalised cumulative distribution function of 1D dunction between limits.
+
+    Parameters
+    ----------
+        func - function or interpolant
+            - The 1D function which is being integrated over
+
+        xmin, xmax - float
+            - min and max values for the range of the distribution
+
+        N - int
+            - Number of steps to take in CDF.
+
+    **kwargs
+    --------
+
+    Returns
+    -------
+        value_interp - interp.interp1d
+            - Interpolant of the CDF over specified range.
+    '''
+
+    points = np.linspace(xmin, xmax, N)
+    
+    # Use trapezium rule to calculate the integrand under individual components
+    dx = points[1:] - points[:len(points)-1]
+    h1 = func(points[:len(points)-1], **kwargs)
+    h2 = func(points[1:], **kwargs)
+    volumes = dx * ( h2 + h1 ) / 2
+    
+    # cumulative distribution function = sum of integrands
+    cdf = np.zeros_like(volumes)
+    for i in range(len(volumes)):
+        cdf[i] = np.sum(volumes[:i+1])
+    
+    # normalisation of cdf
+    cdf *= 1/cdf[-1]
+    cdf[0] = 0.
+
+    # Linear interpolation of cumulative distribution
+    #interpolant = interp.interp1d(points[1:], cdf)
+    # Inverse interpolate to allw generation of probability weighted distributions.
+    value_interp = interp.interp1d(cdf, points[1:], bounds_error=False, fill_value=np.nan)
+    
+    return value_interp

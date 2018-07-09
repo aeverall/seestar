@@ -950,14 +950,15 @@ def PoissonLikelihood(points,
     if modelType == 'GMM':
 
         # Number of Gaussian components
-        if datatype == "spectro": nComponents = 1
-        elif datatype == "photo": nComponents = 1
+        if datatype == "spectro": nComponents = 2
+        elif datatype == "photo": nComponents = 3
 
         # Generate the model
-        model = StatisticalModels.GaussianMM(x, y, nComponents, mag_range, col_range)
+        model = StatisticalModels.GaussianEM(x, y, nComponents, mag_range, col_range)
+        #model = StatisticalModels.GaussianMM(x, y, nComponents, mag_range, col_range)
         # Add in SFxDF<DF constraint for the spectrograph distribution
         if datatype == "spectro": 
-            model.photoDF, model.priorDFbool = (photoDF, True)
+            model.photoDF, model.priorDF = (photoDF, True)
         model.runningL = True
         model.optimizeParams()
         # Test integral if you want to see the value/error in the integral when calculated

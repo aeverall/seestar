@@ -44,8 +44,6 @@ def obsSF_dicttoclass(obsSF_dicts):
     obsSF_classes = {}
     for field in obsSF_dicts: # Load classes from dictionaries
 
-        print(field)
-
         # Initialise class instance
         obsSF_field = observableSF(field)
         # Set class attributes from dictionary
