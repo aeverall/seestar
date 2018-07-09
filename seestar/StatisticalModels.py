@@ -122,6 +122,8 @@ class GaussianMM():
         
         # Value of coordinates x, y in the Gaussian mixture model
         GMMval = self.distribution(self.params_f, x, y, self.nComponents)
+
+        """
         # Any values outside range - 0
         constraint = (x>=self.rngx[0])&(x<=self.rngx[1])&(y>=self.rngy[0])&(y<=self.rngy[1])
         if (type(GMMval) == np.array)|(type(GMMval) == np.ndarray)|(type(GMMval) == pd.Series): 
@@ -131,6 +133,22 @@ class GaussianMM():
             if not constraint: 
                 if (np.isnan(x))|(np.isnan(y)): GMMval = np.nan
                 else: GMMval = 0.
+        else: raise TypeError('The type of the input variables is '+str(type(GMMval)))
+        """
+
+        if (type(GMMval) == np.array)|(type(GMMval) == np.ndarray)|(type(GMMval) == pd.Series): 
+            # Not-nan input values
+            notnan = (~np.isnan(x))&(~np.isnan(y))
+            # Any values outside range - 0
+            constraint = (x[notnan]>=self.rngx[0])&(x[notnan]<=self.rngx[1])&(y[notnan]>=self.rngy[0])&(y[notnan]<=self.rngy[1])
+            GMMval[~notnan] = np.nan
+            GMMval[notnan][~constraint] = 0.
+        elif (type(GMMval) == float) | (type(GMMval) == np.float64):
+            if (np.isnan(x))|(np.isnan(y)): GMMval = np.nan
+            else: 
+                constraint = (x>=self.rngx[0])&(x<=self.rngx[1])&(y>=self.rngy[0])&(y<=self.rngy[1])
+                if not constraint:
+                    GMMval = 0.
         else: raise TypeError('The type of the input variables is '+str(type(GMMval)))
 
         return GMMval

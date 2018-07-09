@@ -6,7 +6,6 @@ seestar/CoordTrans.py
 seestar/DataImport.py
 seestar/PlotCoordinates.py
 seestar/Optimizers.py
-seestar/FieldAssignment.py
 *.pyc
 
 SFgithub.sublime-workspace

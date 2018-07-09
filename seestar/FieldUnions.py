@@ -36,6 +36,7 @@ import pandas as pd
 import sys, gc
 
 from seestar import ArrayMechanics
+from seestar import FieldAssignment
 
 class FieldUnion():
 
@@ -293,9 +294,9 @@ class MatrixUnion():
 
 		self.Overlaps = overlapdata
 
-		
+
 def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcalc, 
-					IDtype = str, Nsample = 10000, basis='intrinsic'):
+					IDtype = str, Nsample = 10000, test=False):
 
 	'''
 	AnglePointsToPointingsMatrix - Adds a column to the df with the number of the field pointing
@@ -308,127 +309,103 @@ def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcal
 	    df: pd.DataFrame
 	        Contains Theta and Phi column corresponding to the coordinates of points on the contingent axes (RA,Dec)
 
-        pointings: pd.DataFrame
-            Contains an x, y, and r column corresponding to positions and radii of field pointings
+	    pointings: pd.DataFrame
+	        Contains an x, y, and r column corresponding to positions and radii of field pointings
 
-        Th: string
-            Column header for latitude coordinate (Dec or b)
+	    angle_coords: tuple of str
+	    	- Names of angle column headers in df
+	    point_coords: tuple of str
+	    	- Names of angle column headers in pointings
 
-        Phi: string
-            Column header for longitude coordinate (RA or l)
+	    halfangle: string
+	        - Column header for half-angle of plate on sky
 
-        halfange: string
-            Column header for half-angle of plate on sky
+	    SFcalc: lambda/function
+	    	- Function for calculating probability of star being selected given field and coords
 
-        surveysf: Dictionary of interpolants
-        	Selection Function dictionary to be used to calculate selection function values for fields
+	kwargs
+	------
+	    IDtype: object
+	        - Type of python object used for field IDs 
 
-    kwargs
-    ------
-        IDtype: object
-            Type of python object used for field IDs 
+	    Nsample: int
+	        - Number of stars to be assigned per iterations
+	        Can't do too many at once due to computer memory constraints
 
-        Nsample: int
-            Number of stars to be assigned per iterations
-            Can't do too many at once due to computer memory constraints
+	    basis='intrinsic': str
+			- (I don't think this is actually used)
 
-    Returns
-    -------
-        df: pd.DataFrame
-            Same as input df with:
-                - 'points': list of field IDs for fields which the coordinates lie on
-                - 'field_info': list of tuples - (P(S|v), fieldID) - (float, fieldIDtype)
-    '''
+	Returns
+	-------
+		df: pd.DataFrame
+			Same as input df with:
+				- 'points': list of field IDs for fields which the coordinates lie on
+				- 'field_info': list of tuples - (P(S|v), fieldID) - (float, fieldIDtype)
+	'''
+	Nsample = FieldAssignment.iterLimit(len(pointings))
 
-	# Drop column which will be readded if this has been calculated before.
-	if 'field_info' in list(df): df = df.drop('field_info', axis=1)
+	pointings.rename(index=str, columns=dict(zip(point_coords, angle_coords)), inplace=True)
+	df = ArrayMechanics.AnglePointsToPointingsMatrix(df, pointings, angle_coords[0], angle_coords[1], halfangle,
+		    											IDtype = IDtype, Nsample=Nsample, progress=True)
+	# Dataframe of field probabilities
+	#arr = np.zeros((len(df), len(pointings))).astype(int) - 1 # -1 so that it's an impossible SFprob value
+	#dfprob = pd.DataFrame(arr, columns=pointings.fieldID.tolist())
+	dfprob = pd.DataFrame()
 
-	# Iterate over portions of size, Nsample to constrain memory usage.
-	for i in range(len(df)/Nsample + 1):
+	for field in pointings.fieldID:
+		sys.stdout.write("\rFieldID: "+str(field))
+		# Condition: Boolean series - field is in the points list
+		condition = np.array(df.points.map(lambda points: field in points))
+		# Create array for probability values
+		array = np.zeros(len(df)) - 1
+		# Calculate probabilities
+		if test: 
+			prob, col, mag = SFcalc(field, df[condition])
+			col_arr = np.zeros(len(df)) - 1
+			mag_arr = np.zeros(len(df)) - 1
+			col_arr[condition] = col
+			mag_arr[condition] = mag
+		else: prob = SFcalc(field, df[condition])
+		# Set probability values in array
+		if isinstance(prob, pd.Series):
+			array[condition] = prob.values
+		else: array[condition] = prob
+		# Add column to dfprob dataframe
+		dfprob[field] = array
 
-		sys.stdout.write("\r"+str(i)+"..."+str(Nsample))
-		dfi = df.iloc[i*Nsample:(i+1)*Nsample]
 
-		pointings = pointings.reset_index(drop=True)
-		pointings = pointings.copy()
+	if test:
+		df['col'] = col_arr
+		df['mag'] = mag_arr
 
-		Mp_df = np.repeat([getattr(dfi,angle_coords[0])], 
-		                    len(pointings), 
-		                    axis=0)
-		Mt_df = np.repeat([getattr(dfi,angle_coords[1])], 
-		                    len(pointings), 
-		                    axis=0)
-		Mp_point = np.transpose(np.repeat([getattr(pointings,point_coords[0])],
-		                                    len(dfi), 
-		                                    axis=0))
-		Mt_point = np.transpose(np.repeat([getattr(pointings,point_coords[1])], 
-		                                    len(dfi), 
-		                                    axis=0))
-		Msa_point = np.transpose(np.repeat([getattr(pointings,halfangle)], 
-		                                    len(dfi), 
-		                                    axis=0))
-		"""Msa_point = np.sqrt(Msa_point/np.pi) * np.pi/180"""
-		# Boolean matrix specifying whether each point lies on that pointing
-		Mbool = ArrayMechanics.AngleSeparation(Mp_df,
-		                        Mt_df,
-		                        Mp_point,
-		                        Mt_point) < Msa_point
-		# Clear the matrices in order to conserve memory
-		del(Mt_df, Mp_df, Mp_point, Mt_point, Msa_point)
-		gc.collect()
-		# df column for number of overlapping fields per point
-		dfi['nOverlap'] = np.sum(Mbool, axis=0)
+	# Remove 0 entries from the lists
+	def filtering(x, remove):
+		x = filter(lambda a: a!=remove, x)
+		return x
+	# Convert SFprob values into list of values in dataframe
+	arr = np.array(dfprob)
+	# Do filtering for fields
+	listoflists = arr.tolist()
+	listoflists = [filtering(x, -1) for x in listoflists]
 
-		# Convert Mbool to a dataframe with Plates for headers
-		Plates = pointings.fieldID.astype(str).tolist()
-		Mbool = pd.DataFrame(np.transpose(Mbool), columns=Plates)
-		# Calculate the same matrix of selection function values
-		Msf = pd.DataFrame()
-		for field in pointings.fieldID:
-			yn = np.array(Mbool[str(field)])
-			Msf[str(field)] = np.zeros(len(dfi))-1.
-			# Calculate selection function values from different sources (intrinsic, observable, intrinsic with mass)
-			Msf[str(field)][yn] = np.array( SFcalc(field, dfi[yn]) )
-			#print(SFcalc(field, dfi[yn]))
-			#if basis=='intrinsic': Msf[str(field)][yn] = surveysf.agemhssf.loc[field]((dfi[yn].age, dfi[yn].mh, dfi[yn].s))
+	# Lists of SF probabilities
+	SFprob = pd.DataFrame(pd.Series(listoflists), columns=['SFprob'])
 
-		# Create lists of fields per point
-		Mplates = pd.DataFrame(np.repeat([Plates,], len(dfi), axis=0), columns=Plates)
-		Mplates = Mplates*Mbool
+	# zip datatypes together - tupes of (sf, field)
+	field_info = map(zip, SFprob.SFprob, df.points)
+	field_info = pd.DataFrame(pd.Series(field_info), columns=['field_info'])
 
-		# Remove "" entries from the lists
-		def filtering(x, remove):
-			x = filter(lambda a: a!=remove, x)
-			return x
-		# Do filtering for fields
-		field_listoflists = Mplates.values.tolist()
-		field_listoflists = [filtering(x, '') for x in field_listoflists]
-		# Do filtering for sf values
-		sf_listoflists = Msf.values.tolist()
-		sf_listoflists = [filtering(x, -1.0) for x in sf_listoflists]
+	# Reset index to merge on position then bring index back
+	if 'index' in list(df): df.drop('index', axis=1, inplace=True)
+	df.reset_index(inplace=True)
+	df = df.merge(SFprob, how='inner', right_index=True, left_index=True)
+	df = df.merge(field_info, how='inner', right_index=True, left_index=True)
+	df.index = df['index']
+	df.drop('index', axis=1, inplace=True)
 
-		# Convert type of all field IDs back to correct type
-		dtypeMap = lambda row: map(IDtype, row)
-		field_listoflists = map(dtypeMap, field_listoflists)
+	if test:
+		df['col'] = col_arr
+		df['mag'] = mag_arr
+		return df, col_arr, mag_arr
 
-		# Convert list to series then series to dataframe column
-		field_series = pd.Series(field_listoflists)
-		field_series = pd.DataFrame(field_series, columns=['points'])
-
-		# zip datatypes together - tupes of (sf, field)
-		sf_listoflists = map(zip, sf_listoflists, field_listoflists)
-		sf_series = pd.Series(sf_listoflists)
-
-		# Add lists of tuples to dataframe
-		field_series['field_info'] = sf_series
-
-		# Reset index to merge on position then bring index back
-		dfi = dfi.reset_index()
-		dfi = dfi.merge(field_series, how='inner', right_index=True, left_index=True)
-		dfi.index = dfi['index']
-		dfi = dfi.drop(['index'], axis=1)
-
-		if i == 0: newdf = dfi
-		else: newdf = pd.concat((newdf, dfi))
-
-	return newdf
+	return df

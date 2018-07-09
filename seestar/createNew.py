@@ -1,9 +1,37 @@
+'''
+createNew - Generates a filestructure and template files for a new selection function.
+
+Functions
+---------
+create - Generates the new file structure. 
+
+
+Requirements
+------------
+
+surveyInfoPickler.py
+'''
+
 import os
 import numpy as np
 import pandas as pd
 from seestar import surveyInfoPickler
 
 def create():
+
+	'''
+	create - Generates the new file structure. 
+
+	Parameters
+	----------
+		No input parameters
+			- Requests inputs from the user as the code is run.
+
+	Returns
+	-------
+		pklfile: str
+			- Path to the pickled survey information file.
+	'''
 
 	# Ask for a directory name
 	directory = raw_input("Where is the directory? ")
@@ -19,6 +47,14 @@ def create():
 				 os.path.join(directory, folder))
 		else: good_folder = True
 
+	good_ans = False
+	while (not good_ans):
+		survey_style = raw_input("Style of survey? a = multi-fibre fields, b = all-sky: ")
+		if survey_style in ('a','b'):
+			good_ans = True
+			if survey_style == 'a': style='mf'
+			else:  style='as'
+
 	# Create the directory
 	os.makedirs( os.path.join(directory, folder) )
 
@@ -28,11 +64,14 @@ def create():
 	# Location where spectrograph survey information is stored
 	FileInfo.data_path = directory
 
+	# Type of survey, multifibre vs allsky
+	FileInfo.style = style
+
 	# Folder in .data_path which contains the file informatino
 	FileInfo.survey = folder
 
 	# Data type for field IDs
-	FileInfo.fieldlabel_type = str
+	if style=='mf': FileInfo.fieldlabel_type = str
 
 	# Coordinate system, Equatorial or Galactic
 	FileInfo.coord_system = 'Galactic'
@@ -41,13 +80,20 @@ def create():
 	FileInfo.spectro_fname = folder + '_survey.csv'
 	# magA-magB = Colour, magC = m (for selection limits)
 	FileInfo.spectro_coords = ['fieldID', 'glon', 'glat', 'Japp', 'Kapp', 'Happ']
-	FileInfo.spectro_dtypes = [FileInfo.fieldlabel_type, float, float, float, float, float]
+	if style=='mf': FileInfo.spectro_dtypes = [FileInfo.fieldlabel_type, float, float, float, float, float]
+	elif style=='as': FileInfo.spectro_dtypes = [None, float, float, float, float, float]
+	else: print("Houston, we have a problem! code 1")
 
 	# Filename (in FileInfo.spectro file) for field pointings
 	FileInfo.field_fname = folder + '_fieldinfo.csv'
 	# Column headers in field pointings and their datatypes
-	FileInfo.field_coords = ['fieldID', 'glon', 'glat', 'halfangle', 'Magmin', 'Magmax', 'Colmin', 'Colmax']
-	FileInfo.field_dtypes = [FileInfo.fieldlabel_type, float, float, float, float, float, float, float]
+	if style=='mf':
+		FileInfo.field_coords = ['fieldID', 'glon', 'glat', 'halfangle', 'Magmin', 'Magmax', 'Colmin', 'Colmax']
+		FileInfo.field_dtypes = [FileInfo.fieldlabel_type, float, float, float, float, float, float, float]
+	elif style=='as':
+		FileInfo.field_coords = ['fieldID', 'Magmin', 'Magmax', 'Colmin', 'Colmax']
+		FileInfo.field_dtypes = [FileInfo.fieldlabel_type, float, float, float, float]		
+	else: print("Houston, we have a problem! code 2")
 
 	# Location where photometric datafiles are stored (require large storage space)
 	FileInfo.photo_path = os.path.join(directory, folder, 'photometric')
@@ -102,6 +148,21 @@ Example csv files have been generated for you with the correct column headings.
 
 def createCSV(filelocation, headers, dtypes):
 
+	'''
+	createCSV - Producest a csv file with the required file structure
+
+	Parameters
+	----------
+		filelocation: str
+			- Path to the location where the file is going to be saved
+
+		headers: list of str
+			- Column headers for the table stored in the csv
+
+		dtypes: list of type
+			- Datatypes for each of the columns in the table.
+	'''
+
 	# create array with data
 	data = np.zeros((len(headers), 5))
 
@@ -116,6 +177,21 @@ def createCSV(filelocation, headers, dtypes):
 	df.to_csv(filelocation, index=False, header=True)
 
 def createPhoto(folderlocation, headers, dtypes):
+
+	'''
+	createPhoto - Produces a photometric data folder and template file.
+
+	Parameters
+	----------
+		folderlocation: str
+			- Path to the directory where the folder will be stored
+
+		headers: list of str
+			- Column headers for the table stored in the csv
+
+		dtypes: list of type
+			- Datatypes for each of the columns in the table.
+	'''
 
 	# Create photometric directory
 	os.makedirs( folderlocation )

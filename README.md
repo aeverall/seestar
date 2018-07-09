@@ -1,8 +1,8 @@
 # seestar
 
-**seestar** is a Python package for creating and using Selection Functions for spectroscopic stellar surveys.
+**seestar** is a Python package for creating and using selection functions for spectroscopic stellar surveys.
 
-The full theory and design of the selection function can be found in Everall & Das (in prep.), please cite this paper when using the repository.
+The full theory and design of the selection function can be found in Everall & Das (in prep.). Please cite this paper when using the repository.
 
 The purpose of **seestar** is to provide an *easy-to-use*, *fast processing* and *mathematically consistent* method for calculating selection functions for spectroscopic stellar surveys. We hope that this will consolidate the many different methods currently used to calculate selection functions. We also provide precalculated selection functions for popular spectroscopic surveys.
 
@@ -42,8 +42,6 @@ The package requires the following dependencies:
 
 The code is built for Python 2.7 so currently does not work for Python 3.
 
-
-
 ***
 # Calculate selection functions <a name="SF"></a>
 
@@ -80,7 +78,7 @@ Each survey folder in the database contains the following files:
 
 ### Calculating SF probability
 
-All examples given are using Galaxia data (labelled as Galaxia3 as we tested with 3 fields). Folling the steps and example files should enable you to recreate the results published in Everall & Das (in prep.).
+All examples given are using Galaxia data (labelled as Galaxia3 as we tested with 3 fields). Following the steps and example files should enable you to recreate the results published in Everall & Das (in prep.).
 
 To initialise prebuilt selection function:
 ```python
@@ -114,7 +112,7 @@ dataframe = Galaxia_sf(dataframe, method='int',
 dataframe.union # The column of selection function probabilities
 ```
 
-2. You have a comma separated txt file with 6 columns: galactic longitude (glon), galactic latitude (glat), apparent H magnitude (Happ), J-K colour (colour).
+2. You have a comma separated txt file with six columns: galactic longitude (glon), galactic latitude (glat), apparent H magnitude (Happ), J-K colour (colour).
 You want to know the probability of each star in the dataset being included in the survey.
 ```python
 import numpy as np
@@ -153,36 +151,11 @@ For more information on the [Kroupa IMF](https://ui.adsabs.harvard.edu/#abs/2001
 ***
 ## Create new selection function <a name="NewSF"></a>
 
-### File formatting
+To create a new selection function, the user needs to create a new survey folder and record information on the file names and locations. Then input files containing information on the spectroscopic catalogue, the field pointings, and photometric information for each field pointing need to be created in the new folder. Preparation of the survey folder is described in more detail in PrepareSurveyFolder. Then the observed selection function can be calculated (ObsSF), as a function of colour and magnitude (any specified colour and magnitude), and the intrinsic selection function can be calculated (IntSF), as a function of distance, age, metallicity, and mass, although this assumes that the observed selection function has been calculated as a function of H-band apparent magnitude and J-K colour. PlotSF describes how to construct plots of the selection function.
 
-The repository is designed to run csv files with well defined headers. Therefore when adding new surveys to the selection function, any files need to be converted into the correct format.
+### Preparing the survey folder
 
-Example: You have a comma separated txt file with 6 columns: galactic longitude (glon), galactic latitude (glat), apparent magnitudes (Japp, Happ, Kapp).
-```python
-import numpy as np
-import pandas as pd
-
-file_path = 'PATH/TO/DATA/raw_data.txt' # Enter the location of the txt file here (should end in .txt)
-array = np.loadtxt(file_path)
-
-dataframe = pd.DataFrame(array, columns=['glon', 'glat', 'Japp', 'Kapp', 'Happ'])
-
-new_file_path = 'PATH/TO/DATA/reformatted_data.csv' # File path for new csv file (should end in .csv)
-dataframe.to_csv(new_file_path)
-```
-This also demonstrates how to create a pandas dataframe, the main tool in pandas. I would highly recommend playing around with the dataframes to find out how useful they are (especially if you usually use numpy arrays for handling data tables).
-In the repository /examples/ex_pandas.py contains some basic examples of how to use dataframes. 
-
-### Isochrone data
-
-To generate the full selection function, isoPARSEC.tar.gz must be downloaded and extracted from [here](https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing).
-
-
-### Survey file information <a name="infofile"></a>
-
-For each survey, a class containing the description of file locations and datatypes is required. The pickle instances are called *survey*_fileinfo.pickle for the premade surveys but for new selection functions these need to be generated.
-
-A folder in the data directory can be created by doing the following in a python shell:
+A new folder in the data directory needs to be created for the survey by doing the following in a python shell:
 ```python
 from seestar import createNew
 createNew.create()
@@ -192,10 +165,13 @@ This will request some inputs:
 ```
 Where is the directory? PATH/TO/DIRECTORY
 What survey? (will be used to label the folder and file contents) SURVEY
+Style of survey? a = multi-fibre fields, b = all-sky: a/b
 ```
 The PATH/TO/DIRECTORY is the directory where you wish to store folders for each survey.
 The SURVEY is the label you wish to give to the survey (e.g. APOGEE14).
 If a folder with SURVEY-NAME exists in PATH/TO/DIRECTORY/, you will have to provide a different name.
+Surveys, such as APOGEE and RAVE, are multi-fibre spectrographs for which field pointings provide a well defined set of fields.
+Gaia is an all-sky survey as it systematically scans the entire sky without predefined fields.
 
 A folder labeled SURVEY-NAME will be generated in the location PATH/TO/DIRECTORY and will contain the following:
 * SURVEY_fileinfo.pickle - pickled dictionary of survey information (file locations and data structures).
@@ -206,7 +182,7 @@ A folder labeled SURVEY-NAME will be generated in the location PATH/TO/DIRECTORY
 Once you have created this folder, you must replace the template files with real field files:
 * Spectroscopic catalogue (SURVEY_survey.csv). This file will be a comma separated file with at least the following five columns (appropriately labelled): galactic longitude in radians ('glon'), galactic latitude in radians ('glat'), apparent magnitudes ('Happ', 'Japp', 'Kapp'), field id tag for the star ('fieldID'). The file can have other columns too but they won't be used.
 * Photometric catalogue for each field in the spectroscopic catalogue (photometric/FIELD-ID.csv). Comma separated file listing all starts on the field pointing in the photometric catalogue. It will have at least the following four columns (appropriately labelled): galactic longitude in radians ('glon'), galactic latitude in radians ('glat'), apparent magnitudes ('Happ', 'Japp', 'Kapp'). The file can have other columns too but they won't be used.
-* Locations and IDs of the spectroscopic field pointings (SURVEY_fieldinfo.csv). This file gives the central galactic longitude in radians ('glon') and galactic latitude in radians ('glat') of each field, half angle in randians ('halfangle') and the color and magnitude limits imposed by the spectroscopic survey ('Magmin', 'Magmax', 'Colmin', 'Colmax'). If none are imposed, write "NoLimit".
+* Locations and IDs of the spectroscopic field pointings (SURVEY_fieldinfo.csv). This file gives the central galactic longitude in radians ('glon') and galactic latitude in radians ('glat') of each field, half angle in radians ('halfangle') and the color and magnitude limits imposed by the spectroscopic survey ('Magmin', 'Magmax', 'Colmin', 'Colmax'). If none are imposed, write "NoLimit".
 
 
 
@@ -217,31 +193,24 @@ import pickle
 from seestar import surveyInfoPickler
 
 # Create instance of information class
-file_info = surveyInfoPickler.surveyInformation()
-# Load infofile (survey name is "SURVEY-NAME")
 path = 'PATH/TO/DIRECTORY/SURVEY-NAME/SURVEY-NAME_fileinfo.pickle'
-file_info.load(path)
+file_info = surveyInfoPickler.surveyInformation(path)
 # file_info is an instance of a class for containing all the file locations and data structures.
 
-# To view a docstring which has example code on how to set each of the features
-file_info?
-
-# To test the file names are set correctly and the data structures are correct/
+# Run a test of the structure of files in the selection function directory to check if they're ready.
 file_info.testFiles()
 
-# Print out all attributes and their current values:
-file_info.printValues()
-
-# Change the values of some attributes
-file_info.attribute = "value of attribute"
-
 # Repickle the class instance
-file_info.save(path)
+file_info.save()
 ```
-Once you have pickled the SURVEY-NAME_fileinfo.pickle file, the selection function will be able to use those file locations and structures.
 
 
-### Calculating SF probability
+### Isochrone data
+
+To generate the selection function as a function of the intrinsic coordinates distance, metallicity, age, and mass, isoPARSEC.tar.gz must be downloaded and extracted from [here](https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing).from 
+
+
+### Generating the selection function as a function of colour and magnitude
 
 Generate the selection function.
 ```python
@@ -251,15 +220,17 @@ Survey_sf = SeletionGrid.SFGenerator('PATH/TO/DIRECTORY/SURVEY-NAME/SURVEY-NAME_
 						ColMagSF_exists=False)
 ```
 
+
+
 On completion, this automatically saves the selection function, after which it can be reloaded much faster:
 ```python
-Survey_sf = SeletionGrid.SFGenerator('PATH/TO/DIRECTORY/SURVEY-NAME/SURVEY-NAME_fileinfo.pickle', 
+Survey_sf = SelectionGrid.SFGenerator('PATH/TO/DIRECTORY/SURVEY-NAME/SURVEY-NAME_fileinfo.pickle', 
 						ColMagSF_exists=True)
 ```
 
 Having created the selection function instance for SURVEY-NAME, we now wish to calculate selection probabilities of stars:
 
-1. You have a comma separated txt file with 6 columns: galactic longitude (glon), galactic latitude (glat), distance (s), age, metallicity (mh), mass.
+1. You have a comma separated txt file with six columns: galactic longitude (glon), galactic latitude (glat), distance (s), age, metallicity (mh), mass.
 You want to know the probability of each star in the dataset being included in the survey.
 ```python
 import numpy as np
@@ -319,7 +290,7 @@ For more information on the [Kroupa IMF](https://ui.adsabs.harvard.edu/#abs/2001
 
 
 ***
-## Isochrone Calculator <a name="isochrones"></a>
+## Isochrone calculator <a name="isochrones"></a>
 
 Downloaded and extracted isoPARSEC.tar.gz from [here](https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing).
 

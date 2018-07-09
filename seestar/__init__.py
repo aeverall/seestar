@@ -1,4 +1,4 @@
 __all__ = ['IsochroneScaling', 'ArrayMechanics', 'StatisticalModels',
  			'createNew', 'setdatalocation', 'DistributionPlots', 
- 			'FieldUnions', 'SelectionGrid', 
+ 			'FieldUnions', 'SelectionGrid', 'FieldAssignment'
  			'SFInstanceClasses', 'surveyInfoPickler']
