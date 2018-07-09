@@ -950,8 +950,8 @@ def PoissonLikelihood(points,
     if modelType == 'GMM':
 
         # Number of Gaussian components
-        if datatype == "spectro": nComponents = 2
-        elif datatype == "photo": nComponents = 3
+        if datatype == "spectro": nComponents = 1
+        elif datatype == "photo": nComponents = 2
 
         # Generate the model
         model = StatisticalModels.GaussianEM(x, y, nComponents, mag_range, col_range)

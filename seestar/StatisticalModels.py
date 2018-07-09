@@ -48,7 +48,7 @@ class GaussianEM():
     Functions
     ---------
         __call__ - Returns the value of the smooth GMM distribution at the points x, y
-        optimizeParams - Vary the parameters of the distribution using the given method to optimise the 
+        optimizeParams - Vary the parameters of the distribution using the given method to optimize the 
                         poisson likelihood of the distribution
         initParams - Specify the initial parameters for the Gaussian mixture model as well as 
                     the lower and upper bounds on parameters (used as prior values in the optimization)
@@ -277,8 +277,7 @@ class GaussianEM():
     def optimizeParams(self, method = "Powell"):
 
         '''
-        optimizeParams - Vary the parameters of the distribution using the given method to optimise the 
-                        poisson likelihood of the distribution
+        optimizeParams - Initialise and optimize parameters of Gaussian mixture model.
 
         **kwargs
         --------
@@ -288,52 +287,67 @@ class GaussianEM():
 
         Returns
         -------
-            nll(result['x']) - float
-                - The negative log likelihood for the final solution parameters
+            result - dict
+                - Output of scipy.optimize.minimise showing the details of the process
         '''
 
         # Set initial parameters
-        self.params_i, self.params_l, self.params_u = initParams(self.nComponents, self.rngx_s, self.rngy_s, self.priorDF)
-        self.param_shape = self.params_i.shape
-        self.s_min = self.params_l[0,1] # same as sxx lower bound
+        finite = False
+        while not finite:
+            self.params_i, self.params_l, self.params_u = initParams(self.nComponents, self.rngx_s, self.rngy_s, self.priorDF, nstars=len(self.x_s))
+            self.param_shape = self.params_i.shape
+            self.s_min = self.params_l[0,1] # same as sxx lower bound
+            lnp = self.lnprob(self.params_i)
+            finite = np.isfinite(lnp)
 
         params = self.params_i
 
-        if method == 'SLSQP': bounds = list(zip(self.params_l.ravel(), self.params_u.ravel()))
-        else: bounds={}
+        # Test runs different versions of the optimizer to find the best.
+        test=False
+        if test:
+            start = time.time()
+            bounds = list(zip(self.params_l.ravel(), self.params_u.ravel()))
+            # Run scipy optimizer
+            resultSLSQP = self.optimize(params, "SLSQP", bounds)
+            paramsSLSQP = resultSLSQP["x"].reshape(self.param_shape)
+            # Check likelihood for parameters
+            lnlikeSLSQP = self.lnlike(paramsSLSQP)
+            print("\n %s: lnprob=%d, time=%d" % ("SLSQP", self.lnprob(paramsSLSQP), time.time()-start))
 
-        """
-        start = time.time()
-        bounds = list(zip(self.params_l.ravel(), self.params_u.ravel()))
-        # Run scipy optimizer
-        resultSLSQP = self.optimize(params, "SLSQP", bounds)
-        paramsSLSQP = resultSLSQP["x"].reshape(self.param_shape)
-        # Check likelihood for parameters
-        lnlikeSLSQP = self.lnlike(paramsSLSQP)
-        print("\n %s: lnprob=%d, time=%d" % ("SLSQP", self.lnprob(paramsSLSQP), time.time()-start))
+            start = time.time()
+            bounds=None
+            # Run expectation max
+            paramsEM = self.EM(params, prior=self.priorDF)
+            # Run scipy optimize
+            resultEM = self.optimize(paramsEM, method, bounds)
+            paramsEM = resultEM["x"].reshape(self.param_shape)
+            # Check likelihood for parameters
+            lnlikeEM = self.lnlike(paramsEM)
+            print("\n EM + %s: lnprob=%d, time=%d" % (method, self.lnprob(paramsEM), time.time()-start))
 
-        start = time.time()
-        # Run expectation max
-        paramsEM = self.EM(params, prior=self.priorDF)
-        # Run scipy optimiser
-        resultEM = self.optimize(paramsEM, method, bounds)
-        paramsEM = resultEM["x"].reshape(self.param_shape)
-        # Check likelihood for parameters
-        lnlikeEM = self.lnlike(paramsEM)
-        print("\n EM + %s: lnprob=%d, time=%d" % (method, self.lnprob(paramsEM), time.time()-start))
-        """
+            start = time.time()
+            bounds=None
+            # Run scipy optimizer
+            resultOP = self.optimize(params, method, bounds)
+            paramsOP = resultOP["x"].reshape(self.param_shape)
+            # Check likelihood for parameters
+            lnlikeOP = self.lnlike(paramsOP)
+            print("\n %s: lnprob=%d, time=%d" % (method, self.lnprob(paramsOP), time.time()-start))
 
-        start = time.time()
-        # Run scipy optimizer
-        resultOP = self.optimize(params, method, bounds)
-        paramsOP = resultOP["x"].reshape(self.param_shape)
-        # Check likelihood for parameters
-        lnlikeOP = self.lnlike(paramsOP)
-        print("\n %s: lnprob=%d, time=%d" % (method, self.lnprob(paramsOP), time.time()-start))
+            if lnlikeOP>lnlikeEM: result = resultOP
+            else: result = resultEM
 
-        #if lnlikeOP>lnlikeEM: result = resultOP
-        #else: result = resultEM
-        result = resultOP
+        else:
+            start = time.time()
+            bounds = None
+            # Run scipy optimizer
+            print("\nInitparam likelihood: %d" % self.lnprob(params))
+            resultOP = self.optimize(params, method, bounds)
+            paramsOP = resultOP["x"].reshape(self.param_shape)
+            # Check likelihood for parameters
+            lnlikeOP = self.lnlike(paramsOP)
+            print("\n %s: lnprob=%d, time=%d" % (method, self.lnprob(paramsOP), time.time()-start))
+            result = resultOP
 
         # Save evaluated parameters to internal values
         self.params_f = result["x"].reshape(self.param_shape)
@@ -342,13 +356,33 @@ class GaussianEM():
 
     def optimize(self, params, method, bounds):
 
+        '''
+        optimize - Run scipy.optimize.minimize to determine the optimal parameters for the distribution
+
+        Parameters
+        ----------
+            params: array of float
+                - Initial parameters of the distribution
+
+            method: str
+                - Method to be used by optimizer, e.g. "Powell"
+
+            bounds: list of tup of float or None
+                - Boundaries of optimizing region
+                - Only for optimization methods which take bounds
+
+        Returns
+        -------
+            result: dict
+                - Output of scipy.optimize
+        '''
 
         # To clean up any warnings from optimize
         invalid = np.seterr()['invalid']
         divide = np.seterr()['divide']
         np.seterr(invalid='ignore', divide='ignore')
-        # result is the set of theta parameters which optimise the likelihood given x, y, yerr
-        result = op.minimize(self.nll, params.ravel(), method = method, bounds=bounds)
+        # result is the set of theta parameters which optimize the likelihood given x, y, yerr
+        result = op.minimize(self.nll, params.ravel(), method=method, bounds=bounds)
         # To clean up any warnings from optimize
         np.seterr(invalid=invalid, divide=divide)
         print("")
@@ -357,8 +391,10 @@ class GaussianEM():
 
     def nll(self, *args):
 
+        """
+        nll - Negative log likelihood for use in the optimizer
+        """
         lp = -self.lnprob(*args)
-
         return lp
 
     def lnprob(self, params):
@@ -370,8 +406,8 @@ class GaussianEM():
 
         Parameters
         ----------
-            params - list of floats
-                - Values of parameters in the Gaussian Mixture model
+            params: array of float
+                - Initial parameters of the distribution
 
         Returns
         -------
@@ -390,7 +426,6 @@ class GaussianEM():
         # if prior satisfied
         else: return lp + self.lnlike(params) 
 
-    # ln(Likelihood) based on a Poisson likelihood distribution
     def lnlike(self, params):
 
         '''
@@ -398,8 +433,8 @@ class GaussianEM():
 
         Parameters
         ----------
-            params - list of floats
-                - Values of parameters in the Gaussian Mixture model
+            params: array of float
+                - Initial parameters of the distribution
 
         Returns
         -------
@@ -407,7 +442,7 @@ class GaussianEM():
                 - lnL for the GMM parameters given the observed points
         '''
 
-        # If the DF has already been calculated, directly optimise the SF
+        # If the DF has already been calculated, directly optimize the SF
         if self.priorDF: function = lambda a, b: self.photoDF(*(a,b)) * self.distribution(params, a, b)
         else: function = lambda a, b: self.distribution(params, a, b)
         
@@ -427,12 +462,12 @@ class GaussianEM():
     def lnprior(self, params):
         
         '''
-        lnprior - The test of the parameters of the Gaussian Mixture Model against the specified prior values
+        lnprior - The test of the parameters of the Gaussian Mixture Model against the prior
 
         Parameters
         ----------
-            params - list of floats
-                - Values of parameters in the Gaussian Mixture model
+            params: array of float
+                - Initial parameters of the distribution
 
         Returns
         -------
@@ -461,8 +496,7 @@ class GaussianEM():
     def prior_bounds(self, params):
         
         '''
-        prior_bounds - Testing the parameters of the GMM against the upper and lower limits specified in
-                    self.initParams
+        prior_bounds - Testing the parameters of the GMM against the upper and lower limits
             - uninformative prior - uniform and non-zero within a specified range of parameter values
 
         Parameters
@@ -470,9 +504,14 @@ class GaussianEM():
             params - array of floats
                 - Values of parameters in the Gaussian Mixture model
 
+        Inherited
+        ---------
+            params_l, params_u: array of float
+                - Lower and upper bounds of parameters
+
         Returns
         -------
-             - bool
+             - prior: bool
                 - True if parameters satisfy constraints. False if not.
         '''
 
@@ -485,6 +524,21 @@ class GaussianEM():
 
     def sigma_bound(self, params):
         
+        '''
+        sigma_bound - Priors placed on the covariance matrix in the parameters
+
+        Parameters
+        ----------
+            params - array of floats
+                - Values of parameters in the Gaussian Mixture model
+
+        Returns
+        -------
+            - bool
+            - True if good covariance matrix, False if not
+            - Good covariance has det>0
+        '''
+
         for i in range(params.shape[0]):
             sigma = np.array([[params[i,1], params[i,5]], [params[i,5], params[i,3]]])
             try: 
@@ -547,6 +601,24 @@ class GaussianEM():
 
     def stats(self):
         
+        '''
+        stats - Prints out the statistics of the model fitting.
+
+        Such as parameters, likelihoods, integration calculations
+
+        Inherited
+        ---------
+            params_f: arr of float
+                - Final parameter values after optimization
+
+            rngx_s, rngy_s: tuple of float
+                - Feature scaled x and y range
+
+        Returns
+        -------
+            None
+        '''
+
         print("Parameters:")
         for i in range(self.params_f.shape[0]):
             print("Parameters for component %d:" % i)
@@ -576,39 +648,52 @@ class GaussianEM():
         print("Integration: Used {:.3f}, Half spacing {:.3f}".format(calc_val, calc_val2))
 
 
-def initParams(nComponents, rngx, rngy, priorDF):
+def initParams(nComponents, rngx, rngy, priorDF, nstars=1):
 
     '''
     initParams - Specify the initial parameters for the Gaussian mixture model as well as 
                 the lower and upper bounds on parameters (used as prior values in the optimization)
 
+    Parameters
+    ----------
+        nComponents: int
+            - Number of components of the Gaussian Mixture model
+
+        rngx, rngy: tuple of float
+            - Range of region in x and y axis
+
+        priorDF: bool
+            - Is there a prior distribution function?
+            - True if calculating for selection function
+
     Returns
     -------
-        parameters_i - array of floats
+        params_i - array of floats
             - initial parameters for the Gaussian mixture model
-        parameters_u - array of floats
-            - "under parameters" - lower limits on the values of GMM parameters
-        parameters_o - array of floats
-            - "over parameters" - upper limits on the values of GMM parameters
+        params_l - array of floats
+            - lower bounds on the values of GMM parameters
+        params_u - array of floats
+            - upper bounds on the values of GMM parameters
     '''
 
     # Initial guess parameters for a bivariate Gaussian
     # Randomly initialise mean between -1 and 1
     mux_i, muy_i = np.random.rand(2, nComponents)*2-1
-    # SD as 1/10 of range
+    # SD 1. as that's what feature scaling has set
     sxx_i, syy_i = 1., 1.
     # 0. covariance
     sxy_i = 0.
     # Weights sum to 1
-    w_i = 1. / nComponents
+    if priorDF: w_i = .1 / nComponents
+    else: w_i = nstars/ nComponents
 
     # Lower and upper bounds on parameters
     # Mean at edge of range
     mux_l, mux_u = rngx
     muy_l, muy_u = rngy
-    # Zero standard deviation to the size of the region
+    # Zero standard deviation to inf
     sxx_l, syy_l = 0, 0
-    sxx_u, syy_u = rngx[1]-rngx[0], rngy[1]-rngy[0]
+    sxx_u, syy_u = np.inf, np.inf #rngx[1]-rngx[0], rngy[1]-rngy[0]
     # Covariance must be in range -1., 1.
     sxy_l, sxy_u = -np.inf, np.inf
     # Zero weight
@@ -631,13 +716,14 @@ def SFprior(function, rngx, rngy):
     '''
     SFprior - The selection function has to be between 0 and 1 everywhere.
         - informative prior
+
     Parameters
     ----------
-        function - interp
+        function - function
             - The selection function interpolant over the region, R.
 
-        (rngx, rngy) - tuple of floats
-            - range of colours and magnitudes which limit the selection function region.
+        rngx, rngy: tuple of float
+            - Range of region in x and y axis
 
     Returns
     -------
@@ -663,14 +749,18 @@ def SFprior(function, rngx, rngy):
 def bivariateGauss(params, x, y):
 
     '''
-    bivariateGaussVector
+    bivariateGauss - Calculation of bivariate Gaussian distribution.
 
     Parameters
     ----------
-
+        params - arr of float - length 6 
+            - Parameters of the bivariate gaussian
+        x, y - arr of float
+            - x and y coordinates of points being tested
     Returns
     -------
-
+        p - arr of float
+            - bivariate Gaussian value for each point in x, y
     '''
 
     shape = x.shape
@@ -701,19 +791,18 @@ def bivariateGauss(params, x, y):
 def bivGaussMix(params, x, y):
 
     '''
-    multiDistribution 
+    bivariateGauss - Calculation of bivariate Gaussian mixture distribution.
 
     Parameters
     ----------
-        params - list of floats
-            - Values of parameters for the Gaussian.
-
-        x, y - float or np.array of floats
-            - Coordinates at which the GMM is calculated.
-
+        params - arr of float - nx6
+            - Parameters of the bivariate gaussian
+        x, y - arr of float
+            - x and y coordinates of points being tested
     Returns
     -------
-        p - Value of the GMM at coordinates x, y
+        p - arr of float
+            - bivariate Gaussian mixture value for each point in x, y
     '''
     
     p = 0
@@ -723,6 +812,24 @@ def bivGaussMix(params, x, y):
     return p
 
 def feature_scaling(x, y, mux, muy, sx, sy):
+
+    '''
+    feature_scaling - Scales features to a zero mean and unit standard deviation
+
+    Parameters
+    ----------
+        x, y - arr of float
+            - x and y coordinates of points
+        mux, muy - float
+            - Mean of distribution in x and y coordinates
+        sx, sy - floats
+            - Standard deviation of coordinates in x and y coordinates
+    Returns
+    -------
+        scalex, scaley - arr of float
+            - x and y coordinates scaled by feature scaling
+
+    '''
 
     scalex = (x-mux)/sx
     scaley = (y-muy)/sy
@@ -753,7 +860,7 @@ def integrationRoutine(function, param_set, nComponents, rngx, rngy, integration
         nComponents - int
             - Number of components of the GMM.
 
-        (rngx, rngy) - tuple of floats
+        rngx, rngy - tuple of floats
             - Boundary of region of colour-magnitude space being calculated.
 
     **kwargs
@@ -827,27 +934,36 @@ def bivariateIntegral(params):
     contInteg = 2*np.pi * A * np.abs(sigmax * sigmay) * np.sqrt(1-rho**2)
     return contInteg
 
-def numericalIntegrate(function, rngx, rngy, SFprior=False, Nx_int=250, Ny_int=250):
+def numericalIntegrate(function, rngx, rngy, Nx_int=250, Ny_int=250):
     
     '''
-    
+    numericalIntegrate - Integrate over region using the trapezium rule
 
     Parameters
     ----------
+        function - function or interpolant
+            - The function to be integrated over the specified region of space
 
+        nComponents - int
+            - Number of components of the GMM.
+
+        rngx, rngy - tuple of floats
+            - Boundary of region of colour-magnitude space being calculated.
+        
 
     **kwargs
     --------
-
+        Nx_int, Ny_int: int
+            - Number of grid spacings to place along the x and y axes
 
     Returns
     -------
-
-
+        integral: float
+            - Integral over the region
     '''
 
     #compInteg = integrate.dblquad(function, rngx[0], rngx[1], rngy[0], rngy[1])
-    Nx_int, Ny_int = 250, 250
+    Nx_int, Ny_int = (Nx_int, Ny_int)
 
     x_coords = np.linspace(rngx[0], rngx[1], Nx_int)
     y_coords = np.linspace(rngy[0], rngy[1], Ny_int)
@@ -868,20 +984,20 @@ def numericalIntegrate(function, rngx, rngy, SFprior=False, Nx_int=250, Ny_int=2
 def simpsonIntegrate(function, rngx, rngy):
 
     '''
-
+    simpsonIntegrate - Integrate over region using simson's rule
 
     Parameters
     ----------
+        function - function or interpolant
+            - The function to be integrated over the specified region of space
 
-
-    **kwargs
-    --------
-
+        nComponents - int
+            - Number of components of the GMM.
 
     Returns
     -------
-
-
+        integral: float
+            - Integral over the region
     '''
 
     #compInteg = integrate.dblquad(function, rngx[0], rngx[1], rngy[0], rngy[1])
@@ -909,20 +1025,20 @@ def simpsonIntegrate(function, rngx, rngy):
 def gridIntegrate(function, rngx, rngy):
     
     '''
-
+    gridIntegrate - Integrate over the grid when using PenalisedGridModel
 
     Parameters
     ----------
+        function - function or interpolant
+            - The function to be integrated over the specified region of space
 
-
-    **kwargs
-    --------
-
+        nComponents - int
+            - Number of components of the GMM.
 
     Returns
     -------
-
-
+        compInteg: float
+            - Integral over the region
     '''
 
     #compInteg = integ.dblquad(function, rngx[0], rngx[1], rngy[0], rngy[1])
@@ -1148,7 +1264,7 @@ class PenalisedGridModel():
         nll = lambda *args: -self.lnprob(*args)
         ll = lambda *args: self.lnprob(*args)
 
-        # result is the set of theta parameters which optimise the likelihood given x, y, yerr
+        # result is the set of theta parameters which optimize the likelihood given x, y, yerr
         result = op.minimize(nll, self.params_i.flatten(), method = 'Powell')
         #opt = Optimizers.nonMarkovOptimizer(ll, self.params_i.flatten())
         #result = opt()
@@ -1341,20 +1457,19 @@ def gridDistribution(nx, ny, rngx, rngy, params):
 class FlatRegion:
 
     '''
-
+    FlatRegion - Model with constant value over entire region
 
     Parameters
     ----------
-
-
-    **kwargs
-    --------
-
+        value: float
+            - value of selection function in region
+        rangex, rangey: tuple of float
+            - x and y ranges of region
 
     Returns
     -------
-
-
+        result: float or arr of float
+            - Value of selection function at x, y coordinates
     '''
 
     def __init__(self, value, rangex, rangey):
@@ -1369,19 +1484,22 @@ class FlatRegion:
     def __call__(self, x, y):
 
         '''
-
+        __call__ - Calculate the selection function at given coordinates
 
         Parameters
         ----------
+            x, y: arr of float
+                - Coordinates at which we are calculating the selecion function
 
-
-        **kwargs
-        --------
-
+        Inherited
+        ---------
+            rangex, rangey: tuple of float
+                - x and y ranges of region
 
         Returns
         -------
-
+            result: float or arr of float
+                - Value of selection function at x, y coordinates
 
         '''
 
