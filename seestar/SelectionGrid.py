@@ -325,11 +325,12 @@ class SFGenerator():
         df = df.rename(index=str, columns=dict(zip(coord_labels, coords)))
 
         # Remove any null values from df
-        full_length = len(df)
-        for coord in coords: df = df[pd.notnull(df[coord])]
-        used_length = len(df)
-        print("Filtering for null values in %s: Total star count = %d. Filtered star count = %d. %d stars removed with null values" % \
-                (data_source, full_length, used_length, full_length-used_length))
+        if data_source=='spectro':
+            full_length = len(df)
+            for coord in coords: df = df[pd.notnull(df[coord])]
+            used_length = len(df)
+            print("Filtering for null values in %s: Total star count = %d. Filtered star count = %d. %d stars removed with null values" % \
+                    (data_source, full_length, used_length, full_length-used_length))
 
         # Correct units
         """if (angle_units == 'degrees') & \
@@ -946,7 +947,7 @@ def PoissonLikelihood(points,
         # Add in SFxDF<DF constraint for the spectrograph distribution
         if datatype == "spectro": 
             model.photoDF, model.priorDF = (photoDF, True)
-        model.runningL = True
+        model.runningL = False
         model.optimizeParams()
         # Test integral if you want to see the value/error in the integral when calculated
         # model.testIntegral()

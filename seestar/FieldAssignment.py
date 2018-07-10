@@ -166,12 +166,12 @@ class FieldAssignment():
         starsanalysed = 0
 
         # Photometric file names
-        field_files = [str(field)+'.csv' for field in self.pointings[self.fileinfo.field_coords[0]]]
+        field_files = {field: str(field)+'.csv' for field in self.pointings[self.fileinfo.field_coords[0]]}
 
         # Open files for writing
         open_files = {}
-        for field_file in field_files:
-            open_files[field] = open(os.path.join(self.fileinfo.photo_path, field_file), 'a+')
+        for field in self.pointings[self.fileinfo.field_coords[0]]:
+            open_files[field] = open(os.path.join(self.fileinfo.photo_path, field_files[field]), 'a+')
 
         # Count dictionary for number of stars per field (all entries start at 0)
         starcount = {field: 0 for field in self.pointings[self.fileinfo.field_coords[0]]}
@@ -207,7 +207,7 @@ class FieldAssignment():
 
                     # Check which rows are assigned to the right field
                     df_bool = df_allsky.points.apply(lambda x: field in x)
-                    df = df_allsky[df_bool]
+                    df = df_allsky[df_bool].copy()
 
                     # Add to star count
                     starcount[field] += len(df)
@@ -218,7 +218,7 @@ class FieldAssignment():
                     df.to_csv(open_files[field], index=False, header=False)
 
         print("\nTotal stars assigned to fields: %d.\n\
-         Dictionary of stars per field in fileinfo.photo_field_starcount.")
+Dictionary of stars per field in fileinfo.photo_field_starcount." % total)
 
         self.fileinfo.photo_field_files = field_files
         self.fileinfo.photo_field_starcount = starcount
@@ -255,7 +255,7 @@ def importLimit(files, proportion=0.1):
     ratio = mem.available/mem_thousand
     import_max = 1000 * ratio * proportion
     
-    return import_max
+    return int(import_max)
 
 def iterLimit(Npoint, proportion=0.1):
 
@@ -301,11 +301,11 @@ def countStars(files):
             - Total number of stars in photometric catalogue
     '''
 
-    print("Counting total number of stars")
+    print("Counting total number of stars", end="")
 
     count = 0
     for filen in files:
-        print(".")
+        print(".", end="")
         extension = os.path.splitext(filen)[-1]
         if extension=='.gz':
             with gzip.open(filen) as f:

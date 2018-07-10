@@ -242,7 +242,7 @@ def CalculateIntersections(coordsrand, fields, IDtype,  labels=['phi','theta','h
     fields = ArrayMechanics.AnglePointsToPointingsMatrix(coordsrand, fields, labels[0], labels[1], labels[2], IDtype=IDtype)
 
     # Only consider points with field
-    intersections = fields[fields.points.map(len)>0]
+    intersections = fields[fields.points.map(len)>0].copy()
 
     intersections['strings'] = fields.points.astype(str)
     # Groupby field overlaps and count instances to measure area of region

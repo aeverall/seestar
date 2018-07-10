@@ -184,7 +184,7 @@ Once you have created this folder, you must replace the template files with real
 * Spectroscopic catalogue (SURVEY_survey.csv). This file will be a comma separated file with at least the following five columns (appropriately labelled): galactic longitude in radians ('glon'), galactic latitude in radians ('glat'), apparent magnitudes ('Happ', 'Japp', 'Kapp'), field id tag for the star ('fieldID'). The file can have other columns too but they won't be used.
 * Photometric catalogue for each field in the spectroscopic catalogue (photometric/FIELD-ID.csv). Comma separated file listing all stars on the field pointing in the photometric catalogue. It will have at least the following four columns (appropriately labelled): galactic longitude in radians ('glon'), galactic latitude in radians ('glat'), apparent magnitudes ('Happ', 'Japp', 'Kapp'). The file can have other columns too but they won't be used.
 * Locations and IDs of the spectroscopic field pointings (SURVEY_fieldinfo.csv). This file gives the central galactic longitude in radians ('glon') and galactic latitude in radians ('glat') of each field, half angle in radians ('halfangle') and the color and magnitude limits imposed by the spectroscopic survey ('Magmin', 'Magmax', 'Colmin', 'Colmax'). If none are imposed, write "NoLimit".
-* PARSEC isochrone files can extracted from [isoPARSEC.tar.gz](https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing). Move isochrone_interpolantinstances.pickle into the isochrones/ folder. Without the isochrones, you can still generate the selection function in observable coordinates.
+* PARSEC isochrone files can taken from [here](https://drive.google.com/drive/folders/1YOZyHzdMP5-wgDVv-SlDXEVGcWagGG3-?usp=sharing). Move isochrone_interpolantinstances.pickle into the isochrones/ folder. Without the isochrones, you can still generate the selection function in observable coordinates.
 
 
 The information held in SURVEY-NAME_fileinfo.pickle need to now be updated with the file locations, and some other bits of information in order to calculate the selection function.
@@ -315,7 +315,7 @@ For more information on the [Kroupa IMF](https://ui.adsabs.harvard.edu/#abs/2001
 ***
 ## Isochrone calculator <a name="isochrones"></a>
 
-Downloaded and extracted isoPARSEC.tar.gz from [here](https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing).
+Downloaded isochrone data files from [here](https://drive.google.com/drive/folders/1YOZyHzdMP5-wgDVv-SlDXEVGcWagGG3-?usp=sharing).
 
 Data for the isochrones is provided in two formats:
 

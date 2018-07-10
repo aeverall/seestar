@@ -270,7 +270,7 @@ def plotSpectroscopicSF2(intSF, obsSF, field,
         plt.savefig(fname, bbox_inches='tight')
 
 
-def plotSFInterpolants(fieldInts, (varx, vary), var1, var2, 
+def plotSFInterpolants(fieldInts, varx, vary, var1, var2, 
                         srange = (0.01, 20.), 
                         continuous=False, nlevels=10, title='',
                         save=False, fname='', **kwargs):

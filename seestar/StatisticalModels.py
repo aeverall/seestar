@@ -300,6 +300,10 @@ class GaussianEM():
             lnp = self.lnprob(self.params_i)
             finite = np.isfinite(lnp)
 
+            if self.runningL:
+                sys.stdout.write("\r"+str(self.params_i))
+                if finite: print("")
+
         params = self.params_i
 
         # Test runs different versions of the optimizer to find the best.
@@ -341,12 +345,12 @@ class GaussianEM():
             start = time.time()
             bounds = None
             # Run scipy optimizer
-            print("\nInitparam likelihood: %d" % self.lnprob(params))
+            if self.runningL: print("\nInitparam likelihood: %d" % self.lnprob(params))
             resultOP = self.optimize(params, method, bounds)
             paramsOP = resultOP["x"].reshape(self.param_shape)
             # Check likelihood for parameters
             lnlikeOP = self.lnlike(paramsOP)
-            print("\n %s: lnprob=%d, time=%d" % (method, self.lnprob(paramsOP), time.time()-start))
+            if self.runningL: print("\n %s: lnprob=%d, time=%d" % (method, self.lnprob(paramsOP), time.time()-start))
             result = resultOP
 
         # Save evaluated parameters to internal values
@@ -385,7 +389,7 @@ class GaussianEM():
         result = op.minimize(self.nll, params.ravel(), method=method, bounds=bounds)
         # To clean up any warnings from optimize
         np.seterr(invalid=invalid, divide=divide)
-        print("")
+        if self.runningL: print("")
 
         return result
 
