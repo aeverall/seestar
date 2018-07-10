@@ -40,7 +40,7 @@ The package requires the following dependencies:
 * [seaborn](https://seaborn.pydata.org/)
 * [pickle](https://docs.python.org/2/library/pickle.html), [dill](https://pypi.python.org/pypi/dill)
 
-The code is built for Python 2.7 so currently does not work for Python 3.
+The code is built for Python 3.5 and is currently incompatible with Python 2.7.
 
 ***
 # Calculate selection functions <a name="SF"></a>
@@ -55,7 +55,7 @@ Before doing this, please follow the [install](#install) instructions to set up 
 ### Download data files
 
 The files required to run **seestar** are too large to store on GitHub so they are kept separately.
-Data we provide can be found [here](#https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing).
+Data we provide can be found [here](https://drive.google.com/drive/folders/1mz09FRP6hJPo1zPBJHP1T0BNhtDOkdGs?usp=sharing).
 
 Each gzip file contains the selection function data for the specified survey and data release (e.g. APOGEE14 refers to DR14 of the Apache Point Observatory Galaxy Evolution Experiment).
 Download the data then extract the file to the location where you wish to store the data (we recommend storing all downloaded files in the same directory).

@@ -33,6 +33,5 @@ If there are any improvements not listed here which you would like to see, pleas
 ## Code improvements:
 
 - All sky survey selection function using HEALPix.
-- Make compatible for Python 3 (Currently only Python 2.7).
 - Dust attenuation calculation.
 	- Requires Milkyway dust map
