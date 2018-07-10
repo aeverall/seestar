@@ -75,8 +75,8 @@ Each survey folder in the database contains the following files:
 * Photometric survey data for each field in the spectrograph catalogue. (```photometric/FIELD-ID.csv```)
 * Pickle files for the selection function in each coordinate system. (```SURVEY_obsSF.pickle```, ```SURVEY_SF.pickle```)
 * Pickle "fieldInfo" file which stores the information on all other files for each survey. (```SURVEY_fileinfo.pickle```)
-* Spectrograph field pointing locations and IDs. (SURVEY_fieldinfo.csv)
-* Information on overlap between survey fields. (SURVEY_fieldoverlapdatabase)
+* Spectrograph field pointing locations and IDs. (```SURVEY_fieldinfo.csv```)
+* Information on overlap between survey fields. (```SURVEY_fieldoverlapdatabase```)
 
 
 ### Calculating SF probability
@@ -170,24 +170,24 @@ Where is the directory? PATH/TO/DIRECTORY
 What survey? (will be used to label the folder and file contents) SURVEY
 Style of survey? a = multi-fibre fields, b = all-sky: a/b
 ```
-The PATH/TO/DIRECTORY is the directory where you wish to store folders for each survey.
+The ```PATH/TO/DIRECTORY``` is the directory where you wish to store folders for each survey.
 The SURVEY is the label you wish to give to the survey (e.g. APOGEE14).
-If a folder with SURVEY-NAME exists in PATH/TO/DIRECTORY/, you will have to provide a different name.
+If a folder with ```SURVEY-NAME``` exists in ```PATH/TO/DIRECTORY/```, you will have to provide a different name.
 Surveys, such as APOGEE and RAVE, are multi-fibre spectrographs for which field pointings provide a well defined set of fields.
 Gaia is an all-sky survey as it systematically scans the entire sky without predefined fields.
 
 A folder labeled SURVEY-NAME will be generated in the location PATH/TO/DIRECTORY and will contain the following:
-* SURVEY_fileinfo.pickle - pickled dictionary of survey information (file locations and data structures).
-* SURVEY_survey.csv - spectroscopic catalogue template.
-* SURVEY_fieldinfo.csv - spectroscopic field pointing catalogue template.
-* photometric/field1.csv - folder for photometric catalogue files for each field in the spectroscopic survey (an example template file, field1.csv, is also included).
-* isochrones/ - folder for isochrone files (You'll need to move these in yourself)
+* ```SURVEY_fileinfo.pickle``` - pickled dictionary of survey information (file locations and data structures).
+* ```SURVEY_survey.csv``` - spectroscopic catalogue template.
+* ```SURVEY_fieldinfo.csv``` - spectroscopic field pointing catalogue template.
+* ```photometric/field1.csv``` - folder for photometric catalogue files for each field in the spectroscopic survey (an example template file, field1.csv, is also included).
+* ```isochrones/``` - folder for isochrone files (You'll need to move these in yourself)
 
 Once you have created this folder, you must replace the template files with real field files:
-* Spectroscopic catalogue (SURVEY_survey.csv). This file will be a comma separated file with at least the following five columns (appropriately labelled): galactic longitude in radians ('glon'), galactic latitude in radians ('glat'), apparent magnitudes ('Happ', 'Japp', 'Kapp'), field id tag for the star ('fieldID'). The file can have other columns too but they won't be used.
-* Photometric catalogue for each field in the spectroscopic catalogue (photometric/FIELD-ID.csv). Comma separated file listing all stars on the field pointing in the photometric catalogue. It will have at least the following four columns (appropriately labelled): galactic longitude in radians ('glon'), galactic latitude in radians ('glat'), apparent magnitudes ('Happ', 'Japp', 'Kapp'). The file can have other columns too but they won't be used.
-* Locations and IDs of the spectroscopic field pointings (SURVEY_fieldinfo.csv). This file gives the central galactic longitude in radians ('glon') and galactic latitude in radians ('glat') of each field, half angle in radians ('halfangle') and the color and magnitude limits imposed by the spectroscopic survey ('Magmin', 'Magmax', 'Colmin', 'Colmax'). If none are imposed, write "NoLimit".
-* PARSEC isochrone files can taken from [here](https://drive.google.com/drive/folders/1YOZyHzdMP5-wgDVv-SlDXEVGcWagGG3-?usp=sharing). Move isochrone_interpolantinstances.pickle into the isochrones/ folder. Without the isochrones, you can still generate the selection function in observable coordinates.
+* Spectroscopic catalogue (```SURVEY_survey.csv```). This file will be a comma separated file with at least the following five columns (appropriately labelled): galactic longitude in radians ('glon'), galactic latitude in radians ('glat'), apparent magnitudes ('Happ', 'Japp', 'Kapp'), field id tag for the star ('fieldID'). The file can have other columns too but they won't be used.
+* Photometric catalogue for each field in the spectroscopic catalogue (```photometric/FIELD-ID.csv```). Comma separated file listing all stars on the field pointing in the photometric catalogue. It will have at least the following four columns (appropriately labelled): galactic longitude in radians ('glon'), galactic latitude in radians ('glat'), apparent magnitudes ('Happ', 'Japp', 'Kapp'). The file can have other columns too but they won't be used.
+* Locations and IDs of the spectroscopic field pointings (```SURVEY_fieldinfo.csv```). This file gives the central galactic longitude in radians ('glon') and galactic latitude in radians ('glat') of each field, half angle in radians ('halfangle') and the color and magnitude limits imposed by the spectroscopic survey ('Magmin', 'Magmax', 'Colmin', 'Colmax'). If none are imposed, write "NoLimit".
+* PARSEC isochrone files can taken from [here](https://drive.google.com/drive/folders/1YOZyHzdMP5-wgDVv-SlDXEVGcWagGG3-?usp=sharing). Move isochrone_interpolantinstances.pickle into the ```isochrones/``` folder. Without the isochrones, you can still generate the selection function in observable coordinates.
 
 
 Use the fileinfo file to test whether the data files are all correctly formatted and in the right locations.
@@ -208,7 +208,7 @@ fileinfo.save()
 
 ### Field Assignment
 
-As mentioned previously, the folder, photometric/, in the survey directory stores the photometric survey data as a file for every field in the survey with the photometric stars which are on that field. You can generate these stars yourself, or use the given field assignment code:
+As mentioned previously, the folder, ```photometric/```, in the survey directory stores the photometric survey data as a file for every field in the survey with the photometric stars which are on that field. You can generate these stars yourself, or use the given field assignment code:
 
 ```python
 from seestar import FieldAssignment
@@ -238,9 +238,9 @@ This will raise the question:
 ```
 Would you like the selection function in: a) observable, b) intrinsic, c) both? (return a, b or c)
 ```
-* a - Generates a selection function in observable coordinates (magnitude, colour). Doesn't require Isochrone data if this is unavailable.
-* b - Generates a selection function in intrinsic coordinates (age, metallicity, mass, distance). Requires the isochrone files.
-* c - Generates both of the above and keeps them loaded in to be used when wanted.
+* ```a``` - Generates a selection function in observable coordinates (magnitude, colour). Doesn't require Isochrone data if this is unavailable.
+* ```b``` - Generates a selection function in intrinsic coordinates (age, metallicity, mass, distance). Requires the isochrone files.
+* ```c``` - Generates both of the above and keeps them loaded in to be used when wanted.
 
 If the selection function has been previously run, the following will automatically appear:
 ```
@@ -252,7 +252,7 @@ Path to observable SF (Galaxia3_new_obsSF.pickle) exists. Use this to ? (y/n)
 (Calculating the observable SF from scratch can take hours depending on the survey)
 
 
-Having created the selection function instance for SURVEY-NAME, we now wish to calculate selection probabilities of stars:
+Having created the selection function instance for ```SURVEY-NAME```, we now wish to calculate selection probabilities of stars:
 
 1. You have a comma separated txt file with six columns: galactic longitude (glon), galactic latitude (glat), distance (s), age, metallicity (mh), mass.
 You want to know the probability of each star in the dataset being included in the survey.
