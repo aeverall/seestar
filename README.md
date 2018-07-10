@@ -60,18 +60,21 @@ Data we provide can be found [here](#https://drive.google.com/drive/folders/1mz0
 Each gzip file contains the selection function data for the specified survey and data release (e.g. APOGEE14 refers to DR14 of the Apache Point Observatory Galaxy Evolution Experiment).
 Download the data then extract the file to the location where you wish to store the data (we recommend storing all downloaded files in the same directory).
 
-The code repository now doesn't know where the data is stored. To give the repository the location, run the following in a Python shell:
+The information held in fileinfo.pickle needs to be updated with the file locations, and some other bits of information in order to calculate the selection function.
 ```python
-from seestar import setdatalocation
-setdatalocation.replaceNames('/home/USER/PATH')
+from seestar import surveyInfoPickler
+path = 'PATH/TO/DIRECTORY/SURVEY-NAME/SURVEY-NAME_fileinfo.pickle'
+fileinfo = surveyInfoPickler.surveyInformation(path)
 ```
-Use an absolute directory location (/home/USER/PATH) rather than relative locations (../USER/PATH)
+This will raise a query:
+```File location has changed, reset the file locations? (y/n)```
+Respond ```y``` to change the stored fileinfo so that the correct paths to the data are saved.
 
 Each survey folder in the database contains the following files:
-* Spectrograph catalogue including crossmatch magnitudes with photometric survey. (SURVEY_survey.csv)
-* Photometric survey data for each field in the spectrograph catalogue. (photometric/FIELD-ID.csv)
-* Pickle files for the selection function in each coordinate system. (SURVEY_obsSF.pickle, SURVEY_SF.pickle)
-* Pickle "fieldInfo" file which stores the information on all other files for each survey. (SURVEY_fileinfo.pickle)
+* Spectrograph catalogue including crossmatch magnitudes with photometric survey. (```SURVEY_survey.csv```)
+* Photometric survey data for each field in the spectrograph catalogue. (```photometric/FIELD-ID.csv```)
+* Pickle files for the selection function in each coordinate system. (```SURVEY_obsSF.pickle```, ```SURVEY_SF.pickle```)
+* Pickle "fieldInfo" file which stores the information on all other files for each survey. (```SURVEY_fileinfo.pickle```)
 * Spectrograph field pointing locations and IDs. (SURVEY_fieldinfo.csv)
 * Information on overlap between survey fields. (SURVEY_fieldoverlapdatabase)
 
@@ -187,22 +190,20 @@ Once you have created this folder, you must replace the template files with real
 * PARSEC isochrone files can taken from [here](https://drive.google.com/drive/folders/1YOZyHzdMP5-wgDVv-SlDXEVGcWagGG3-?usp=sharing). Move isochrone_interpolantinstances.pickle into the isochrones/ folder. Without the isochrones, you can still generate the selection function in observable coordinates.
 
 
-The information held in SURVEY-NAME_fileinfo.pickle need to now be updated with the file locations, and some other bits of information in order to calculate the selection function.
-
+Use the fileinfo file to test whether the data files are all correctly formatted and in the right locations.
 ```python
-import pickle
 from seestar import surveyInfoPickler
 
 # Create instance of information class
 path = 'PATH/TO/DIRECTORY/SURVEY-NAME/SURVEY-NAME_fileinfo.pickle'
-file_info = surveyInfoPickler.surveyInformation(path)
-# file_info is an instance of a class for containing all the file locations and data structures.
+fileinfo = surveyInfoPickler.surveyInformation(path)
+# fileinfo is an instance of a class for containing all the file locations and data structures.
 
 # Run a test of the structure of files in the selection function directory to check if they're ready.
-file_info.testFiles()
+fileinfo.testFiles()
 
 # Repickle the class instance
-file_info.save()
+fileinfo.save()
 ```
 
 ### Field Assignment
