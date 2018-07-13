@@ -34,13 +34,13 @@ def create():
 	'''
 
 	# Ask for a directory name
-	directory = input("Where is the directory? ")
+	directory = raw_input("Where is the directory? ")
 	while not os.path.exists(directory):
-		directory = input("Directory does not exist, please give a real location: ")
+		directory = raw_input("Directory does not exist, please give a real location: ")
 
 	good_folder = False
 	while (not good_folder):
-		folder = input("What survey? (will be used to label the folder and file contents) ")
+		folder = raw_input("What survey? (will be used to label the folder and file contents) ")
 		
 		if os.path.exists( os.path.join(directory, folder) ):
 			print("\nFolder, %s, already exists. Either delete it and try again or enter a different survey name" %\
@@ -49,7 +49,7 @@ def create():
 
 	good_ans = False
 	while (not good_ans):
-		survey_style = input("Style of survey? a = multi-fibre fields, b = all-sky: ")
+		survey_style = raw_input("Style of survey? a = multi-fibre fields, b = all-sky: ")
 		if survey_style in ('a','b'):
 			good_ans = True
 			if survey_style == 'a': style='mf'

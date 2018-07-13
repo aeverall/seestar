@@ -137,9 +137,9 @@ class SFGenerator():
             if use_intsf: # Use a premade intrinsic selection function
                 # Unpickle survey selection function
                 print("Unpickling survey selection function...")
-                with open(sf_pickle_path, "rb") as input:
+                with open(sf_pickle_path, "rb") as f:
                     instanceSF_dict, instanceIMFSF_dict, self.agerng, self.mhrng, \
-                    magrng, colrng = pickle.load(input)
+                    magrng, colrng = pickle.load(f)
                 print("...done.\n") 
 
                 # Load class instance from saved dictionary
@@ -171,8 +171,8 @@ class SFGenerator():
                 # Once Colour Magnitude selection functions have been created
                 # Unpickle colour-magnitude interpolants
                 print("Unpickling colour-magnitude interpolant dictionaries...")
-                with open(obsSF_pickle_path, "rb") as input:
-                    obsSF_dicts = pickle.load(input)
+                with open(obsSF_pickle_path, "rb") as f:
+                    obsSF_dicts = pickle.load(f)
                 print("...done.\n")
             else: # Create new observable selection function
                 print('Importing data for Colour-Magnitude Field interpolants...')
@@ -1209,7 +1209,7 @@ def path_check(pickleFile):
     good_type = False
     while not good_type:
         # Intrinsic or observable
-        sftype = input("Would you like the selection function in: a) observable, b) intrinsic, c) both? (return a, b or c)")
+        sftype = raw_input("Would you like the selection function in: a) observable, b) intrinsic, c) both? (return a, b or c)")
 
         if sftype in ('b', 'c'): # Intrinsic or both
             good_type = True
@@ -1219,7 +1219,7 @@ def path_check(pickleFile):
 
                 good = False
                 while not good:
-                    use_sf = input("Path to intrinsic SF (%s) exists. Load SF in from here? (y/n)" % fileinfo.sf_pickle_fname)
+                    use_sf = raw_input("Path to intrinsic SF (%s) exists. Load SF in from here? (y/n)" % fileinfo.sf_pickle_fname)
                     if use_sf == 'y':
                         use_intsf = True
                         good = True
@@ -1239,7 +1239,7 @@ def path_check(pickleFile):
                     good = False
                     while not good:
                         if os.path.exists(fileinfo.obsSF_pickle_path):
-                            use_sf = input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
+                            use_sf = raw_input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
                             if use_sf == 'y':
                                 use_obssf = True
                                 good = True
@@ -1257,7 +1257,7 @@ def path_check(pickleFile):
                 good = False
                 while not good:
                     if os.path.exists(fileinfo.obsSF_pickle_path):
-                        use_sf = input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
+                        use_sf = raw_input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
                         if use_sf == 'y':
                             use_obssf = True
                             good = True
@@ -1278,7 +1278,7 @@ def path_check(pickleFile):
             good = False
             while not good:
                 if os.path.exists(fileinfo.obsSF_pickle_path):
-                    use_sf = input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
+                    use_sf = raw_input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
                     if use_sf == 'y':
                         use_obssf = True
                         good = True

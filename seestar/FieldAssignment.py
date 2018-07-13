@@ -418,10 +418,10 @@ class HealpixAssignment():
         while not good_mag:
             try:
                 # Take each value as an input from the user
-                mag_l = eval(input("Survey lower limit on H-band apparent magnitude (if not given, type None): "))
-                mag_u = eval(input("Survey upper limit on H-band apparent magnitude (if not given, type None): "))
-                col_l = eval(input("Survey lower limit on J-K colour (if not given, type None): "))
-                col_u = eval(input("Survey upper limit on J-K colour (if not given, type None): "))
+                mag_l = input("Survey lower limit on H-band apparent magnitude (if not given, type None): ")
+                mag_u = input("Survey upper limit on H-band apparent magnitude (if not given, type None): ")
+                col_l = input("Survey lower limit on J-K colour (if not given, type None): ")
+                col_u = input("Survey upper limit on J-K colour (if not given, type None): ")
             except NameError:
                 # If a non-assigned object input is used
                 print("Return float or None.")
@@ -629,7 +629,7 @@ def numberPixels(npixel):
         good_pix = False
         while not good_pix:
             # Ask for another value of npixel to be given
-            x = eval(input("%d is an invalid number of pixels for healpix, can do %d or %d?" %(pix, rd_down, rd_up)))
+            x = input("%d is an invalid number of pixels for healpix, can do %d or %d?" %(pix, rd_down, rd_up))
 
             if type(x)==int:
                 pix=x

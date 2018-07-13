@@ -153,7 +153,7 @@ class surveyInformation():
         self.iso_data_path = os.path.join(self.survey_folder, self.iso_folder, self.iso_data_file)
         self.iso_interp_path = os.path.join(self.survey_folder, self.iso_folder, self.iso_interp_file)
 
-        self.photo_field_paths = {field: os.path.join(self.photo_path, fieldfile) for field, fieldfile in self.photo_field_files.items()}
+        self.photo_field_paths = {field: os.path.join(self.photo_path, fieldfile) for field, fieldfile in self.photo_field_files.iteritems()}
 
         self.example_string = \
 """
@@ -223,7 +223,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
                 # Now enter while loop
                 while not reset in ('y','n'):
                     print(reset)
-                    reset = input("File location has changed, reset the file locations? (y/n)")
+                    reset = raw_input("File location has changed, reset the file locations? (y/n)")
                     print(reset)
                 # Reset file names to correct path
                 if reset == 'y': 
@@ -481,7 +481,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
             else: 
                 good_response = False
                 while not good_response:
-                    forward = input("Tests on the files have raised some warnings. Would you like to continue anyway? (y/n)")        
+                    forward = raw_input("Tests on the files have raised some warnings. Would you like to continue anyway? (y/n)")        
                     if forward == 'n': 
                         forward_bool = False
                         good_response = True
