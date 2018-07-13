@@ -53,6 +53,8 @@ import sys, os
 
 from matplotlib import pyplot as plt
 import matplotlib
+matplotlib.rcParams.update({'font.size': 40})
+
 
 def AngleShift(Th):
 
@@ -253,7 +255,7 @@ def PlotDisk(l, b, ax,
     x[ind] -=360    # scale conversion to [-180, 180]
     x=-x    # reverse the scale: East to the left
 
-    ax.scatter(np.radians(x),np.radians(y), s=s)  # convert degrees to radians
+    ax.scatter(np.radians(x),np.radians(y), s=s, zorder=-10)  # convert degrees to radians
 
     tick_labels = np.array([150, 120, 90, 60, 30, 0, 330, 300, 270, 240, 210])
     tick_labels = np.remainder(tick_labels+360+org,360)
@@ -519,6 +521,13 @@ def PlotPlate(Phi, Th, SolidAngle, save = False, saven = '', title = ''):
     #PlotDisk(Star[0], Star[1], ax, s=50)
 
     ax.set_title(title)
+
+
+
+    plt.rc('font', family='serif')
+    plt.xlabel(r'$l$', fontsize=40, style='italic')
+    plt.ylabel(r'$b$', fontsize=40, style='italic')
+    plt.tick_params(axis='both', labelsize=30)
 
     if save: fig.savefig('../Figures/'+saven+'.png')
 
