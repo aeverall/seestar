@@ -340,8 +340,6 @@ def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcal
     df = ArrayMechanics.AnglePointsToPointingsMatrix(df, pointings, angle_coords[0], angle_coords[1], halfangle,
                                                         IDtype = IDtype, Nsample=Nsample, progress=True)
     # Dataframe of field probabilities
-    #arr = np.zeros((len(df), len(pointings))).astype(int) - 1 # -1 so that it's an impossible SFprob value
-    #dfprob = pd.DataFrame(arr, columns=pointings.fieldID.tolist())
     dfprob = pd.DataFrame()
 
     for field in pointings.fieldID:
