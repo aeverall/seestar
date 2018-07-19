@@ -20,6 +20,7 @@ import numpy
 import scipy.interpolate as interp
 import scipy.integrate as integrate
 import scipy.optimize as op
+from skopt import gp_minimize
 import sys, os, time
 from mpmath import *
 
@@ -387,6 +388,11 @@ class GaussianEM():
         np.seterr(invalid='ignore', divide='ignore')
         # result is the set of theta parameters which optimize the likelihood given x, y, yerr
         result = op.minimize(self.nll, params.ravel(), method=method, bounds=bounds)
+
+        # Potential to use scikit optimize
+        #bounds = list(zip(self.params_l.ravel(), self.params_u.ravel()))
+        #result = gp_minimize(self.nll, bounds)
+
         # To clean up any warnings from optimize
         np.seterr(invalid=invalid, divide=divide)
         if self.runningL: print("")

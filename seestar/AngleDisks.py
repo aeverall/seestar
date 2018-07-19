@@ -523,7 +523,7 @@ def PlotPlate(Phi, Th, SolidAngle, save = False, saven = '', title = ''):
     ax.set_title(title)
 
 
-
+    plt.rc('mathtext', fontset='cm')
     plt.rc('font', family='serif')
     plt.xlabel(r'$l$', fontsize=40, style='italic')
     plt.ylabel(r'$b$', fontsize=40, style='italic')
