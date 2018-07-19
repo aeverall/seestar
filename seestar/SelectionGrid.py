@@ -187,16 +187,6 @@ class SFGenerator():
                 print("...done\n.")
             # Initialise dictionary
             self.obsSF = SFInstanceClasses.obsSF_dicttoclass(obsSF_dicts)
-
-        if fileinfo.style == 'mf': # Calculate field overlap for multifibre surveys (Healpix doesn't overlap)
-            if use_overlap: # Use the precalculated field overlaps
-                database = pd.read_csv(fileinfo.overlap_path)
-            elif len(self.pointings)>1: # Create the field intersection database from scratch
-                    database = FieldUnions.CreateIntersectionDatabase(20000, pointings, self.fieldlabel_type, labels = ['phi', 'theta', 'halfangle'])
-                    database.to_csv(fileinfo.overlap_path)
-            else: # Cannot construct overlapping field system if only one field
-                raise ValueError('Cannot currently run this code with only one field, working on improving this!')
-            self.FUInstance = FieldUnions.FieldUnion(database)
         
     def __call__(self, catalogue, method='intrinsic', 
                 coords = ['age', 'mh', 's', 'mass'], 
@@ -234,7 +224,8 @@ class SFGenerator():
 
         if self.fileinfo.style == 'mf':
             # Drop column which will be readded if this has been calculated before.
-            if 'field_info' in list(catalogue): catalogue = catalogue.drop('field_info', axis=1)
+            #if 'field_info' in list(catalogue): catalogue = catalogue.drop('field_info', axis=1)
+            if 'SFprob' in list(catalogue): catalogue = catalogue.drop('SFprob', axis=1)
             # catalogue[points] - list of pointings which coordinates lie on
             # catalogue[field_info] - list of tuples: (P(S|v), field)
             print('Calculating all SF values...')
@@ -246,7 +237,9 @@ class SFGenerator():
             # The SF probabilities and coordinates of overlapping fields are used to calculate
             # the field union.
             print('Calculating union contribution...')
-            catalogue['union'] = catalogue.field_info.map(self.FUInstance.fieldUnion)
+            FUInstance = FieldUnions.FieldUnion()
+            catalogue['union'] = FUInstance(catalogue.SFprob)
+            #catalogue['union'] = catalogue.field_info.map(FUInstance.fieldUnion)
             print('...done')
         elif self.fileinfo.style == 'as':
             npixel = len(self.pointings)

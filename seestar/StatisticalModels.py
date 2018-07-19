@@ -212,7 +212,7 @@ class GaussianEM():
                 - m is the number of points
         '''
 
-        response = np.empty((params.shape[0], *self.x_s.shape))
+        response = np.empty((params.shape[0],) + self.x_s.shape)
         for i in range(params.shape[0]):
             component = bivariateGauss(params[i,:], self.x_s, self.y_s)
             full = bivGaussMix(params, self.x_s, self.y_s)
