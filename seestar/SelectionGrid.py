@@ -224,10 +224,7 @@ class SFGenerator():
 
         if self.fileinfo.style == 'mf':
             # Drop column which will be readded if this has been calculated before.
-            #if 'field_info' in list(catalogue): catalogue = catalogue.drop('field_info', axis=1)
             if 'SFprob' in list(catalogue): catalogue = catalogue.drop('SFprob', axis=1)
-            # catalogue[points] - list of pointings which coordinates lie on
-            # catalogue[field_info] - list of tuples: (P(S|v), field)
             print('Calculating all SF values...')
             catalogue = FieldUnions.GenerateMatrices(catalogue, self.pointings, 
                                                     angle_coords, point_coords, 'halfangle', 
@@ -239,7 +236,6 @@ class SFGenerator():
             print('Calculating union contribution...')
             FUInstance = FieldUnions.FieldUnion()
             catalogue['union'] = FUInstance(catalogue.SFprob)
-            #catalogue['union'] = catalogue.field_info.map(FUInstance.fieldUnion)
             print('...done')
         elif self.fileinfo.style == 'as':
             npixel = len(self.pointings)

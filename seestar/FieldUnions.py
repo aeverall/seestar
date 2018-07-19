@@ -75,100 +75,6 @@ class FieldUnion():
 
         return listofarr
 
-    def pointsListMap(self, sf, row):
-
-        '''
-        NO LONGER USED
-        pointsListMap - Runs FieldToTuple for every item in the list of fields which are overlapping
-                        on the point.
-
-        Parameters
-        ----------
-            row - row from DataFrame
-
-            row["points"] - list
-                - list of fields which overlap on a given point in Galactic/Equatorial coordinates.
-
-            sf - dictionary of interpolants
-                - self.surveysf from the selection function which can be used to determine the selection
-                 probability given those parameters on that field.
-
-        Returns
-        -------
-            list of tuples
-                - for every field in row["points"], the (SFprobability, Glongitude, Glatitude)
-        '''
-        return [self.FieldToTuple(sf, item, (row['age'], row['mh'], row['s'])) for item in row.points]
-
-
-    def FieldToTuple(self, selectionfunction, fieldID, age, mh, s):
-        '''
-        NO LONGER USED
-        FieldToTuple - Converts from a field and coordinates on the field to
-                   a selection probability and angular coordinates of the field.
-
-        Parameters
-        ----------
-         selectionfunction - Dictionary/DataFrame
-                     - The full distribution of selection functions in age-mh-s space for each field
-
-         fieldID - object type depends on survey
-                     - The field label
-
-         (age, mh, s) - tuple of floats
-                    - Parameters of the star for which we're calculating the selection function probability
-
-        Returns
-        -------
-         sf - float
-                  - Value of the selection function probability for these coordinates
-
-        info.l, info.b - floats
-                - Galactic longitude & latitude of the field
-        '''
-        info = selectionfunction.loc[fieldID]
-
-        # selection function value
-        interp = info.agemhssf
-        try:
-            sf = interp((age, mh, s))
-        except (ValueError, IndexError): 
-            sf = 0.
-
-        sys.stdout.write("\r"+str(sf)+'...'+str(fieldID))
-        return sf, fieldID
-
-
-    def fieldUnion(self, field_info):
-
-        '''
-        fieldUnion - The field union on a point of overlapping fields with selection function
-                     for each field already calculated
-
-        Parameters
-        ----------
-            field_info - list of tuples
-                - tuples contain SFvalue and galactic coordinates of field
-
-        Returns
-        -------
-            union - float
-                - Final value of selection function for given star.
-        '''
-
-        # Creates a list of all combinations of fields from the overlapping fields.
-        # A sum of the intersections of these fields (x-1^i) gives the field union.
-
-        combos = self.fieldCombos(field_info)
-
-        # Calculate the intersection of each field combo from the overlapping fields
-        union_contributions = map(self.fieldIntersection, combos)
-
-        # Find the sum of contributions from each combination intersection to the total union
-        union = sum(union_contributions)
-
-        return union
-
     def fieldCombos(self, field_info):
 
         '''
@@ -218,74 +124,6 @@ class FieldUnion():
         sign = (-1)**(len(listofarr)+1)
 
         return product*sign
-
-
-
-
-# Calculating field fractional overlaps
-
-def GenerateRandomPoints(N, labels=['phi', 'theta', 'halfangle']):
-
-    # Latitude weighted by cosine angle distribution
-    brand = np.arcsin(2*np.random.rand(N)-1)
-    lrand = np.random.rand(N)*2*np.pi
-    # Generate dataframe for random points across sky
-    coordsrand = np.vstack((lrand, brand)).T
-    coordsrand = pd.DataFrame(coordsrand, columns=[labels[0], labels[1]])
-    
-    return coordsrand
-
-def CalculateIntersections(coordsrand, fields, IDtype,  labels=['phi','theta','halfangle']):
-
-    print('Counting intersection area fractions...')
-
-    # Add column with the list of fields which overlap at each point
-    fields = ArrayMechanics.AnglePointsToPointingsMatrix(coordsrand, fields, labels[0], labels[1], labels[2], IDtype=IDtype)
-
-    # Only consider points with field
-    intersections = fields[fields.points.map(len)>0].copy()
-
-    intersections['strings'] = fields.points.astype(str)
-    # Groupby field overlaps and count instances to measure area of region
-    countseries = intersections.groupby(["strings"]).size()
-    
-    # Drop duplicates from intersections in order to merge with countseries 
-    intersections = intersections.drop_duplicates(subset='strings')
-
-    # Merge count series with intersection
-    intersections = pd.merge(intersections, pd.DataFrame(countseries, columns=['counts']), left_on="strings", right_index=True)
-
-    # Reset index to keep track of progress
-    intersections = intersections.reset_index(drop=True)
-    intersections['nIndex'] = intersections.index.astype(int)
-    nfields = len(intersections)
-
-    def findregions(fieldid, nIter):
-        regionbool = intersections.apply(lambda row: any(i in row.points for i in fieldid), axis=1)
-        # This can take a while so show counts as it goes along.
-        sys.stdout.write("%d / %d\r" % (nIter+1, nfields))
-        sys.stdout.flush()
-        return np.sum(intersections.counts[regionbool])
-    # For each overlap list, find the total area occupied by overlapping fields
-    intersections['fullregion'] = intersections.apply(lambda row: findregions(row.points, row.nIndex), axis=1)
-    
-    # Intersection fraction is the ratio of counts on region to counts across all overlapping fields
-    intersections['fraction'] = intersections.counts/intersections.fullregion
-    
-    print("\n...done")
-
-    intersections = intersections.set_index("strings")
-    
-    return intersections[["points", "counts", "fullregion", "fraction"]] 
-    
-def CreateIntersectionDatabase(N, fields, IDtype, labels=['phi', 'theta', 'halfangle']):
-    
-    # Generate full set of points over the entire sky
-    coordsrand = GenerateRandomPoints(N, labels=labels)
-    # Calculate fraction overlaps for each field
-    database = CalculateIntersections(coordsrand, fields, IDtype, labels=labels)
-    
-    return database
 
 
 def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcalc, 
@@ -341,8 +179,6 @@ def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcal
     df = ArrayMechanics.AnglePointsToPointingsMatrix(df, pointings, angle_coords[0], angle_coords[1], halfangle,
                                                         IDtype = IDtype, Nsample=Nsample, progress=True)
     # Dataframe of field probabilities
-    #arr = np.zeros((len(df), len(pointings))).astype(int) - 1 # -1 so that it's an impossible SFprob value
-    #dfprob = pd.DataFrame(arr, columns=pointings.fieldID.tolist())
     dfprob = pd.DataFrame()
 
     for field in pointings.fieldID:
