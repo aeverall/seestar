@@ -52,8 +52,8 @@ def obsSF_dicttoclass(obsSF_dicts):
         # Load models from DF and SF dictionaries
         DF_model = getattr(StatisticalModels, obsSF_field.DF_model['modelname'])
         SF_model = getattr(StatisticalModels, obsSF_field.SF_model['modelname'])
-        DF_model = DF_model.__new__(DF_model)
-        SF_model = SF_model.__new__(SF_model)
+        DF_model = DF_model()
+        SF_model = SF_model()
         # Set attributes in models
         setattrs(DF_model, **obsSF_field.DF_model)
         setattrs(SF_model, **obsSF_field.SF_model)

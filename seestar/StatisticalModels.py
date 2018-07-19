@@ -64,7 +64,7 @@ class GaussianEM():
                         integral calculated using cubature for which we know the uncertainty
     '''
     
-    def __init__(self, x, y, nComponents, rngx, rngy):
+    def __init__(self, x=np.array(0), y=np.array(0), nComponents=0, rngx=(0,1), rngy=(0,1), runscaling=True):
 
         # Name of the model to used for reloading from dictionary
         self.modelname = self.__class__.__name__
@@ -84,18 +84,18 @@ class GaussianEM():
         # Shape of parameter set (number of components x parameters per component)
         self.param_shape = ()
         
-        # Real space parameters
-        self.x = x
-        self.y = y
-        self.rngx, self.rngy = rngx, rngy
-
-        # Statistics for feature scaling
-        self.mux, self.sx = np.mean(x), np.std(x)
-        self.muy, self.sy = np.mean(y), np.std(y)
-
-        # Scaled parameters
-        self.x_s, self.y_s = feature_scaling(x, y, self.mux, self.muy, self.sx, self.sy)
-        self.rngx_s, self.rngy_s = feature_scaling(np.array(rngx), np.array(rngy), self.mux, self.muy, self.sx, self.sy)
+        # Not run when loading class from dictionary
+        if runscaling:
+            # Real space parameters
+            self.x = x
+            self.y = y
+            self.rngx, self.rngy = rngx, rngy
+            # Statistics for feature scaling
+            self.mux, self.sx = np.mean(x), np.std(x)
+            self.muy, self.sy = np.mean(y), np.std(y)
+            # Scaled parameters
+            self.x_s, self.y_s = feature_scaling(x, y, self.mux, self.muy, self.sx, self.sy)
+            self.rngx_s, self.rngy_s = feature_scaling(np.array(rngx), np.array(rngy), self.mux, self.muy, self.sx, self.sy)
 
         # Function which calculates the actual distribution
         self.distribution = bivGaussMix

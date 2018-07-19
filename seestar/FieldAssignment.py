@@ -301,11 +301,11 @@ def countStars(files):
             - Total number of stars in photometric catalogue
     '''
 
-    print("Counting total number of stars", end="")
+    print "Counting total number of stars",
 
     count = 0
     for filen in files:
-        print(".", end="")
+        print ".",
         extension = os.path.splitext(filen)[-1]
         if extension=='.gz':
             with gzip.open(filen) as f:

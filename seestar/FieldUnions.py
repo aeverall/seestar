@@ -49,7 +49,6 @@ class FieldUnion():
         listofarr = self.ProbMatrix(series)
 
         combos = self.fieldCombos(listofarr)
-        print(len(combos), combos[5])
 
         # Calculate the intersection of each field combo from the overlapping fields
         union_contributions = list(map(self.fieldIntersection, combos))
@@ -215,7 +214,7 @@ class FieldUnion():
         product = functools.reduce(lambda x,y: x*y, listofarr)
 
         # Include correct sign for the union calculation
-        sign = (-1)**(len(listofarr)+1)
+        sign = (-1)**(len(listofarr     )+1)
 
         return product*sign
 

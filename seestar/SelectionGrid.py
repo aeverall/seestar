@@ -935,7 +935,7 @@ def PoissonLikelihood(points,
         elif datatype == "photo": nComponents = 2
 
         # Generate the model
-        model = StatisticalModels.GaussianEM(x, y, nComponents, mag_range, col_range)
+        model = StatisticalModels.GaussianEM(x=x, y=y, nComponents=nComponents, rngx=mag_range, rngy=col_range)
         #model = StatisticalModels.GaussianMM(x, y, nComponents, mag_range, col_range)
         # Add in SFxDF<DF constraint for the spectrograph distribution
         if datatype == "spectro": 
