@@ -40,10 +40,40 @@ from seestar import FieldAssignment
 
 class FieldUnion():
 
-    def __init__(self, overlapdata):
+    def __init__(self):
 
-        self.Overlaps = overlapdata
+        pass
+
+    def __call__(self, series):
+
+        listofarr = self.ProbMatrix(series)
+
+        combos = self.fieldCombos(listofarr)
+        print(len(combos), combos[5])
+
+        # Calculate the intersection of each field combo from the overlapping fields
+        union_contributions = list(map(self.fieldIntersection, combos))
+
+        # Find the sum of contributions from each combination intersection to the total union
+        union = sum(union_contributions)
+
+        return union
+
+    def ProbMatrix(self, series):
+
+        # Convert series to list
+        lst = list(series)
+
+        # Length of longest element
+        length = len(sorted(lst,key=len, reverse=True)[0])
+
+        # Extend all components to the right length
+        arr=np.array([xi+[0]*(length-len(xi)) for xi in lst])
         
+        # Convert to list of vectors
+        listofarr=[arr[:,i] for i in range(arr.shape[1])]
+
+        return listofarr
 
     def pointsListMap(self, sf, row):
 
@@ -161,7 +191,7 @@ class FieldUnion():
             
         return combos
 
-    def fieldIntersection(self, list_of_tuples):
+    def fieldIntersection(self, listofarr):
 
         '''
         fieldIntersection - Calculate the intersection of any group of fields
@@ -181,42 +211,13 @@ class FieldUnion():
         '''
 
         # Calculate the product of all probabilities
-        sf_value = [tup[0] for tup in list_of_tuples]
-        product = functools.reduce(lambda x,y: x*y, sf_value)
-
-        # Calculate the fraction of overlap between fields
-        fieldIDs = map(lambda tup: tup[1], list_of_tuples)
-        f = self.FractionOverlap(fieldIDs)
-        # Currently this just returns 1 but we need to calculate this
+        #sf_value = [tup[0] for tup in list_of_tuples]
+        product = functools.reduce(lambda x,y: x*y, listofarr)
 
         # Include correct sign for the union calculation
-        sign = (-1)**(len(list_of_tuples)+1)
+        sign = (-1)**(len(listofarr)+1)
 
         return product*sign
-
-    def FractionOverlap(self, fieldIDs):
-
-        '''
-        FieldOverlap - Calculation of the fraction of N fields which are overlapping.
-
-        Parameters
-        ----------
-            l, b - list of floats
-                - Galactic coordinates of fields for which we're calculating the overlap
-
-            SA - float
-                - The solid angle of the fields 
-
-        Returns
-        -------
-            ratio - float
-                - The ratio of the overlap area of the fields to the total area of both fields
-        '''
-
-        try: ratio = self.Overlaps.loc[str(fieldIDs)].fraction
-        except KeyError: ratio = 0.
-
-        return ratio
 
 
 
@@ -285,13 +286,6 @@ def CreateIntersectionDatabase(N, fields, IDtype, labels=['phi', 'theta', 'halfa
     database = CalculateIntersections(coordsrand, fields, IDtype, labels=labels)
     
     return database
-
-
-class MatrixUnion():
-
-    def __init__(self, overlapdata):
-
-        self.Overlaps = overlapdata
 
 
 def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcalc, 
@@ -371,7 +365,7 @@ def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcal
         else: array[condition] = prob
         # Add column to dfprob dataframe
         dfprob[field] = array
-
+    # dfprob now has a column for every field with pvalues (or -1s)
 
     if test:
         df['col'] = col_arr
