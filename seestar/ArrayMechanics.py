@@ -714,7 +714,7 @@ def PointsInPointings(df, pointings):
 
 def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, halfangle, 
                                 IDtype = str, Nsample = 10000, 
-                                progress=False):
+                                progress=False, outString=""):
 
     '''
     AnglePointsToPointingsMatrix - Adds a column to the df with the number of the field pointing
@@ -767,7 +767,8 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, halfangle,
     # Iterate over portions of size, Nsample to constrain memory usage.
     for i in range(int(len(df)/Nsample) + 1):
 
-        if progress: sys.stdout.write("\r"+str(i)+"..."+str(i*Nsample)+'/'+str(len(df)))
+        if progress: sys.stdout.write("\r"+outString+"..."+str(i*Nsample)+'/'+str(len(df))+"        ")
+        #sys.stdout.write("\r"+outString+"..."+str(i)+"..."+str(i*Nsample)+'/'+str(len(df)))
         dfi = df.iloc[i*Nsample:(i+1)*Nsample]
 
         pointings = pointings.reset_index(drop=True)

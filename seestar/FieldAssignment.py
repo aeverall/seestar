@@ -191,17 +191,21 @@ class FieldAssignment():
                 projected = round((time.time() - start)*self.total/((starsanalysed+1)*3600), 3)
                 hours = int(projected)
                 minutes = int((projected - hours)*60)
-                sys.stdout.write('\r'+'allsky file: '+fname+'  '+\
-                               'Completion: '+str(starsanalysed)+'/'+str(self.total)+'('+
-                               str(perc)+'%)  Time='+str(duration)+'m  Projected: '+str(hours)+'h'+str(minutes)+'m          ')
-                sys.stdout.flush()
+                outString = '\r'+'allsky file: '+fname+'  '+\
+                               'Completion: '+str(starsanalysed)+'/'+str(self.total)+'('+\
+                               str(perc)+'%)  Time='+str(duration)+'m  Projected: '+str(hours)+'h'+str(minutes)+'m'
+                #sys.stdout.write('\r'+'allsky file: '+fname+'  '+\
+                #               'Completion: '+str(starsanalysed)+'/'+str(self.total)+'('+
+                #               str(perc)+'%)  Time='+str(duration)+'m  Projected: '+str(hours)+'h'+str(minutes)+'m          ')
+                #sys.stdout.flush()
                     
                 # Column header labels in pointings
                 phi, theta, halfangle = self.fileinfo.field_coords[1:4]
                     
                 df_allsky = ArrayMechanics.\
                             AnglePointsToPointingsMatrix(df_allsky, self.pointings, phi, theta, halfangle,
-                                                        IDtype = self.IDtype, Nsample = N_iterate)
+                                                        IDtype = self.IDtype, Nsample = N_iterate, 
+                                                        progress=True, outString=outString)
                 
                 for field in self.pointings[self.fileinfo.field_coords[0]]:
 
