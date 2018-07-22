@@ -236,7 +236,6 @@ class SFGenerator():
             print('Calculating union contribution...')
             FUInstance = FieldUnions.FieldUnion()
             catalogue['union'] = FUInstance(catalogue.SFprob)
-            #catalogue['union'] = catalogue.field_info.map(FUInstance.fieldUnion)
             print('...done')
         elif self.fileinfo.style == 'as':
             npixel = len(self.pointings)
