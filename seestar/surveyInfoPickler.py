@@ -79,7 +79,7 @@ class surveyInformation():
         Demo()
 
         # testFiles checks whether the information given is accurate
-        # If this is the first time running, pickle files and overlap_fname shouldn't exist
+        # If this is the first time running, pickle files shouldn't exist
         Demo.testFiles()
 
         # Pickle the file information
@@ -125,13 +125,14 @@ class surveyInformation():
         self.iso_pickle_path = os.path.join(self.survey_folder, self.iso_folder, self.iso_pickle_file)
         self.iso_interp_file = ''
 
-        self.overlap_fname = ''
-
         self.fileinfo_path = ''
 
         self.photo_field_files = ['']
         self.photo_field_paths = ['']
         self.photo_field_starcount = {}
+
+        self.photo_model = ()
+        self.spectro_model = ()
 
         if path is not None:
             path = os.path.abspath(path)
@@ -148,7 +149,6 @@ class surveyInformation():
 
         self.sf_pickle_path = os.path.join(self.survey_folder, self.sf_pickle_fname)
         self.obsSF_pickle_path = os.path.join(self.survey_folder, self.obsSF_pickle_fname)
-        self.overlap_path = os.path.join(self.survey_folder, self.overlap_fname)
 
         self.iso_data_path = os.path.join(self.survey_folder, self.iso_folder, self.iso_data_file)
         self.iso_interp_path = os.path.join(self.survey_folder, self.iso_folder, self.iso_interp_file)
@@ -174,7 +174,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
 {label}()
 
 # testFiles checks whether the information given is accurate
-# If this is the first time running, pickle files and overlap_fname shouldn't exist
+# If this is the first time running, pickle files shouldn't exist
 {label}.testFiles()
 
 # Pickle the file information
@@ -395,9 +395,6 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
             good = False
         if not os.path.exists(self.obsSF_pickle_path):
             print("The path to your selection function pickled instance, obsSF_pickle_path, does not exist: %s" % self.obsSF_pickle_path)
-            good = False
-        if not os.path.exists(self.overlap_path):
-            print("The path to your selection function pickled instance, obsSF_pickle_path, does not exist: %s" % self.overlap_path)
             good = False
         if not good: 
             print("^ These files should exist for an already made selection function. If you're starting from scratch, ignore this!")

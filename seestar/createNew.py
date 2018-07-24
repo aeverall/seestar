@@ -114,8 +114,10 @@ def create():
 	FileInfo.iso_folder = "isochrones"
 	FileInfo.iso_data_file = "iso_fulldata.pickle" 
 	FileInfo.iso_interp_file = "isochrone_interpolantinstances.pickle"
-	# File location for storing information on area overlap of individual fields
-	FileInfo.overlap_fname = folder + '_fieldoverlapdatabase'
+
+	# Default Gaussian Mixture model with 1 or 2 components
+	FileInfo.spectro_model = ('GMM', 1)
+	FileInfo.photo_model = ('GMM', 2)	
 
 	# Run the __call__ routine to setup the file locations
 	FileInfo()
