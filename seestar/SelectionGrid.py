@@ -46,7 +46,7 @@ import pandas as pd
 import healpy as hp
 from itertools import product
 import re, dill, pickle, multiprocessing
-import cProfile, pstats
+import cProfile, pstats, time
 import sys, os
 from scipy.interpolate import RegularGridInterpolator as RGI
 
@@ -148,7 +148,10 @@ class SFGenerator():
                 SFInstanceClasses.setattrs(self.instanceSF, **instanceSF_dict)
                 SFInstanceClasses.setattrs(self.instanceIMFSF, **instanceIMFSF_dict)
 
-                self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
+                # Can't set cm_limits because they use absolute magnitude
+                self.cm_limits = None
+                #self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
+
             else:
 
                 print('Creating Distance Age Metalicity interpolants...')
@@ -161,7 +164,11 @@ class SFGenerator():
                         pickle.dump((instanceSF_dict, instanceIMFSF_dict, agerng, mhrng, magrng, colrng), handle)
                 self.instanceSF=instanceSF
                 self.instanceIMFSF=instanceIMFSF
-                self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
+                
+                # Can't set cm_limits because they use absolute magnitude
+                self.cm_limits = None
+                #self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
+                
                 print("...done.\n")
         else: # Still need cm_limits for obsSF
             self.cm_limits = None
@@ -379,6 +386,7 @@ class SFGenerator():
                 Dictionary of selection function classes for observed coordinates
 
         '''
+        start = time.time()
         multiCore = False
         if multiCore:
             # Create processor pools for multiprocessing
@@ -444,15 +452,16 @@ class SFGenerator():
             fieldL = len(field_list)
             for field in field_list:
 
-                sys.stdout.write("\rCurrent field in col-mag calculation: %s, %d/%d" % (str(field), fieldN, fieldL))
-                sys.stdout.flush()
-
                 obsSF_field, field = iterateField(self.spectro_df, self.photo_path, field,
                                                 self.photo_tag, self.photo_coords, self.pointings.loc[field],
                                                 self.cm_limits)
                 obsSF_dicts[field] = vars(obsSF_field)
 
                 fieldN+=1
+                tnow = (time.time() - start)/60.
+                tleft = tnow*(float(fieldL)/fieldN - 1)
+                sys.stdout.write("\rCurrent field in col-mag calculation: %s, %d/%d, Time: %dm, Left: %dm" % (str(field), fieldN, fieldL, int(tnow), int(tleft)))
+                sys.stdout.flush()
 
         return obsSF_dicts
 
@@ -527,6 +536,7 @@ class SFGenerator():
 
         agerng = IsoCalculator.agerng
         mhrng = IsoCalculator.mhrng
+        # This is the ABSOLUTE magnitude range
         magrng = IsoCalculator.magrng
         colrng = IsoCalculator.colrng
 
@@ -779,12 +789,12 @@ def iterateField(spectro, photo_path, field, photo_tag, photo_coords, fieldpoint
         # Use given limits to determine boundaries of dataset
         # apparent mag upper bound
         if fieldpointing.Magmin == "NoLimit":
-            if cm_limits is None: mag_min = np.min(spectro_points.appC) - 2
+            if cm_limits is None: mag_min = np.min(spectro_points.appC) - 1
             else: mag_min = cm_limits[0]
         else: mag_min = fieldpointing.Magmin
         # apparent mag lower bound
         if fieldpointing.Magmax == "NoLimit":
-            if cm_limits is None: mag_max = np.max(spectro_points.appC) + 2
+            if cm_limits is None: mag_max = np.max(spectro_points.appC) + 1
             else: mag_max = cm_limits[1]
         else: mag_max = fieldpointing.Magmax
         # colour uppper bound
@@ -832,6 +842,18 @@ def iterateField(spectro, photo_path, field, photo_tag, photo_coords, fieldpoint
     else:
         # There are no stars on the field plate
         instanceSF = SFInstanceClasses.observableSF(field)
+
+        # Create class instances so that the models will still work.
+        DF_model = StatisticalModels.Empty()
+        SF_model = StatisticalModels.Empty()
+
+        SFInstanceClasses.setattrs(instanceSF,
+                                    DF_model = vars(DF_model),
+                                    SF_model = vars(SF_model),
+                                    DF_magrange = (0,0),
+                                    DF_colrange = (0,0),
+                                    SF_magrange = (0,0),
+                                    SF_colrange = (0,0))
         
 
     return instanceSF, field

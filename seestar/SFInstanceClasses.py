@@ -124,12 +124,12 @@ class observableSF():
                 - Selection Function values for x and y coordinates
         '''
         x, y = xy
-        SF = self.SF_model(*(x, y))
+        SFval = self.SF_model(*(x, y))
 
-        SF[(x<self.SF_magrange[0])|(x>self.SF_magrange[1])|\
+        SFval[(x<self.SF_magrange[0])|(x>self.SF_magrange[1])|\
             (y<self.SF_colrange[0])|(y>self.SF_colrange[1])] = 0.
 
-        return SF
+        return SFval
 
     def save(self, filename):
 

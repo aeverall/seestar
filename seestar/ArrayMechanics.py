@@ -764,12 +764,15 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, halfangle,
     df = df.copy()
     if 'points' in list(df): df.drop('points', axis=1, inplace=True)
 
+    iterated=0
+
     # Iterate over portions of size, Nsample to constrain memory usage.
     for i in range(int(len(df)/Nsample) + 1):
 
-        if progress: sys.stdout.write("\r"+outString+"..."+str(i*Nsample)+'/'+str(len(df))+"        ")
-        #sys.stdout.write("\r"+outString+"..."+str(i)+"..."+str(i*Nsample)+'/'+str(len(df)))
         dfi = df.iloc[i*Nsample:(i+1)*Nsample]
+
+        iterated +=  len(dfi)
+        if progress: sys.stdout.write("\r"+outString+"..."+str(iterated)+'/'+str(len(df))+"        ")
 
         pointings = pointings.reset_index(drop=True)
         pointings = pointings.copy()

@@ -88,7 +88,7 @@ class FieldAssignment():
             self.photometric_files = photometric_files
 
             # Total number of stars in database
-            self.total = countStars(photometric_files)
+            self.total = 470000000#countStars(photometric_files)
             
             # Setup pointings dataframe containing unique field positions
             pointings_path = self.fileinfo.field_path
@@ -100,11 +100,11 @@ class FieldAssignment():
             self.IDtype = self.fileinfo.field_dtypes[0]
 
             # Number of stars to be imported at once
-            self.N_import = importLimit(photometric_files)
+            self.N_import = importLimit(photometric_files, proportion=0.05)
 
             # Number of stars to be iterated over
             Npoint = len(pointings)
-            self.N_iter = iterLimit(Npoint)
+            self.N_iter = iterLimit(Npoint, proportion=0.05)
 
             # Output information on processing
             print("Total number of stars %d." % self.total)
@@ -176,28 +176,15 @@ class FieldAssignment():
         # Count dictionary for number of stars per field (all entries start at 0)
         starcount = {field: 0 for field in self.pointings[self.fileinfo.field_coords[0]]}
         total = 0
+        outString = ""
 
         # Iterate over full directory files
         for filename in self.photometric_files:
             
-            for df_allsky in pd.read_csv(filename, chunksize=N_import):
+            for df_allsky in pd.read_csv(filename, chunksize=N_import, low_memory=False):
             
                 starsanalysed += len(df_allsky)
                 fname = filename.split('/')[-1]
-
-                # Updates of progress continuously output
-                perc = round((starsanalysed/float(self.total))*100, 3)
-                duration = round((time.time() - start)/60., 1)
-                projected = round((time.time() - start)*self.total/((starsanalysed+1)*3600), 3)
-                hours = int(projected)
-                minutes = int((projected - hours)*60)
-                outString = '\r'+'allsky file: '+fname+'  '+\
-                               'Completion: '+str(starsanalysed)+'/'+str(self.total)+'('+\
-                               str(perc)+'%)  Time='+str(duration)+'m  Projected: '+str(hours)+'h'+str(minutes)+'m'
-                #sys.stdout.write('\r'+'allsky file: '+fname+'  '+\
-                #               'Completion: '+str(starsanalysed)+'/'+str(self.total)+'('+
-                #               str(perc)+'%)  Time='+str(duration)+'m  Projected: '+str(hours)+'h'+str(minutes)+'m          ')
-                #sys.stdout.flush()
                     
                 # Column header labels in pointings
                 phi, theta, halfangle = self.fileinfo.field_coords[1:4]
@@ -207,7 +194,11 @@ class FieldAssignment():
                                                         IDtype = self.IDtype, Nsample = N_iterate, 
                                                         progress=True, outString=outString)
                 
+                field_i=0
                 for field in self.pointings[self.fileinfo.field_coords[0]]:
+                    field_i += 1
+                    # Write the number of fields which have been saved so far
+                    sys.stdout.write('\r'+outString+'...Saving: '+str(field_i)+'/'+str(len(self.pointings)))
 
                     # Check which rows are assigned to the right field
                     df_bool = df_allsky.points.apply(lambda x: field in x)
@@ -220,6 +211,16 @@ class FieldAssignment():
                     df.drop('points', inplace=True, axis=1)
                     
                     df.to_csv(open_files[field], index=False, header=False)
+
+                # Updates of progress continuously output
+                perc = round((starsanalysed/float(self.total))*100, 3)
+                duration = round((time.time() - start)/60., 1)
+                projected = round((time.time() - start)*self.total/((starsanalysed+1)*3600), 3)
+                hours = int(projected)
+                minutes = int((projected - hours)*60)
+                outString = '\r'+'File: '+fname+'  '+\
+                               'Complete: '+str(starsanalysed)+'/'+str(self.total)+'('+\
+                               str(perc)+'%)  Time: '+str(duration)+'m  Projected: '+str(hours)+'h'+str(minutes)+'m'
 
         print("\nTotal stars assigned to fields: %d.\n\
 Dictionary of stars per field in fileinfo.photo_field_starcount." % total)
