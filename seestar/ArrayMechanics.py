@@ -772,7 +772,7 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, halfangle,
         dfi = df.iloc[i*Nsample:(i+1)*Nsample]
 
         iterated +=  len(dfi)
-        if progress: sys.stdout.write("\r"+outString+"..."+str(iterated)+'/'+str(len(df))+"        ")
+        if progress: sys.stdout.write("\r"+outString+"...Assigning: "+str(iterated)+'/'+str(len(df))+"        ")
 
         pointings = pointings.reset_index(drop=True)
         pointings = pointings.copy()
