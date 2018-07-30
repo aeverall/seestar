@@ -42,7 +42,7 @@ setup(
 
     packages = ['seestar'],
 
-    classifiers = CLASSIFIERS
+    classifiers = CLASSIFIERS,
 
     # metadata for upload to PyPI
     author="Andrew Everall",
