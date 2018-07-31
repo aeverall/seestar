@@ -49,7 +49,6 @@ class FieldUnion():
         listofarr = self.ProbMatrix(series)
 
         combos = self.fieldCombos(listofarr)
-        print(len(combos), combos[5])
 
         # Calculate the intersection of each field combo from the overlapping fields
         union_contributions = list(map(self.fieldIntersection, combos))
@@ -121,13 +120,13 @@ class FieldUnion():
         product = functools.reduce(lambda x,y: x*y, listofarr)
 
         # Include correct sign for the union calculation
-        sign = (-1)**(len(listofarr)+1)
+        sign = (-1)**(len(listofarr     )+1)
 
         return product*sign
 
 
 def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcalc, 
-                    IDtype = str, Nsample = 10000, test=False):
+                    IDtype = str, Nsample = 10000, test=False, progress=True):
 
     '''
     AnglePointsToPointingsMatrix - Adds a column to the df with the number of the field pointing
@@ -177,64 +176,78 @@ def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcal
 
     pointings.rename(index=str, columns=dict(zip(point_coords, angle_coords)), inplace=True)
     df = ArrayMechanics.AnglePointsToPointingsMatrix(df, pointings, angle_coords[0], angle_coords[1], halfangle,
-                                                        IDtype = IDtype, Nsample=Nsample, progress=True)
-    # Dataframe of field probabilities
-    dfprob = pd.DataFrame()
+                                                        IDtype = IDtype, Nsample=Nsample, progress=progress)
+    print("")
 
-    for field in pointings.fieldID:
-    	
-        # Condition: Boolean series - field is in the points list
-        condition = np.array(df.points.map(lambda points: field in points))
-        # Create array for probability values
-        array = np.zeros(len(df)) - 1
-        # Calculate probabilities
-        if test: 
-            prob, col, mag = SFcalc(field, df[condition])
-            col_arr = np.zeros(len(df)) - 1
-            mag_arr = np.zeros(len(df)) - 1
-            col_arr[condition] = col
-            mag_arr[condition] = mag
-        else: prob = SFcalc(field, df[condition])
-        # Set probability values in array
-        if isinstance(prob, pd.Series):
-            array[condition] = prob.values
-        else: array[condition] = prob
-        # Add column to dfprob dataframe
-        dfprob[field] = array
-    # dfprob now has a column for every field with pvalues (or -1s)
+    iterated=0
 
-    if test:
-        df['col'] = col_arr
-        df['mag'] = mag_arr
+    # Iterate over portions of size, Nsample to constrain memory usage.
+    for it in range(int(len(df)/Nsample) + 1):
 
-    # Remove -1 entries from the lists
-    def filtering(x, remove):
-        x = [elem for elem in x if elem!=remove]
-        return x
-    # Convert SFprob values into list of values in dataframe
-    arr = np.array(dfprob)
-    # Do filtering for fields
-    listoflists = arr.tolist()
-    listoflists = [filtering(x, -1) for x in listoflists]
+        dfi = df.iloc[it*Nsample:(it+1)*Nsample].copy()
 
-    # Lists of SF probabilities
-    SFprob = pd.DataFrame(pd.Series(listoflists), columns=['SFprob'])
+        iterated +=  len(dfi)
+        if progress: sys.stdout.write("\rCalculating: "+str(iterated)+'/'+str(len(df))+"        ")
 
-    # zip datatypes together - tupes of (sf, field)
-    field_info = [list(zip(SFprob.SFprob.iloc[i], df.points.iloc[i])) for i in range(len(df))]
-    field_info = pd.DataFrame(pd.Series(field_info), columns=['field_info'])
+        # Dataframe of field probabilities
+        dfprob = pd.DataFrame()
+        for field in pointings.fieldID:
+        	
+            # Condition: Boolean series - field is in the points list
+            condition = np.array(dfi.points.map(lambda points: field in points))
+            # Create array for probability values
+            array = np.zeros(len(dfi)) - 1
+            # Calculate probabilities
+            if test: 
+                prob, col, mag = SFcalc(field, dfi[condition])
+                col_arr = np.zeros(len(dfi)) - 1
+                mag_arr = np.zeros(len(dfi)) - 1
+                col_arr[condition] = col
+                mag_arr[condition] = mag
+            else: prob = SFcalc(field, dfi[condition])
+            # Set probability values in array
+            if isinstance(prob, pd.Series):
+                array[condition] = prob.values
+            else: array[condition] = prob
+            # Add column to dfprob dataframe
+            dfprob[field] = array
+        # dfprob now has a column for every field with pvalues (or -1s)
 
-    # Reset index to merge on position then bring index back
-    if 'index' in list(df): df.drop('index', axis=1, inplace=True)
-    df.reset_index(inplace=True)
-    df = df.merge(SFprob, how='inner', right_index=True, left_index=True)
-    df = df.merge(field_info, how='inner', right_index=True, left_index=True)
-    df.index = df['index']
-    df.drop('index', axis=1, inplace=True)
+        if test:
+            dfi['col'] = col_arr
+            dfi['mag'] = mag_arr
 
-    if test:
-        df['col'] = col_arr
-        df['mag'] = mag_arr
-        return df, col_arr, mag_arr
+        # Remove -1 entries from the lists
+        def filtering(x, remove):
+            x = [elem for elem in x if elem!=remove]
+            return x
+        # Convert SFprob values into list of values in dataframe
+        arr = np.array(dfprob)
+        # Do filtering for fields
+        listoflists = arr.tolist()
+        listoflists = [filtering(x, -1) for x in listoflists]
 
-    return df
+        # Lists of SF probabilities
+        SFprob = pd.DataFrame(pd.Series(listoflists), columns=['SFprob'])
+
+        # zip datatypes together - tupes of (sf, field)
+        field_info = [list(zip(SFprob.SFprob.iloc[i], dfi.points.iloc[i])) for i in range(len(dfi))]
+        field_info = pd.DataFrame(pd.Series(field_info), columns=['field_info'])
+
+        # Reset index to merge on position then bring index back
+        if 'index' in list(dfi): dfi.drop('index', axis=1, inplace=True)
+        dfi.reset_index(inplace=True)
+        dfi = dfi.merge(SFprob, how='inner', right_index=True, left_index=True)
+        dfi = dfi.merge(field_info, how='inner', right_index=True, left_index=True)
+        dfi.index = dfi['index']
+        dfi.drop('index', axis=1, inplace=True)
+
+        if test:
+            dfi['col'] = col_arr
+            dfi['mag'] = mag_arr
+            return dfi, col_arr, mag_arr
+
+        if it == 0: newdf = dfi
+        else: newdf = pd.concat((newdf, dfi))
+
+    return newdf

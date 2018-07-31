@@ -52,8 +52,8 @@ def obsSF_dicttoclass(obsSF_dicts):
         # Load models from DF and SF dictionaries
         DF_model = getattr(StatisticalModels, obsSF_field.DF_model['modelname'])
         SF_model = getattr(StatisticalModels, obsSF_field.SF_model['modelname'])
-        DF_model = DF_model.__new__(DF_model)
-        SF_model = SF_model.__new__(SF_model)
+        DF_model = DF_model(runscaling=False)
+        SF_model = SF_model(runscaling=False)
         # Set attributes in models
         setattrs(DF_model, **obsSF_field.DF_model)
         setattrs(SF_model, **obsSF_field.SF_model)
@@ -124,12 +124,12 @@ class observableSF():
                 - Selection Function values for x and y coordinates
         '''
         x, y = xy
-        SF = self.SF_model(*(x, y))
+        SFval = self.SF_model(*(x, y))
 
-        SF[(x<self.SF_magrange[0])|(x>self.SF_magrange[1])|\
+        SFval[(x<self.SF_magrange[0])|(x>self.SF_magrange[1])|\
             (y<self.SF_colrange[0])|(y>self.SF_colrange[1])] = 0.
 
-        return SF
+        return SFval
 
     def save(self, filename):
 

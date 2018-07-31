@@ -46,7 +46,7 @@ import pandas as pd
 import healpy as hp
 from itertools import product
 import re, dill, pickle, multiprocessing
-import cProfile, pstats
+import cProfile, pstats, time
 import sys, os
 from scipy.interpolate import RegularGridInterpolator as RGI
 
@@ -100,7 +100,7 @@ class SFGenerator():
     def __init__(self, pickleFile):
 
         # Check what components of the selection function already exist
-        gen_intsf, use_intsf, gen_obssf, use_obssf, use_isointerp, use_overlap = path_check(pickleFile)
+        gen_intsf, use_intsf, gen_obssf, use_obssf, use_isointerp = path_check(pickleFile)
 
         # Load survey information from pickleFile
         fileinfo = surveyInfoPickler.surveyInformation(pickleFile)
@@ -125,6 +125,9 @@ class SFGenerator():
         self.isocolmag_pickle = fileinfo.iso_interp_path
         self.use_isointerp = use_isointerp
 
+        self.photo_model = fileinfo.photo_model
+        self.spectro_model = fileinfo.spectro_model
+
         # Import the dataframe of pointings        
         pointings = self.ImportDataframe(field_path, self.field_coords, 
                                          data_source='field')
@@ -137,9 +140,9 @@ class SFGenerator():
             if use_intsf: # Use a premade intrinsic selection function
                 # Unpickle survey selection function
                 print("Unpickling survey selection function...")
-                with open(sf_pickle_path, "rb") as input:
+                with open(sf_pickle_path, "rb") as f:
                     instanceSF_dict, instanceIMFSF_dict, self.agerng, self.mhrng, \
-                    magrng, colrng = pickle.load(input)
+                    magrng, colrng = pickle.load(f)
                 print("...done.\n") 
 
                 # Load class instance from saved dictionary
@@ -148,7 +151,10 @@ class SFGenerator():
                 SFInstanceClasses.setattrs(self.instanceSF, **instanceSF_dict)
                 SFInstanceClasses.setattrs(self.instanceIMFSF, **instanceIMFSF_dict)
 
-                self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
+                # Can't set cm_limits because they use absolute magnitude
+                self.cm_limits = None
+                #self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
+
             else:
 
                 print('Creating Distance Age Metalicity interpolants...')
@@ -161,7 +167,11 @@ class SFGenerator():
                         pickle.dump((instanceSF_dict, instanceIMFSF_dict, agerng, mhrng, magrng, colrng), handle)
                 self.instanceSF=instanceSF
                 self.instanceIMFSF=instanceIMFSF
-                self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
+                
+                # Can't set cm_limits because they use absolute magnitude
+                self.cm_limits = None
+                #self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
+                
                 print("...done.\n")
         else: # Still need cm_limits for obsSF
             self.cm_limits = None
@@ -171,8 +181,8 @@ class SFGenerator():
                 # Once Colour Magnitude selection functions have been created
                 # Unpickle colour-magnitude interpolants
                 print("Unpickling colour-magnitude interpolant dictionaries...")
-                with open(obsSF_pickle_path, "rb") as input:
-                    obsSF_dicts = pickle.load(input)
+                with open(obsSF_pickle_path, "rb") as f:
+                    obsSF_dicts = pickle.load(f)
                 print("...done.\n")
             else: # Create new observable selection function
                 print('Importing data for Colour-Magnitude Field interpolants...')
@@ -231,8 +241,7 @@ class SFGenerator():
                                                     SFcalc, IDtype=self.fieldlabel_type)
             print('...done')
             
-            # The SF probabilities and coordinates of overlapping fields are used to calculate
-            # the field union.
+            # The SF probabilities are used to calculate the field union.
             print('Calculating union contribution...')
             FUInstance = FieldUnions.FieldUnion()
             catalogue['union'] = FUInstance(catalogue.SFprob)
@@ -379,6 +388,7 @@ class SFGenerator():
                 Dictionary of selection function classes for observed coordinates
 
         '''
+        start = time.time()
         multiCore = False
         if multiCore:
             # Create processor pools for multiprocessing
@@ -442,17 +452,21 @@ class SFGenerator():
             # Field numbering to show progress
             fieldN = 0
             fieldL = len(field_list)
+            tnow = 0
+            tleft = 0
             for field in field_list:
 
-                sys.stdout.write("\rCurrent field in col-mag calculation: %s, %d/%d" % (str(field), fieldN, fieldL))
+                fieldN+=1
+                sys.stdout.write("\rCurrent field in col-mag calculation: %s, %d/%d, Time: %dm, Left: %dm" % (str(field), fieldN, fieldL, int(tnow), int(tleft)))
                 sys.stdout.flush()
 
                 obsSF_field, field = iterateField(self.spectro_df, self.photo_path, field,
                                                 self.photo_tag, self.photo_coords, self.pointings.loc[field],
-                                                self.cm_limits)
+                                                cm_limits=self.cm_limits, spectro_model=self.spectro_model, photo_model=self.photo_model)
                 obsSF_dicts[field] = vars(obsSF_field)
 
-                fieldN+=1
+                tnow = (time.time() - start)/60.
+                tleft = tnow*(float(fieldL)/fieldN - 1)
 
         return obsSF_dicts
 
@@ -527,6 +541,7 @@ class SFGenerator():
 
         agerng = IsoCalculator.agerng
         mhrng = IsoCalculator.mhrng
+        # This is the ABSOLUTE magnitude range
         magrng = IsoCalculator.magrng
         colrng = IsoCalculator.colrng
 
@@ -704,7 +719,8 @@ class obsMultiFunction():
         return iterateField(self.spectro_df, self.photo_path, field, self.photo_tag, 
                             self.photo_coords, self.pointings.loc[field], self.cm_limits)
     
-def iterateField(spectro, photo_path, field, photo_tag, photo_coords, fieldpointing, cm_limits=None):
+def iterateField(spectro, photo_path, field, photo_tag, photo_coords, fieldpointing, cm_limits=None, 
+                    spectro_model=('GMM', 1), photo_model=('GMM', 2)):
 
     '''
     iterateField- Generates a selection function instance for a given field
@@ -779,12 +795,12 @@ def iterateField(spectro, photo_path, field, photo_tag, photo_coords, fieldpoint
         # Use given limits to determine boundaries of dataset
         # apparent mag upper bound
         if fieldpointing.Magmin == "NoLimit":
-            if cm_limits is None: mag_min = np.min(spectro_points.appC) - 2
+            if cm_limits is None: mag_min = np.min(spectro_points.appC) - 1
             else: mag_min = cm_limits[0]
         else: mag_min = fieldpointing.Magmin
         # apparent mag lower bound
         if fieldpointing.Magmax == "NoLimit":
-            if cm_limits is None: mag_max = np.max(spectro_points.appC) + 2
+            if cm_limits is None: mag_max = np.max(spectro_points.appC) + 1
             else: mag_max = cm_limits[1]
         else: mag_max = fieldpointing.Magmax
         # colour uppper bound
@@ -813,11 +829,11 @@ def iterateField(spectro, photo_path, field, photo_tag, photo_coords, fieldpoint
         DF_model, DF_magrange, DF_colrange = CreateInterpolant(photo_points,
                                                                      (mag_min, mag_max), (col_min, col_max),
                                                                      range_limited=True,
-                                                                     datatype = "photo")
+                                                                     datatype = "photo", modelinfo=photo_model)
         # Interpolate for spectro data - Calculates the selection function
         SF_model, SF_magrange, SF_colrange = CreateInterpolant(spectro_points,
                                                               (mag_min, mag_max), (col_min, col_max),
-                                                              datatype = "spectro", photoDF=DF_model)
+                                                              datatype = "spectro", photoDF=DF_model, modelinfo=spectro_model)
 
         # Store information inside an SFInstanceClasses.observableSF instance where the selection function is calculated.
         instanceSF = SFInstanceClasses.observableSF(field)
@@ -832,6 +848,18 @@ def iterateField(spectro, photo_path, field, photo_tag, photo_coords, fieldpoint
     else:
         # There are no stars on the field plate
         instanceSF = SFInstanceClasses.observableSF(field)
+
+        # Create class instances so that the models will still work.
+        DF_model = StatisticalModels.Empty()
+        SF_model = StatisticalModels.Empty()
+
+        SFInstanceClasses.setattrs(instanceSF,
+                                    DF_model = vars(DF_model),
+                                    SF_model = vars(SF_model),
+                                    DF_magrange = (0,0),
+                                    DF_colrange = (0,0),
+                                    SF_magrange = (0,0),
+                                    SF_colrange = (0,0))
         
 
     return instanceSF, field
@@ -839,7 +867,7 @@ def iterateField(spectro, photo_path, field, photo_tag, photo_coords, fieldpoint
 def CreateInterpolant(points,
                       mag_range, col_range,
                       Grid = False, range_limited=False,
-                      datatype="", photoDF=None):
+                      datatype="", photoDF=None, modelinfo=('GMM', 1)):
 
     '''
     CreateInterpolant - Creates an interpolant in colour-magnitude space for the given set
@@ -879,11 +907,11 @@ def CreateInterpolant(points,
         if datatype == "photo":
             model = PoissonLikelihood(points, mag_range, col_range,
                                         'appC', 'Colour',
-                                        datatype=datatype)
+                                        datatype=datatype, modelinfo=modelinfo)
         elif datatype == "spectro":
             model = PoissonLikelihood(points, mag_range, col_range,
                                         'appC', 'Colour',
-                                        datatype=datatype, photoDF=photoDF)            
+                                        datatype=datatype, photoDF=photoDF, modelinfo=modelinfo)
 
         return model, mag_range, col_range
 
@@ -898,7 +926,7 @@ def CreateInterpolant(points,
 def PoissonLikelihood(points,
                      mag_range, col_range,
                      mag_label, col_label,
-                     datatype="", photoDF=None):
+                     datatype="", photoDF=None, modelinfo=('GMM', 1)):
     '''
     PoissonLikelihood
 
@@ -922,16 +950,15 @@ def PoissonLikelihood(points,
     x = getattr(points, mag_label)
     y = getattr(points, col_label)
 
-    modelType = 'GMM'
+    modelType = modelinfo[0]
 
     if modelType == 'GMM':
 
         # Number of Gaussian components
-        if datatype == "spectro": nComponents = 1
-        elif datatype == "photo": nComponents = 2
+        nComponents = modelinfo[1]
 
         # Generate the model
-        model = StatisticalModels.GaussianEM(x, y, nComponents, mag_range, col_range)
+        model = StatisticalModels.GaussianEM(x=x, y=y, nComponents=nComponents, rngx=mag_range, rngy=col_range)
         #model = StatisticalModels.GaussianMM(x, y, nComponents, mag_range, col_range)
         # Add in SFxDF<DF constraint for the spectrograph distribution
         if datatype == "spectro": 
@@ -1188,8 +1215,6 @@ def path_check(pickleFile):
             - Can we load the observable SF from a premade file?
         use_isointerp: bool
             - Can we load the isochrone information from the interp pickle file?
-        use_overlap: bool
-            - Can we load the field overlap information from the overlap file?
     '''
 
     fileinfo = surveyInfoPickler.surveyInformation(pickleFile)
@@ -1198,7 +1223,7 @@ def path_check(pickleFile):
     good_type = False
     while not good_type:
         # Intrinsic or observable
-        sftype = input("Would you like the selection function in: a) observable, b) intrinsic, c) both? (return a, b or c)")
+        sftype = raw_input("Would you like the selection function in: a) observable, b) intrinsic, c) both? (return a, b or c)")
 
         if sftype in ('b', 'c'): # Intrinsic or both
             good_type = True
@@ -1208,7 +1233,7 @@ def path_check(pickleFile):
 
                 good = False
                 while not good:
-                    use_sf = input("Path to intrinsic SF (%s) exists. Load SF in from here? (y/n)" % fileinfo.sf_pickle_fname)
+                    use_sf = raw_input("Path to intrinsic SF (%s) exists. Load SF in from here? (y/n)" % fileinfo.sf_pickle_fname)
                     if use_sf == 'y':
                         use_intsf = True
                         good = True
@@ -1228,7 +1253,7 @@ def path_check(pickleFile):
                     good = False
                     while not good:
                         if os.path.exists(fileinfo.obsSF_pickle_path):
-                            use_sf = input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
+                            use_sf = raw_input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
                             if use_sf == 'y':
                                 use_obssf = True
                                 good = True
@@ -1246,7 +1271,7 @@ def path_check(pickleFile):
                 good = False
                 while not good:
                     if os.path.exists(fileinfo.obsSF_pickle_path):
-                        use_sf = input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
+                        use_sf = raw_input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
                         if use_sf == 'y':
                             use_obssf = True
                             good = True
@@ -1267,7 +1292,7 @@ def path_check(pickleFile):
             good = False
             while not good:
                 if os.path.exists(fileinfo.obsSF_pickle_path):
-                    use_sf = input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
+                    use_sf = raw_input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
                     if use_sf == 'y':
                         use_obssf = True
                         good = True
@@ -1293,16 +1318,11 @@ def path_check(pickleFile):
         else: raise IOError('No isochrone files at %s or %s' % (fileinfo.iso_interp_path, fileinfo.iso_data_path))
     else: use_isointerp = 'na'
 
-    # Field overlap
-    if fileinfo.style == 'mf': # Only useful for multifibre spectroscopic surveys
-        if os.path.exists(fileinfo.overlap_path):
-            print("Path to field overlap info (%s) exists. This will be used." % fileinfo.overlap_fname)
-            use_overlap = True
-        else:
-            print("No field overlap information. This will be generated using the pointings data.")
-            use_overlap = False
-    else: use_overlap = 'na'
+    # Model
+    print("The spectro model description is:"+str(fileinfo.spectro_model))
+    print("The photo model description is:"+str(fileinfo.photo_model))    
+
 
     print('')
 
-    return gen_intsf, use_intsf, gen_obssf, use_obssf, use_isointerp, use_overlap
+    return gen_intsf, use_intsf, gen_obssf, use_obssf, use_isointerp

@@ -64,7 +64,7 @@ class GaussianEM():
                         integral calculated using cubature for which we know the uncertainty
     '''
     
-    def __init__(self, x, y, nComponents, rngx, rngy):
+    def __init__(self, x=np.array(0), y=np.array(0), nComponents=0, rngx=(0,1), rngy=(0,1), runscaling=True):
 
         # Name of the model to used for reloading from dictionary
         self.modelname = self.__class__.__name__
@@ -84,18 +84,23 @@ class GaussianEM():
         # Shape of parameter set (number of components x parameters per component)
         self.param_shape = ()
         
-        # Real space parameters
-        self.x = x
-        self.y = y
-        self.rngx, self.rngy = rngx, rngy
-
-        # Statistics for feature scaling
-        self.mux, self.sx = np.mean(x), np.std(x)
-        self.muy, self.sy = np.mean(y), np.std(y)
-
-        # Scaled parameters
-        self.x_s, self.y_s = feature_scaling(x, y, self.mux, self.muy, self.sx, self.sy)
-        self.rngx_s, self.rngy_s = feature_scaling(np.array(rngx), np.array(rngy), self.mux, self.muy, self.sx, self.sy)
+        # Not run when loading class from dictionary
+        if runscaling:
+            # Real space parameters
+            self.x = x
+            self.y = y
+            self.rngx, self.rngy = rngx, rngy
+            # Statistics for feature scaling
+            if len(x)>1:
+                self.mux, self.sx = np.mean(x), np.std(x)
+                self.muy, self.sy = np.mean(y), np.std(y)
+            else:
+                # SD=0 if only one point which causes problems!
+                self.mux, self.sx = np.mean(x), (rngx[1]-rngx[0])/4
+                self.muy, self.sy = np.mean(y), (rngy[1]-rngy[0])/4
+            # Scaled parameters
+            self.x_s, self.y_s = feature_scaling(x, y, self.mux, self.muy, self.sx, self.sy)
+            self.rngx_s, self.rngy_s = feature_scaling(np.array(rngx), np.array(rngy), self.mux, self.muy, self.sx, self.sy)
 
         # Function which calculates the actual distribution
         self.distribution = bivGaussMix
@@ -294,16 +299,21 @@ class GaussianEM():
 
         # Set initial parameters
         finite = False
+        a = 0
         while not finite:
             self.params_i, self.params_l, self.params_u = initParams(self.nComponents, self.rngx_s, self.rngy_s, self.priorDF, nstars=len(self.x_s))
             self.param_shape = self.params_i.shape
             self.s_min = self.params_l[0,1] # same as sxx lower bound
             lnp = self.lnprob(self.params_i)
             finite = np.isfinite(lnp)
-
+            a+=1
+            if a==100: 
+                print("...failed to initialise params on field")
+                finite=True
             if self.runningL:
                 sys.stdout.write("\r"+str(self.params_i))
                 if finite: print("")
+
 
         params = self.params_i
 
@@ -385,7 +395,8 @@ class GaussianEM():
         # To clean up any warnings from optimize
         invalid = np.seterr()['invalid']
         divide = np.seterr()['divide']
-        np.seterr(invalid='ignore', divide='ignore')
+        over = np.seterr()['over']
+        np.seterr(invalid='ignore', divide='ignore', over='ignore')
         # result is the set of theta parameters which optimize the likelihood given x, y, yerr
         result = op.minimize(self.nll, params.ravel(), method=method, bounds=bounds)
 
@@ -394,7 +405,7 @@ class GaussianEM():
         #result = gp_minimize(self.nll, bounds)
 
         # To clean up any warnings from optimize
-        np.seterr(invalid=invalid, divide=divide)
+        np.seterr(invalid=invalid, divide=divide, over=over)
         if self.runningL: print("")
 
         return result
@@ -1605,3 +1616,23 @@ def cdf(func, xmin, xmax, N, **kwargs):
     value_interp = interp.interp1d(cdf, points[1:], bounds_error=False, fill_value=np.nan)
     
     return value_interp
+
+
+class Empty():
+
+    '''
+    Empty - For fields with no stars present
+
+    Functions
+    ---------
+    __call__
+    '''
+    
+    def __init__(self, runscaling=True):
+
+        # Name of the model to used for reloading from dictionary
+        self.modelname = self.__class__.__name__
+
+    def __call__(self, x, y):
+
+        return np.zeros(np.shape(x))
