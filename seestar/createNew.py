@@ -12,10 +12,12 @@ Requirements
 surveyInfoPickler.py
 '''
 
-import os
+import sys, os
 import numpy as np
 import pandas as pd
-from builtins import input # Input now behaves as python 3
+if sys.version<'3': # If python 2, use raw_input, not input
+    input = raw_input
+
 from seestar import surveyInfoPickler
 
 def create():

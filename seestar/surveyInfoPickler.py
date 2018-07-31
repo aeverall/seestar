@@ -8,10 +8,11 @@ Classes
 
 '''
 
-import os
+import sys, os
 import pickle
 import re
-from builtins import input # Input now behaves as python 3
+if sys.version<'3': # If python 2, use raw_input, not input
+    input = raw_input
 import pandas as pd
 import numpy as np
 

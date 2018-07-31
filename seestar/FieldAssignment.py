@@ -27,6 +27,8 @@ ArrayMechanics.py
 surveyInfoPickler.py
 '''
 
+from __future__ import print_function # print now behaves as python 3
+
 import numpy as np
 import pandas as pd
 import healpy as hp
@@ -38,8 +40,9 @@ import os, sys
 import gzip
 import psutil
 from shutil import copyfile
-from __future__ import print_function # print now behaves as python 3
-from builtins import input # Input now behaves as python 3
+
+if sys.version<'3': # If python 2, use raw_input, not input
+    input = raw_input
 
 from seestar import ArrayMechanics
 from seestar import surveyInfoPickler

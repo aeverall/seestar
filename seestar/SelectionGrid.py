@@ -45,11 +45,13 @@ import numpy as np
 import pandas as pd
 import healpy as hp
 from itertools import product
-from builtins import input # Input now behaves as python 3
 import re, dill, pickle, multiprocessing
 import cProfile, pstats, time
 import sys, os
 from scipy.interpolate import RegularGridInterpolator as RGI
+
+if sys.version<'3': # If python 2, use raw_input, not input
+    input = raw_input
 
 from matplotlib import pyplot as plt
 import matplotlib
