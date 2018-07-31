@@ -38,6 +38,7 @@ import os, sys
 import gzip
 import psutil
 from shutil import copyfile
+from __future__ import print_function
 
 from seestar import ArrayMechanics
 from seestar import surveyInfoPickler
@@ -306,11 +307,11 @@ def countStars(files):
             - Total number of stars in photometric catalogue
     '''
 
-    print "Counting total number of stars",
+    print("Counting total number of stars", end="")
 
     count = 0
     for filen in files:
-        print ".",
+        print(".", end="")
         extension = os.path.splitext(filen)[-1]
         if extension=='.gz':
             with gzip.open(filen) as f:
