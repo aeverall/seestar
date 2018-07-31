@@ -1208,15 +1208,6 @@ class PenalisedGridModel():
         volume2 = ( (params[:-1, 1:] + params[1:, :-1])/2 ) * dx * dy
         integral = ( np.sum(volume1.flatten()) + np.sum(volume2.flatten()) ) /2
 
-        """
-		function = self.distribution((self.nx,self.ny), (self.rngx, self.rngy), params)
-		y0 = lambda input: self.rngy[0]
-		y1 = lambda input: self.rngy[1]
-
-		integral = quad(function, self.rngx, self.rngy)
-		#integral = integrate.dblquad(function, self.rngx[0], self.rngx[1], y0, y1)
-		"""
-
         return integral
 
     def curvatureIntegral(self, params):

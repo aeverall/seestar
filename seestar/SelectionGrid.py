@@ -45,6 +45,7 @@ import numpy as np
 import pandas as pd
 import healpy as hp
 from itertools import product
+from builtins import input # Input now behaves as python 3
 import re, dill, pickle, multiprocessing
 import cProfile, pstats, time
 import sys, os
@@ -1223,7 +1224,7 @@ def path_check(pickleFile):
     good_type = False
     while not good_type:
         # Intrinsic or observable
-        sftype = raw_input("Would you like the selection function in: a) observable, b) intrinsic, c) both? (return a, b or c)")
+        sftype = input("Would you like the selection function in: a) observable, b) intrinsic, c) both? (return a, b or c)")
 
         if sftype in ('b', 'c'): # Intrinsic or both
             good_type = True
@@ -1233,7 +1234,7 @@ def path_check(pickleFile):
 
                 good = False
                 while not good:
-                    use_sf = raw_input("Path to intrinsic SF (%s) exists. Load SF in from here? (y/n)" % fileinfo.sf_pickle_fname)
+                    use_sf = input("Path to intrinsic SF (%s) exists. Load SF in from here? (y/n)" % fileinfo.sf_pickle_fname)
                     if use_sf == 'y':
                         use_intsf = True
                         good = True
@@ -1253,7 +1254,7 @@ def path_check(pickleFile):
                     good = False
                     while not good:
                         if os.path.exists(fileinfo.obsSF_pickle_path):
-                            use_sf = raw_input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
+                            use_sf = input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
                             if use_sf == 'y':
                                 use_obssf = True
                                 good = True
@@ -1271,7 +1272,7 @@ def path_check(pickleFile):
                 good = False
                 while not good:
                     if os.path.exists(fileinfo.obsSF_pickle_path):
-                        use_sf = raw_input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
+                        use_sf = input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
                         if use_sf == 'y':
                             use_obssf = True
                             good = True
@@ -1292,7 +1293,7 @@ def path_check(pickleFile):
             good = False
             while not good:
                 if os.path.exists(fileinfo.obsSF_pickle_path):
-                    use_sf = raw_input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
+                    use_sf = input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
                     if use_sf == 'y':
                         use_obssf = True
                         good = True

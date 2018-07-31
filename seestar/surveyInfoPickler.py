@@ -11,6 +11,7 @@ Classes
 import os
 import pickle
 import re
+from builtins import input # Input now behaves as python 3
 import pandas as pd
 import numpy as np
 
@@ -223,7 +224,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
                 # Now enter while loop
                 while not reset in ('y','n'):
                     print(reset)
-                    reset = raw_input("File location has changed, reset the file locations? (y/n)")
+                    reset = input("File location has changed, reset the file locations? (y/n)")
                     print(reset)
                 # Reset file names to correct path
                 if reset == 'y': 
@@ -478,7 +479,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
             else: 
                 good_response = False
                 while not good_response:
-                    forward = raw_input("Tests on the files have raised some warnings. Would you like to continue anyway? (y/n)")        
+                    forward = input("Tests on the files have raised some warnings. Would you like to continue anyway? (y/n)")        
                     if forward == 'n': 
                         forward_bool = False
                         good_response = True

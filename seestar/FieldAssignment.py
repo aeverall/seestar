@@ -38,7 +38,8 @@ import os, sys
 import gzip
 import psutil
 from shutil import copyfile
-from __future__ import print_function
+from __future__ import print_function # print now behaves as python 3
+from builtins import input # Input now behaves as python 3
 
 from seestar import ArrayMechanics
 from seestar import surveyInfoPickler
@@ -424,10 +425,10 @@ class HealpixAssignment():
         while not good_mag:
             try:
                 # Take each value as an input from the user
-                mag_l = input("Survey lower limit on H-band apparent magnitude (if not given, type None): ")
-                mag_u = input("Survey upper limit on H-band apparent magnitude (if not given, type None): ")
-                col_l = input("Survey lower limit on J-K colour (if not given, type None): ")
-                col_u = input("Survey upper limit on J-K colour (if not given, type None): ")
+                mag_l = eval(input("Survey lower limit on H-band apparent magnitude (if not given, type None): "))
+                mag_u = eval(input("Survey upper limit on H-band apparent magnitude (if not given, type None): "))
+                col_l = eval(input("Survey lower limit on J-K colour (if not given, type None): "))
+                col_u = eval(input("Survey upper limit on J-K colour (if not given, type None): "))
             except NameError:
                 # If a non-assigned object input is used
                 print("Return float or None.")
@@ -635,7 +636,7 @@ def numberPixels(npixel):
         good_pix = False
         while not good_pix:
             # Ask for another value of npixel to be given
-            x = input("%d is an invalid number of pixels for healpix, can do %d or %d?" %(pix, rd_down, rd_up))
+            x = eval(input("%d is an invalid number of pixels for healpix, can do %d or %d?" %(pix, rd_down, rd_up)))
 
             if type(x)==int:
                 pix=x

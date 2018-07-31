@@ -161,8 +161,8 @@ class observableSF():
         '''
 
         # Load pickled dictionary of attributes
-        with open(filename, "rb") as input:
-            file_dict  = pickle.load(input) 
+        with open(filename, "rb") as insert:
+            file_dict  = pickle.load(insert) 
 
         # Convert dictionary to attributes  
         for key in file_dict:
@@ -251,8 +251,8 @@ class intrinsicSF():
         '''
 
         # Load pickled dictionary of attributes
-        with open(filename, "rb") as input:
-            file_dict  = pickle.load(input) 
+        with open(filename, "rb") as insert:
+            file_dict  = pickle.load(insert) 
 
         # Convert dictionary to attributes  
         for key in file_dict:
@@ -376,8 +376,8 @@ class intrinsicIMFSF():
         '''
 
         # Load pickled dictionary of attributes
-        with open(filename, "rb") as input:
-            file_dict  = pickle.load(input) 
+        with open(filename, "rb") as insert:
+            file_dict  = pickle.load(insert) 
 
         # Convert dictionary to attributes  
         for key in file_dict:

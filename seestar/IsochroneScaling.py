@@ -262,10 +262,10 @@ class IntrinsicToObservable():
             None
         '''
         
-        with open(pickle_path, "rb") as input:
+        with open(pickle_path, "rb") as insert:
             self.Mmax_interp, self.Mmin_interp, \
             self.col_interp, self.magA_interp, self.magB_interp, self.magC_interp, \
-            self.magrng, self.colrng = pickle.load(input)
+            self.magrng, self.colrng = pickle.load(insert)
 
     def LoadMagnitudes(self, pickle_path):
 
@@ -282,8 +282,8 @@ class IntrinsicToObservable():
             None
         '''
         
-        with open(pickle_path, "rb") as input:
-            Mmax_interp, Mmin_interp, magA_interp, magB_interp, magC_interp = pickle.load(input)
+        with open(pickle_path, "rb") as insert:
+            Mmax_interp, Mmin_interp, magA_interp, magB_interp, magC_interp = pickle.load(insert)
             
         self.Mmin_interp = Mmin_interp
         self.Mmax_interp = Mmax_interp
