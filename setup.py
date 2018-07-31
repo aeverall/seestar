@@ -9,11 +9,6 @@ Contains tools for:
 - Using isochrones to calculate the colour/apparent magnitude of an object given it's intrinsic properties
 """
 
-if pyversion > '3': # Load in Python 3 version
-    version = 'v1.3.5-c'
-elif (pyversion<'3') & (pyversion>'2.7'): # Load in Python 2.7 version
-    version = 'v1.2.7-c'
-
 
 CLASSIFIERS = ['Topic :: Scientific/Engineering :: Astronomy',
                 'Intended Audience :: Science/Research',
@@ -27,11 +22,15 @@ CLASSIFIERS = ['Topic :: Scientific/Engineering :: Astronomy',
 
 setup(
     name="seestar",
-    version=version,
+    version=1.0,
     
     # Project uses reStructuredText, so ensure that the docutils get
     # installed or upgraded on the target machine
     install_requires=['numpy', 'pandas', 'scipy', 'regex', 'matplotlib', 'seaborn', 'dill'],
+
+    setup_requires=["pytest-runner"],
+    tests_require=["pytest"],
+    include_package_data=True,
 
     package_data={'': ['*.md']
         # If any package contains *.txt or *.rst files, include them:
