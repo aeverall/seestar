@@ -44,6 +44,10 @@ from shutil import copyfile
 if sys.version<'3': # If python 2, use raw_input, not input
     input = raw_input
 
+from matplotlib import pyplot as plt
+import matplotlib
+matplotlib.rcParams.update({'font.size': 40})
+
 from seestar import ArrayMechanics
 from seestar import surveyInfoPickler
 
@@ -79,7 +83,7 @@ class FieldAssignment():
     '''
 
     def __init__(self, fileinfo_path,
-                 photometric_files, memory=None, ncores=1):
+                 photometric_files, memory=None, ncores=1, starTotal=None):
 
         # surveyInformation instance
         self.fileinfo = surveyInfoPickler.surveyInformation(fileinfo_path)
@@ -96,7 +100,8 @@ class FieldAssignment():
             self.photometric_files = photometric_files
 
             # Total number of stars in database
-            self.total = 470000000#countStars(photometric_files, ncores=ncores)
+            if starTotal is None: self.total = countStars(photometric_files, ncores=ncores)
+            else: self.total = starTotal
             
             # Setup pointings dataframe containing unique field positions
             pointings_path = self.fileinfo.field_path
@@ -126,7 +131,8 @@ class FieldAssignment():
     def __call__(self):
 
         self.ClearFiles()
-        self.RunAssignmentAPTPM(N_import=self.N_import, N_iterate=self.N_iter)
+        if self.ncores == 1: self.RunAssignmentAPTPM(N_import=self.N_import, N_iterate=self.N_iter)
+        else: self.RunAssignmentAPTPM(N_import=self.N_import, N_iterate=self.N_iter)
 
     def ClearFiles(self):
 
@@ -206,7 +212,7 @@ class FieldAssignment():
                 for field in self.pointings[self.fileinfo.field_coords[0]]:
                     field_i += 1
                     # Write the number of fields which have been saved so far
-                    sys.stdout.write('\r'+outString+'...Saving: '+str(field_i)+'/'+str(len(self.pointings)))
+                    sys.stdout.write('\r'+outString+'...Saving: '+str(field_i)+'/'+str(len(self.pointings))+"       ")
                     sys.stdout.flush()
 
                     # Check which rows are assigned to the right field
@@ -296,7 +302,7 @@ Dictionary of stars per field in fileinfo.photo_field_starcount." % total)
                 sys.stdout.flush()
             file_lst.append(open_files)
         # zip pointings sub-dfs and open files together to be iterated in parallel
-        info_lst = zip(points_lst, file_lst)
+        info_lst = list(zip(points_lst, file_lst))
 
 
         # Iterate over full directory files
@@ -548,39 +554,57 @@ class HealpixAssignment():
         assign()
     '''
 
-    def __init__(self, fileinfo_path,
-                photometric_files, npixel):
+    def __init__(self, fileinfo_path, photometric_files, 
+                    npixel=12, memory=None, ncores=1, starTotal=None):
 
         # surveyInformation instance
         self.fileinfo = surveyInfoPickler.surveyInformation(fileinfo_path)
 
-        # List of files with full galaxy data
-        # All files should be .csv format
-        self.photometric_files = photometric_files
+        # Test photometric file information - continue if forward is true
+        forward = self.fileinfo.photoTest(photometric_files)
+        if not forward: print("Resolve issues in the data then run again.")
+        else:
+            # List of files with full galaxy data
+            # All files should be .csv format
+            self.photometric_files = photometric_files
 
-        self.phi = self.fileinfo.spectro_coords[1]
-        self.theta = self.fileinfo.spectro_coords[2]
-        self.rng_th = self.fileinfo.theta_rng
-        self.rng_phi = self.fileinfo.phi_rng
+            self.phi = self.fileinfo.spectro_coords[1]
+            self.theta = self.fileinfo.spectro_coords[2]
+            self.rng_th = self.fileinfo.theta_rng
+            self.rng_phi = self.fileinfo.phi_rng
 
-        # number of pixels to be used
-        self.npixel = numberPixels(npixel)
-        self.nside = hp.npix2nside(self.npixel)
+            # Number of cores to run assignment on
+            if ncores>1:
+                print("Sorry, multiprocessing of HEALPix field assignment isn't currently working. Will run on 1 core.")
+                ncores=1
+            self.ncores=ncores
 
-        # Total number of stars in database
-        self.total = countStars(photometric_files)
+            # number of pixels to be used
+            self.npixel = numberPixels(npixel)
+            self.nside = hp.npix2nside(self.npixel)
+            # List of fields
+            self.fields = np.arange( self.npixel )
 
-        # Directory and names of pointings files
-        self.fieldpoint_directory = self.fileinfo.photo_path
+            # Total number of stars in database
+            # Total number of stars in database
+            if starTotal is None: self.total = countStars(photometric_files, ncores=ncores)
+            else: self.total = starTotal
 
-        # Number of stars to be imported at once
-        self.N_import = importLimit(photometric_files)
+            # Directory and names of pointings files
+            self.fieldpoint_directory = self.fileinfo.photo_path
+
+            # Number of stars to be imported at once
+            self.N_import = importLimit(photometric_files, proportion=0.05, memory=memory)
+
+            self.__call__()
 
     def __call__(self):
 
         self.fieldinfo_file()
         self.spectroPixels()
-        self.photoPixelFiles()
+        self.ClearFiles()
+        if self.ncores==1: self.photoPixelFiles()
+        else: self.photoPixelFiles_P()
 
     def fieldinfo_file(self):
 
@@ -597,45 +621,62 @@ class HealpixAssignment():
         '''
 
         # List of field numbers
-        fields = np.arange( self.npixel )
+        fields = self.fields
         # Generate the dataframe for field info
         df = pd.DataFrame(fields.T, columns=[self.fileinfo.field_coords[0]])
 
-        # Take magnitude and colour limits as input
-        good_mag = False
-        while not good_mag:
-            try:
-                # Take each value as an input from the user
-                mag_l = eval(input("Survey lower limit on H-band apparent magnitude (if not given, type None): "))
-                mag_u = eval(input("Survey upper limit on H-band apparent magnitude (if not given, type None): "))
-                col_l = eval(input("Survey lower limit on J-K colour (if not given, type None): "))
-                col_u = eval(input("Survey upper limit on J-K colour (if not given, type None): "))
-            except NameError:
-                # If a non-assigned object input is used
-                print("Return float or None.")
-                
-            if ((mag_l<mag_u) | (mag_l==None) | (mag_u==None)) & \
-                ((col_l<col_u) | (col_l==None) | (col_u==None)):
-                # If upper>lower limits or either upper or lower are None then we can continue.
-                # TBH I think we can do better than this so it's a work in progress
-                good_mag = True
-            elif not (mag_l<mag_u):
-                print("magnitude limits don't make sense.")
-            elif not (col_l<col_u):
-                print("colour limits don't make sense.")
+        good_ans=False
+        while not good_ans:
+            ans = input("Does the survey provide Hband magnitude and J-K colour bounds? (y/n)")
+            if ans in ('y','n'): good_ans=True
 
-        # Generate a magnitude lower limit column
-        if mag_l == None: df[self.fileinfo.field_coords[1]] = 'NoLimit'
-        else: df[self.fileinfo.field_coords[1]] = mag_l
-        # Generate a magnitude upper limit column
-        if mag_u == None: df[self.fileinfo.field_coords[2]] = 'NoLimit'
-        else: df[self.fileinfo.field_coords[2]] = mag_u
-        # Generate a colour lower limit column
-        if col_l == None: df[self.fileinfo.field_coords[3]] = 'NoLimit'
-        else: df[self.fileinfo.field_coords[3]] = col_l
-        # Generate a colour upper limit column
-        if col_u == None: df[self.fileinfo.field_coords[4]] = 'NoLimit'
-        else: df[self.fileinfo.field_coords[4]] = col_u
+        if ans == 'y':
+            # Take magnitude and colour limits as input
+            good_mag = False
+            while not good_mag:
+                try:
+                    # Take each value as an input from the user
+                    mag_l = eval(input("Survey lower limit on H-band apparent magnitude (if not given, type None): "))
+                    mag_u = eval(input("Survey upper limit on H-band apparent magnitude (if not given, type None): "))
+                    col_l = eval(input("Survey lower limit on J-K colour (if not given, type None): "))
+                    col_u = eval(input("Survey upper limit on J-K colour (if not given, type None): "))
+                except NameError:
+                    # If a non-assigned object input is used
+                    print("Return float or None.")
+                    mag_l, mag_u, col_l, col_u = np.nan, np.nan, np.nan, np.nan
+                    
+                if ((mag_l<mag_u) | (mag_l==None) | (mag_u==None)) & \
+                    ((col_l<col_u) | (col_l==None) | (col_u==None)):
+                    # If upper>lower limits or either upper or lower are None then we can continue.
+                    # TBH I think we can do better than this so it's a work in progress
+                    good_mag = True
+                elif not (mag_l<mag_u):
+                    print("magnitude limits don't make sense.")
+                elif not (col_l<col_u):
+                    print("colour limits don't make sense.")
+
+            # Generate a magnitude lower limit column
+            if mag_l == None: df[self.fileinfo.field_coords[1]] = 'NoLimit'
+            else: df[self.fileinfo.field_coords[1]] = mag_l
+            # Generate a magnitude upper limit column
+            if mag_u == None: df[self.fileinfo.field_coords[2]] = 'NoLimit'
+            else: df[self.fileinfo.field_coords[2]] = mag_u
+            # Generate a colour lower limit column
+            if col_l == None: df[self.fileinfo.field_coords[3]] = 'NoLimit'
+            else: df[self.fileinfo.field_coords[3]] = col_l
+            # Generate a colour upper limit column
+            if col_u == None: df[self.fileinfo.field_coords[4]] = 'NoLimit'
+            else: df[self.fileinfo.field_coords[4]] = col_u
+
+        else:
+            # Generate a magnitude lower limit column
+            df[self.fileinfo.field_coords[1]] = 'NoLimit'
+            # Generate a magnitude upper limit column
+            df[self.fileinfo.field_coords[2]] = 'NoLimit'
+            # Generate a colour lower limit column
+            df[self.fileinfo.field_coords[3]] = 'NoLimit'
+            # Generate a colour upper limit column
+            df[self.fileinfo.field_coords[4]] = 'NoLimit'
 
         # Save the dataframe to the field info file
         df.to_csv(self.fileinfo.field_path, index=False)
@@ -672,7 +713,31 @@ class HealpixAssignment():
         self.fileinfo.save()
 
         # Save csv file
-        df.to_csv(self.fileinfo.spectro_path, index=False)      
+        df.to_csv(self.fileinfo.spectro_path, index=False)  
+
+    def ClearFiles(self):
+
+        '''
+        ClearFiles() - Clears all field pointing files and leaves headers
+
+        Inherits
+        --------
+            photometric_files - Full photometric data
+
+            fileinfo - class instance of surveyInformation
+        '''
+        
+        print('Clearing field files...')
+        
+        # Take headers from source files (photometric catalogue)
+        headers = pd.read_csv(self.photometric_files[0], nrows = 1, usecols=fileinfo.photo_coords)[:0]
+        
+        # Write all field files with the appropriate headers
+        for field in self.fields:
+            headers.to_csv(os.path.join(self.fileinfo.photo_path, str(field))+'.csv',
+                                    index=False, mode = 'w')
+            
+        print('...done\n')
 
     def photoPixelFiles(self):
         # Put photometric  files into pixel files
@@ -710,38 +775,229 @@ class HealpixAssignment():
 
         # Number of stars analysed so far in order to keep an eye on progress
         starsanalysed = 0
-        # Boolean for if this is the first file so if headers need to be saved
-        firstfile = True
+        # Time in order to track progress
+        start = time.time()
+        # Output to console
+        outString = "\r"
+
+        fields = self.fields
+        # Photometric file names
+        field_files = {field: str(field)+'.csv' for field in fields}
+        # Open files for writing
+        open_files = {}
+        for field in fields:
+            open_files[field] = open(os.path.join(self.fileinfo.photo_path, field_files[field]), 'a+')
 
         # Iterate through photometric files
         for filename in self.photometric_files:
             # Run through data in N_import sized chunks
-            for df in pd.read_csv(filename, chunksize=self.N_import):
+            for df in pd.read_csv(filename, chunksize=self.N_import, low_memory=False, usecols=self.fileinfo.photo_coords):
+                # Get columns in right order to agree with headers
+                df = df[self.fileinfo.photo_coords]
                 # Increase stars analysed for each chunk which is imported
-                starsanalysed += len(df_allsky)
+                starsanalysed += len(df)
                 # Find pixel assignments of stars in catalogue
-                pix_num = labelStars(df[self.theta], df[self.phi], self.rng_th, self.rng_phi, self.nside)
+                pix_num = labelStars(df[self.fileinfo.photo_coords[1]], df[self.fileinfo.photo_coords[0]], self.rng_th, self.rng_phi, self.nside)
                 # Iterate through pixels to assign to files
-                for pix in np.arange(self.npixel):
+                for field in fields:
                     # Name of the file being imported
                     fname = filename.split('/')[-1]
-                    # Updates of progress continuously output
-                    perc = round((starsanalysed/float(self.total))*100, 3)
-                    sys.stdout.write('\r'+'allsky file: '+fname+'  '+\
-                                   'Completion: '+str(starsanalysed)+'/'+str(self.total)+'('+
-                                   str(perc)+'%)  fieldID: '+str(pix))
-                    sys.stdout.flush()
 
                     # Find stars which are on the given pixel
-                    field_stars = df[pix_num == pix]
+                    field_stars = df[pix_num == field]
                     # Filename for df to be saved to
-                    fname = os.path.join(self.fileinfo.photo_path, str(pix)) + '.csv'
-                    if firstfile: # Add headers and write over file if this is the first file
-                        field_stars.to_csv(fname, index=False)
-                    else: # No headers and append to data currently there
-                        field_stars.to_csv(fname, mode='a', header=False, index=False)
+                    field_stars.to_csv(open_files[field], mode='a', header=False, index=False)
+
+                    sys.stdout.write(outString+'...fieldID: '+str(field)+'      ')
+                    sys.stdout.flush()
+
+
+                # Updates of progress continuously output
+                # Percentage complete
+                perc = round((starsanalysed/float(self.total))*100, 3)
+                # Time taken so far
+                duration = round((time.time() - start)/60., 1)
+                # Expected total time (in hours and minutes)
+                projected = round((time.time() - start)*self.total/((starsanalysed+1)*3600), 3)
+                hours = int(projected)
+                minutes = int((projected - hours)*60)
+                # String describing progress
+                outString = '\r'+'File: '+fname+'  '+\
+                               'Complete: '+str(starsanalysed)+'/'+str(self.total)+'('+\
+                               str(perc)+'%)  Time: '+str(duration)+'m  Projected: '+str(hours)+'h'+str(minutes)+'m'+\
+                               '...fieldID: '+str(field)  
+
+        for field in open_files:
+            open_files[field].close()
+
+    def photoPixelFiles_P(self):
+        # Put photometric  files into pixel files
+
+        '''
+        photoPixelFiles - Assign photometric catalogue stars to pixel field files
+
+        Inherited
+        ---------
+            photometric_files: list of str
+                - Paths to files containing photometric catalogue data
+
+            N_import: int
+                - Number of stars which can be imported at one time
+
+            total: int
+                - The total number of photometric catalogue
+
+            npixel: int
+                - Number of pixels in the HEALPix array
+
+            nside: int
+                - Parameter of HEALPix which determines the structure of the array
+                - npixel = 12*(nside**2)
+
+            fileinfo: surveyInformation instance
+                - file information for catalogue
+
+            self.theta, self.phi: str
+                - Names of theta and phi columns in dataframe (from fileinfo.spectro_coords)
+
+            rng_th, rng_phi: tupples of floats
+                - Ranges of theta and phi coordinates, e.g. (-pi/2, pi/2), (0, 2pi)
+        '''
+
+        # Number of stars analysed so far in order to keep an eye on progress
+        starsanalysed = 0
+        # Time in order to track progress
+        start = time.time()
+        # Boolean for if this is the first file so if headers need to be saved
+        firstfile = True
+
+        fields = self.fields
+        # Photometric file names
+        field_files = {field: str(field)+'.csv' for field in fields}
+
+        # List of subsections of pointings to use in parallel
+        field_lst = []
+        # List of open files corresponding to points
+        file_lst = []
+        # Find number of pointings per core and remainder to also assign
+        npoints = int(len(fields)/self.ncores)
+        remainder = len(fields)%self.ncores
+        for i in range(self.ncores):
+            # Divide pointings up between cores
+            if i<remainder: fi = fields[i*(npoints+1):(i+1)*(npoints+1)]
+            else: fi = fields[i*npoints + remainder: (i+1)*npoints + remainder]
+            # Append sub-dataframe to list
+            field_lst.append(fi)
+
+            # Divide open_files up between cores to match pointings
+            open_files = {}
+            for field in fi:
+                open_files[field] = open(os.path.join(self.fileinfo.photo_path, field_files[field]), 'a+')
+
+            file_lst.append(open_files)
+
+        # zip pointings sub-dfs and open files together to be iterated in parallel
+        info_lst = list(zip(field_lst, file_lst))
+        print('Place1: '+str(info_lst[0][1][0]))
+
+        # Count dictionary for number of stars per field (all entries start at 0)
+        starcount = {field: 0 for field in fields}
+        total = 0
+        # For output string
+        outString = "\r"
+
+        # Iterate through photometric files
+        for filename in self.photometric_files:
+            # Run through data in N_import sized chunks
+            for df in pd.read_csv(filename, chunksize=self.N_import, low_memory=False, usecols=self.fileinfo.photo_coords):
+                # Get columns in right order to agree with headers
+                df = df[self.fileinfo.photo_coords]
+                # Increase stars analysed for each chunk which is imported
+                starsanalysed += len(df)
+
+                # Find pixel assignments of stars in catalogue
+                pix_num = labelStars(df[self.fileinfo.photo_coords[1]], df[self.fileinfo.photo_coords[0]], self.rng_th, self.rng_phi, self.nside)
+
+                # Setup function for parallel computation
+                kwargs = {'df':df, 'pix_num':pix_num, 'fileinfo':self.fileinfo,
+                            'outString':outString, 'starcount':starcount}
+                func = HPassignmentParallel(**kwargs)
+
+                # Run multiprocessing step
+                pool = multiprocessing.Pool(self.ncores)
+                print('Place2: '+str(info_lst[0][1][0]))
+                results = pool.map(func, info_lst)
+                pool.terminate()
+                for r in results:
+                    starcount.update(r[0])
+                    total += r[1]
+
+
+                # Updates of progress continuously output
+                fname = filename.split('/')[-1]
+                # Percentage complete
+                perc = round((starsanalysed/float(self.total))*100, 3)
+                # Time taken so far
+                duration = round((time.time() - start)/60., 1)
+                # Expected total time (in hours and minutes)
+                projected = round((time.time() - start)*self.total/((starsanalysed+1)*3600), 3)
+                hours = int(projected)
+                minutes = int((projected - hours)*60)
+                # String describing progress
+                outString = '\r'+'File: '+fname+'  '+\
+                               'Complete: '+str(starsanalysed)+'/'+str(self.total)+'('+\
+                               str(perc)+'%)  Time: '+str(duration)+'m  Projected: '+str(hours)+'h'+str(minutes)+'m'+\
+                               '...fieldID: '+str(field)
+
                 # Once all files have headers set firstfile is turned to false
                 firstfile=False
+
+
+        # Close all open files
+        for tup in info_lst:
+            for field in tup[1]:
+                tup[1][field].close()
+
+        print("\nTotal stars assigned to fields: %d.\n\
+Dictionary of stars per field in fileinfo.photo_field_starcount." % total)
+        # Save photometric file information to fileinfo
+        self.fileinfo.photo_field_files = field_files
+        self.fileinfo.photo_field_starcount = starcount
+        self.fileinfo()
+        self.fileinfo.save()
+
+class HPassignmentParallel():
+
+    def __init__(self, df=None, pix_num=None, fileinfo=None, outString='', starcount={}):
+
+        self.df=df
+        self.pix_num = pix_num
+        self.fileinfo=fileinfo
+        self.outString=outString
+        self.starcount=starcount
+
+    def __call__(self, info):
+
+        print('Place3: '+str(info[1][0]))
+        fields, open_files = info
+
+        # Countings number of stars assigned
+        count=0
+
+        # Iterate through pixels to assign to files
+        for field in fields:
+
+            # Find stars which are on the given pixel
+            field_stars = self.df[self.pix_num == field]
+            field_stars.to_csv(open_files[field], mode='a+', header=False, index=False)
+
+            sys.stdout.write(self.outString+'...fieldID: '+str(field)+'      ')
+            sys.stdout.flush()
+
+            self.starcount[field] +=len(field_stars)
+            count += len(field_stars)
+
+        return self.starcount, count
 
 def labelStars(theta, phi, rng_th, rng_phi, nside):
 
@@ -773,6 +1029,8 @@ def labelStars(theta, phi, rng_th, rng_phi, nside):
             - Pixel number for each star in the array of stars
 
     '''
+    theta = theta.copy()
+    phi = phi.copy()
 
     # Need to correct the range: 0<th<pi, -pi<phi<pi
     theta1 = 0 + ( (theta - rng_th[0]) * (np.pi)/(rng_th[1]-rng_th[0]) )
@@ -836,5 +1094,39 @@ def numberPixels(npixel):
     # Produce a mollweide plot of the pixels so they can see the pixellation of the sky.
     m = np.arange( npixel )
     hp.mollview(m)
+    plt.title('Pixels used to divide sky.')
+    plt.show()
 
     return int(npixel)
+
+
+def cleanData(df, fileinfo):
+    
+    '''
+    WORK IN PROGRESS
+
+    Parameters
+    ----------
+
+
+    **kwargs
+    --------
+
+
+    Returns
+    -------
+
+
+    '''
+    coords = fileinfo.photo_coords
+    dtypes = fileinfo.photo_dtypes
+
+    for i in range(len(coords)):
+
+        nullnames = ('null', 'Null', 'nan', 'NaN')
+        df = df[(pd.notnull(df[coords[i]])) & (~df[coords[i]].apply(lambda x: x in nullnames))]
+
+        try: df[coords[i]] = df[coords[i]].astype(dtypes[i])
+        except ValueError: print("\nValueError in setting dtypes as float")
+
+    return df

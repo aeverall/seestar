@@ -115,6 +115,7 @@ class SFGenerator():
 
         # Hold number of cores and memory available to use
         self.ncores=ncores
+        # Memory isn't actually being used in this, might try to build it in
         self.memory=memory
 
         # Load survey information from pickleFile
