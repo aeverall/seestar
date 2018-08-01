@@ -38,7 +38,7 @@ import cProfile, pstats, time
 
 import os, sys
 import gzip
-import psutil
+import psutil, multiprocessing
 from shutil import copyfile
 
 if sys.version<'3': # If python 2, use raw_input, not input
@@ -79,10 +79,13 @@ class FieldAssignment():
     '''
 
     def __init__(self, fileinfo_path,
-                 photometric_files):
+                 photometric_files, memory=None, ncores=1):
 
         # surveyInformation instance
         self.fileinfo = surveyInfoPickler.surveyInformation(fileinfo_path)
+
+        # Number of cores in parallel
+        self.ncores=ncores
 
         # Test photometric file information - continue if forward is true
         forward = self.fileinfo.photoTest(photometric_files)
@@ -93,7 +96,7 @@ class FieldAssignment():
             self.photometric_files = photometric_files
 
             # Total number of stars in database
-            self.total = 470000000#countStars(photometric_files)
+            self.total = 470000000#countStars(photometric_files, ncores=ncores)
             
             # Setup pointings dataframe containing unique field positions
             pointings_path = self.fileinfo.field_path
@@ -105,11 +108,11 @@ class FieldAssignment():
             self.IDtype = self.fileinfo.field_dtypes[0]
 
             # Number of stars to be imported at once
-            self.N_import = importLimit(photometric_files, proportion=0.05)
+            self.N_import = importLimit(photometric_files, proportion=0.05, memory=memory)
 
             # Number of stars to be iterated over
             Npoint = len(pointings)
-            self.N_iter = iterLimit(Npoint, proportion=0.05)
+            self.N_iter = iterLimit(Npoint, proportion=0.05, memory=memory, ncores=ncores)
 
             # Output information on processing
             print("Total number of stars %d." % self.total)
@@ -204,6 +207,7 @@ class FieldAssignment():
                     field_i += 1
                     # Write the number of fields which have been saved so far
                     sys.stdout.write('\r'+outString+'...Saving: '+str(field_i)+'/'+str(len(self.pointings)))
+                    sys.stdout.flush()
 
                     # Check which rows are assigned to the right field
                     df_bool = df_allsky.points.apply(lambda x: field in x)
@@ -227,6 +231,9 @@ class FieldAssignment():
                                'Complete: '+str(starsanalysed)+'/'+str(self.total)+'('+\
                                str(perc)+'%)  Time: '+str(duration)+'m  Projected: '+str(hours)+'h'+str(minutes)+'m'
 
+        for field in open_files:
+            open_files[field].close()
+
         print("\nTotal stars assigned to fields: %d.\n\
 Dictionary of stars per field in fileinfo.photo_field_starcount." % total)
 
@@ -235,7 +242,158 @@ Dictionary of stars per field in fileinfo.photo_field_starcount." % total)
         self.fileinfo()
         self.fileinfo.save()
 
-def importLimit(files, proportion=0.1):
+    def RunAssignmentAPTPM_P(self, N_import=100000, N_iterate=1000):
+
+        '''
+        RunAssignmentAPTPM - Assigns stars in photometric catalogue to field files
+
+        **kwargs
+        --------
+            N_import=100000: int
+                - Number of stars which can be imported at once without using a lot of memory
+
+            N_iterate=1000: int
+                - Numebr of stars which can be iterated in the method at once without using a lot of memory
+
+        '''
+            
+        # Time in order to track progress
+        start = time.time()
+        # For analysing the progress
+        starsanalysed = 0
+
+        # Photometric file names
+        field_files = {field: str(field)+'.csv' for field in self.pointings[self.fileinfo.field_coords[0]]}
+
+        # Open files for writing
+        #open_files = {}
+        #for field in self.pointings[self.fileinfo.field_coords[0]]:
+        #    open_files[field] = open(os.path.join(self.fileinfo.photo_path, field_files[field]), 'a+')
+
+        # Count dictionary for number of stars per field (all entries start at 0)
+        starcount = {field: 0 for field in self.pointings[self.fileinfo.field_coords[0]]}
+        total = 0
+        outString = ""
+
+        # List of subsections of pointings to use in parallel
+        points_lst = []
+        # List of open files corresponding to points
+        file_lst = []
+        # Find number of pointings per core and remainder to also assign
+        npoints = int(len(self.pointings)/self.ncores)
+        remainder = len(self.pointings)%self.ncores
+        for i in range(self.ncores):
+            # Divide pointings up between cores
+            if i<remainder: pi = self.pointings.iloc[i*(npoints+1):(i+1)*(npoints+1)]
+            else: pi = self.pointings.iloc[i*npoints + remainder: (i+1)*npoints + remainder]
+            # Append sub-dataframe to list
+            points_lst.append(pi)
+
+            # Divide open_files up between cores to match pointings
+            open_files = {}
+            for field in pi[self.fileinfo.field_coords[0]]:
+                open_files[field] = open(os.path.join(self.fileinfo.photo_path, field_files[field]), 'a+')
+                sys.stdout.flush()
+            file_lst.append(open_files)
+        # zip pointings sub-dfs and open files together to be iterated in parallel
+        info_lst = zip(points_lst, file_lst)
+
+
+        # Iterate over full directory files
+        for filename in self.photometric_files:
+            
+            for df in pd.read_csv(filename, chunksize=N_import/self.ncores, low_memory=False):
+
+                starsanalysed += len(df)
+                fname = filename.split('/')[-1]
+
+                # Setup function for parallel computation
+                kwargs = {'df':df, 'fileinfo':self.fileinfo, 'IDtype':self.IDtype, 'N_iterate':N_iterate, 
+                            'outString':outString, 'starcount':starcount}
+                func = assignmentParallel(**kwargs)
+
+                # Run multiprocessing step
+                pool = multiprocessing.Pool(self.ncores)
+                results = pool.map(func, info_lst)
+                pool.terminate()
+                for r in results:
+                    starcount.update(r[0])
+                    total += r[1]
+
+                # Updates of progress continuously output
+                # Percentage complete
+                perc = round((starsanalysed/float(self.total))*100, 3)
+                # Time taken so far
+                duration = round((time.time() - start)/60., 1)
+                # Expected total time (in hours and minutes)
+                projected = round((time.time() - start)*self.total/((starsanalysed+1)*3600), 3)
+                hours = int(projected)
+                minutes = int((projected - hours)*60)
+                # String describing progress
+                outString = '\r'+'File: '+fname+'  '+\
+                               'Complete: '+str(starsanalysed)+'/'+str(self.total)+'('+\
+                               str(perc)+'%)  Time: '+str(duration)+'m  Projected: '+str(hours)+'h'+str(minutes)+'m'
+
+        # Close all open files
+        for tup in info_lst:
+            for field in tup[1]:
+                tup[1][field].close()
+
+        print("\nTotal stars assigned to fields: %d.\n\
+Dictionary of stars per field in fileinfo.photo_field_starcount." % total)
+
+        self.fileinfo.photo_field_files = field_files
+        self.fileinfo.photo_field_starcount = starcount
+        self.fileinfo()
+        self.fileinfo.save()
+
+class assignmentParallel():
+
+    def __init__(self, df=None, fileinfo=None, IDtype=None, N_iterate=0, outString="", starcount={}):
+
+        self.df=df
+        self.fileinfo=fileinfo
+        self.IDtype=IDtype
+        self.N_iterate=N_iterate
+        self.outString=outString
+        self.starcount = starcount
+
+    def __call__(self, info):
+
+        pointings, open_files = info
+
+        # Column header labels in pointings
+        phi, theta, halfangle = self.fileinfo.field_coords[1:4]
+            
+        self.df = ArrayMechanics.\
+                    AnglePointsToPointingsMatrix(self.df, pointings, phi, theta, halfangle,
+                                                IDtype = self.IDtype, Nsample = self.N_iterate, 
+                                                progress=True, outString=self.outString)
+        
+        count=0
+        field_i=0
+        for field in pointings[self.fileinfo.field_coords[0]]:
+            field_i += 1
+            # Write the number of fields which have been saved so far
+            sys.stdout.write('\r'+self.outString+'...Saving: '+str(field_i)+'/'+str(len(pointings))+"                 ")
+            sys.stdout.flush()
+
+            # Check which rows are assigned to the right field
+            df_bool = self.df.points.apply(lambda x: field in x)
+            df = self.df[df_bool].copy()
+
+            # Add to star count
+            self.starcount[field] += len(df)
+            count += len(df)
+
+            df.drop('points', inplace=True, axis=1)
+            
+            df.to_csv(open_files[field], index=False, header=False)
+
+        return self.starcount, count
+
+
+def importLimit(files, proportion=0.1, memory=None):
 
     '''
     importLimit - Number of rows which can be imported at once whilst using a set amount of memory.
@@ -260,14 +418,15 @@ def importLimit(files, proportion=0.1):
     df = pd.read_csv(filename, nrows=1000)
 
     mem_thousand = sys.getsizeof(df)
-    mem = psutil.virtual_memory()
+    if memory is None: mem = psutil.virtual_memory().available
+    else: mem = memory*(float(1024)**3)
 
-    ratio = mem.available/mem_thousand
+    ratio = mem/mem_thousand
     import_max = 1000 * ratio * proportion
     
     return int(import_max)
 
-def iterLimit(Npoint, proportion=0.1):
+def iterLimit(Npoint, proportion=0.1, memory=None, ncores=1):
 
     '''
     iterLimit - Number of stars which may be assigned at once without using too much memory
@@ -289,13 +448,16 @@ def iterLimit(Npoint, proportion=0.1):
             - Number of rows to be iterated at once
     '''
 
-    mem = psutil.virtual_memory()
+    if memory is None:
+        mem = psutil.virtual_memory().available/float(ncores)
+    else:
+        mem=( float(memory)*(float(1024)**3) )/float(ncores)
 
-    iter_max = (mem.available * proportion)/(50 * Npoint)
+    iter_max = (mem * proportion)/(50 * Npoint)
     
     return int(iter_max)
 
-def countStars(files):
+def countStars(files, ncores=1):
 
     '''
     countStars - iterate through files to find the total number of photometric stars
@@ -313,20 +475,36 @@ def countStars(files):
 
     print("Counting total number of stars", end="")
 
-    count = 0
-    for filen in files:
-        print(".", end="")
-        extension = os.path.splitext(filen)[-1]
-        if extension=='.gz':
-            with gzip.open(filen) as f:
-                for _ in f:
-                    count += 1         
-        else:
-            with open(filen) as f:
-                for _ in f:
-                    count += 1         
+    pool = multiprocessing.Pool(ncores)
+    # Run class obsMultiFunction.__call___ as external function for each field
+    results = pool.map(countFile, files)
+    # Exit the pools as they won't be used again
+    pool.close()
+    pool.join()
 
+    # Join all dataframes together
+    count = 0
+    for r in results:
+        count+=r
     print("done")
+    return count
+
+def countFile(filen):
+
+    count = 0
+
+    sys.stdout.write(".")
+    sys.stdout.flush()
+    extension = os.path.splitext(filen)[-1]
+    if extension=='.gz':
+        with gzip.open(filen) as f:
+            for _ in f:
+                count += 1         
+    else:
+        with open(filen) as f:
+            for _ in f:
+                count += 1         
+
     return count
 
 class HealpixAssignment():

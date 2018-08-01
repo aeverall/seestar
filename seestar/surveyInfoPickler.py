@@ -129,8 +129,8 @@ class surveyInformation():
 
         self.fileinfo_path = ''
 
-        self.photo_field_files = ['']
-        self.photo_field_paths = ['']
+        self.photo_field_files = {}
+        self.photo_field_paths = {}
         self.photo_field_starcount = {}
 
         self.photo_model = ()
@@ -155,7 +155,7 @@ class surveyInformation():
         self.iso_data_path = os.path.join(self.survey_folder, self.iso_folder, self.iso_data_file)
         self.iso_interp_path = os.path.join(self.survey_folder, self.iso_folder, self.iso_interp_file)
 
-        self.photo_field_paths = {field: os.path.join(self.photo_path, fieldfile) for field, fieldfile in self.photo_field_files.iteritems()}
+        self.photo_field_paths = {field: os.path.join(self.photo_path, self.photo_field_files[field]) for field in self.photo_field_files}
 
         self.example_string = \
 """

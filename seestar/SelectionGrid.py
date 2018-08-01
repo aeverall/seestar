@@ -78,6 +78,14 @@ class SFGenerator():
     ----------
         pickleFile - str - path to pickled instance of class with file names and coordinate lists
 
+    kwargs
+    ------
+        ncores=1: int
+            - Number of available cores to use
+
+        memory: float
+            - Number of Gb of memory available across all cores
+
     Functions
     ---------
         StarDataframe - Creates a dataframe of relevant relevant information on stars used to create  interpolants
@@ -100,10 +108,14 @@ class SFGenerator():
         AnglePointsToPointingsMatrix
     '''
     
-    def __init__(self, pickleFile):
+    def __init__(self, pickleFile, ncores=1, memory=1):
 
         # Check what components of the selection function already exist
         gen_intsf, use_intsf, gen_obssf, use_obssf, use_isointerp = path_check(pickleFile)
+
+        # Hold number of cores and memory available to use
+        self.ncores=ncores
+        self.memory=memory
 
         # Load survey information from pickleFile
         fileinfo = surveyInfoPickler.surveyInformation(pickleFile)
@@ -392,55 +404,49 @@ class SFGenerator():
 
         '''
         start = time.time()
-        multiCore = False
+
+
+        multiCore = True
         if multiCore:
             # Create processor pools for multiprocessing
-            nCores = multiprocessing.cpu_count() - 1
-            nCores = 2
+            nCores = self.ncores
             pool = multiprocessing.Pool( nCores )
 
             # List of fields in pointings database
             field_list = self.pointings.fieldID.values.tolist()
+            # Iteration number for each field
+            field_number = np.arange(len(field_list)) + 1
+
+            # Create a list of spectroscopic catalogue points on each field
+            spectro_points_lst=[]
+            for field in field_list:
+                # Select survey stars
+                spectro_points = self.spectro_df[self.spectro_df.fieldID == field]
+                spectro_points_lst.append(spectro_points)
+
+            # zip field name, iteration number and spectroscopic points together
+            field_iter = zip(field_list, field_number, spectro_points_lst)
+
+
+
+            # Build results into a full list of multiprocessing instances
+            print("multiprocessing - observable SF calculation - running on %d cores..." % nCores)
+
+            # multiprocessing needs to run through an external class, otherwise it's not happy.
+            # Initialise class
+            iter_inst = multiprocessObsSF(self.spectro_df, self.photo_path, self.photo_tag,
+                                        self.photo_coords, self.pointings, cm_limits=self.cm_limits,
+                                        spectro_model=self.spectro_model, photo_model=self.photo_model,
+                                        tstart=start, fieldN=len(field_list))
+            # Run class obsMultiFunction.__call___ as external function for each field
+            results = pool.map(iter_inst, field_iter)
+
+            # Exit the pools as they won't be used again
+            pool.close()
+            pool.join()
 
             # Locations for storage of solutions
             obsSF_dicts = {}
-
-            # Build results into a full list of multiprocessing instances
-            print("multiprocessing process for observable fields...\n")
-            results = []
-
-            """
-            # Field numbering to show progress
-            fieldN = 0
-            fieldL = len(field_list)
-            for field in field_list:
-
-                sys.stdout.write("\rCurrent field in col-mag calculation: %s, %d/%d" % (str(field), fieldN, fieldL))
-                sys.stdout.flush()
-
-                results.append(pool.apply_async(iterateField, 
-                                                args=(self.spectro_df, self.photo_path, field,
-                                                    self.photo_tag, self.photo_coords, self.pointings.loc[field],
-                                                    self.cm_limits)))
-                fieldN+=1
-
-            for r in results:
-                obsSF_field, field = r.get()
-                obsSelectionFunction[field] = obsSF_field
-
-            # Exit the pools as they won't be used again
-            pool.close()
-            pool.join()
-            """
-
-            pool = multiprocessing.Pool(processes=2)
-            results = pool.map(obsMultiFunction(self.spectro_df, self.photo_path, self.photo_tag,
-                                                self.photo_coords, self.pointings, self.cm_limits), field_list)
-
-            # Exit the pools as they won't be used again
-            pool.close()
-            pool.join()
-
             for r in results:
                 obsSF_field, field = r
                 obsSF_dicts[field] = vars(obsSF_field)
@@ -463,7 +469,10 @@ class SFGenerator():
                 sys.stdout.write("\rCurrent field in col-mag calculation: %s, %d/%d, Time: %dm, Left: %dm" % (str(field), fieldN, fieldL, int(tnow), int(tleft)))
                 sys.stdout.flush()
 
-                obsSF_field, field = iterateField(self.spectro_df, self.photo_path, field,
+                # Select preferred survey stars
+                spectro_points = self.spectro_df[self.spectro_df.fieldID == field]
+
+                obsSF_field, field = iterateField(spectro_points, self.photo_path, field,
                                                 self.photo_tag, self.photo_coords, self.pointings.loc[field],
                                                 cm_limits=self.cm_limits, spectro_model=self.spectro_model, photo_model=self.photo_model)
                 obsSF_dicts[field] = vars(obsSF_field)
@@ -615,7 +624,6 @@ class SFGenerator():
         PointsToPointings - Generates a list for each point for all field pointings
                             for which the point's angle coordinates fall within the
                             solid angle extent of the field.
-        ### Only manages an upper limit of 20000 stars at a time!!!! ###
 
         Parameters
         ----------
@@ -641,10 +649,36 @@ class SFGenerator():
         '''
 
         # Decide based on available memory how many stars to iterate at once
-        Nsample = FieldAssignment.iterLimit(len(pointings))
-        df = AM.AnglePointsToPointingsMatrix(stars, self.pointings,
-                                          Phi, Th, 'halfangle', IDtype = self.fieldlabel_type,
-                                          Nsample=Nsample)
+        Nsample = FieldAssignment.iterLimit(len(self.pointings), ncores=self.ncores)
+
+        if self.ncores == 1:
+            df = AM.AnglePointsToPointingsMatrix(stars, self.pointings,
+                                              Phi, Th, 'halfangle', IDtype = self.fieldlabel_type,
+                                              Nsample=Nsample)
+        else:
+            # List of subsections of pointings to use in parallel
+            df_lst = []
+            npoints = int(stars/self.ncores)
+            remainder = stars%self.ncores
+            for i in range(self.ncores):
+                if i<remainder: dfi = stars.iloc[i*(npoints+1):(i+1)*(npoints+1)]
+                else: dfi = stars.iloc[i*npoints + remainder: (i+1)*npoints + remainder]
+                dfs_lst.append(dfi)
+
+            kwargs = {'pointings':self.pointings, 'Phi':Phi, 'Th':Th, 'halfangle':'halfangle', 'IDtype':IDtype,
+                     'Nsample':Nsample}
+            func = AM.APTPM_parallel(**kwargs)
+
+            # Build results into a full list of multiprocessing instances
+            print("multiprocessing - field assigment - running on %d cores..." % nCores)
+
+            # Create processor pools for multiprocessing
+            with multiprocessing.Pool( self.ncores ) as pool:
+                results = pool.map(func, df_lst)
+            # Join all dataframes together
+            df = pd.DataFrame()
+            for r in results:
+                df = pd.concat((df, r))
         
         return df
 
@@ -705,24 +739,100 @@ class SFGenerator():
             Phi, Th = GenerateCircle(PhiRad[i],ThRad[i],SA[i])
             PlotDisk(Phi, Th, ax)
 
-class obsMultiFunction():
+class multiprocessObsSF():
+
+    '''
+    multiprocessObsSF - Class for calculating observable selection function
+        - This allows us to run each field in a pool of parallel cores.
+
+    Parameters
+    ----------
+        spectro_df: pandas DataFrame
+            - Spectroscopic catalogue
+        photo_path: str
+            - Location of photometric datafiles
+        photo_tag: str
+            - Extension on the end of the photometric datafiles - '.csv'
+        photo_coords: list of str
+            - Column headers for photometric data files
+        pointings: pandas dataframe
+            - Field location pointings
+
+    **kwargs
+    --------
+        cm_limits=None: 4-tuple of float
+            - Limits on colour and magnitude to act as boundaries if field boundaries not given
+        spectro_model=None: tuple
+            - Model to be use for selection function
+        photo_model=None: tuple
+            - Mudel to be used for distribution function
+        tstart=0: float
+            - time.time() when observable SF calculation was started
+        fieldN=0: int
+            - Number of fields in calculation
+    '''
 
     def __init__(self, spectro_df, photo_path, photo_tag, photo_coords, 
-                    pointings, cm_limits):
+                    pointings, cm_limits=None, spectro_model=None, photo_model=None,
+                    tstart=0, fieldN=0):
 
+        # Dataframe of spectroscopic catalogue
         self.spectro_df = spectro_df
+        # Path to directory containing photometric files
         self.photo_path = photo_path
+        # Tag on end of photometric file names - ".csv"
         self.photo_tag = photo_tag
+        # Column headers of photometric data
         self.photo_coords = photo_coords
+        # Dataframe of field pointings
         self.pointings = pointings
+        # Colour and magnitude limits of survey
         self.cm_limits = cm_limits
+        # Model for selection function (e.g. ('GMM', 1))
+        self.spectro_model = spectro_model
+        # Model for distribution function (e.g. ('GMM', 2))
+        self.photo_model = photo_model
 
-    def __call__(self, field):
+        # Start time for observable SF calculation
+        self.tstart=tstart
+        # Number of fields to iterate
+        self.fieldN=fieldN
 
-        return iterateField(self.spectro_df, self.photo_path, field, self.photo_tag, 
-                            self.photo_coords, self.pointings.loc[field], self.cm_limits)
+    def __call__(self, field_iter):
+
+        '''
+        __call__ - Run the observable SF calculation for the given field
+
+        Parameters
+        ----------
+            field_iter: tuple
+                - fieldID, iteration number and spectroscopic stars of field
+        Returns
+        -------
+            ans: tuple
+                - Values returned from iterateField
+        '''
+
+        field, fieldL, spectro_points = field_iter
+
+        ans = iterateField(spectro_points, self.photo_path, field, self.photo_tag, 
+                            self.photo_coords, self.pointings.loc[field], cm_limits=self.cm_limits,
+                            spectro_model=self.spectro_model, photo_model=self.photo_model)
+
+        # Time taken to get to this point
+        tnow = (time.time() - self.tstart)/60.
+        tleft = tnow*(float(fieldL)/self.fieldN - 1)
+        # output progress to stdout
+        sys.stdout.write("\rCurrent field in col-mag calculation: %s, %d/%d, Time: %dm, Left: %dm" \
+                        % (str(field), fieldL, self.fieldN, int(tnow), int(tleft)))
+        sys.stdout.flush()
+
+        return ans
+
+
+
     
-def iterateField(spectro, photo_path, field, photo_tag, photo_coords, fieldpointing, cm_limits=None, 
+def iterateField(spectro_points, photo_path, field, photo_tag, photo_coords, fieldpointing, cm_limits=None, 
                     spectro_model=('GMM', 1), photo_model=('GMM', 2)):
 
     '''
@@ -731,21 +841,24 @@ def iterateField(spectro, photo_path, field, photo_tag, photo_coords, fieldpoint
     Parameters
     ----------
         spectro:
-
         photo_path: string
                 - Location of folder of photometric catalogue files
-
-        field - field type (str, int, float, np.float64...)
-            The field in question
-
+        field: field label type (str, int, float, np.float64...)
+            The field being iterated
         photo_tag: str
             The file type of the photo files (.csv...)
-
         photo_coords: list of str
             Column headers of relevant columns in dataframe
-
-        cm_limits
-
+        fieldpointing:
+    
+    kwargs
+    ------
+        cm_limits=None: 4-tuple of float
+            Limits on colour and magnitude to act as boundaries if field boundaries not given
+        spectro_model=('GMM', 1): tuple
+            - Model to be use for selection function
+        photo_model=('GMM', 2): tuple
+            - Mudel to be used for distribution function
     Returns
     -------
         instanceSF - SFInstanceClasses class
@@ -768,32 +881,8 @@ def iterateField(spectro, photo_path, field, photo_tag, photo_coords, fieldpoint
                                      columns=dict(zip(photo_coords[2:5], coords)))
     photo_points['Colour'] = photo_points.appA - photo_points.appB
 
-    # Select preferred survey stars
-    spectro_points = spectro[spectro.fieldID == field]
-
     # Only create an interpolant if there are any points in the region
     if len(spectro_points)>0:
-
-        """
-        if len(spectro_points)>1:
-
-            # Double range of colours and magnitudes to allow smoothing to be effective
-            extra_mag = (np.max(spectro_points.appC)-np.min(spectro_points.appC))/2
-            extra_col = (np.max(spectro_points.Colour)-np.min(spectro_points.Colour))/2
-
-            # Range of colours and magnitudes used
-            mag_min, mag_max = (np.min(spectro_points.appC) - extra_mag, np.max(spectro_points.appC) + extra_mag)
-            col_min, col_max = (np.min(spectro_points.Colour) - extra_col, np.max(spectro_points.Colour) + extra_col)
-
-        else:
-            # If only 1 point, the max will be equivalent to the value
-            mag_exact = np.max(spectro_points.appC)
-            col_exact = np.max(spectro_points.Colour)
-
-            # Range of colours and magnitudes used
-            mag_min, mag_max = (mag_exact - 1, mag_exact + 1)
-            col_min, col_max = (col_exact - 1, col_exact + 1)          
-        """
 
         # Use given limits to determine boundaries of dataset
         # apparent mag upper bound
@@ -1329,3 +1418,42 @@ def path_check(pickleFile):
     print('')
 
     return gen_intsf, use_intsf, gen_obssf, use_obssf, use_isointerp
+
+
+class external():
+    '''
+    external - Allows multiprocessing from inside a class
+
+    Parameters
+    ----------
+        func: function
+            - The function being iterated over in parallel
+        args: tuple
+            - All stationary arguments of function
+        kwargs: dict
+            - All stationary kwarguments of function
+    '''
+    
+    def __init__(self, func, args, kwargs):
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+        
+    def __call__(self, moreargs):
+        
+        '''
+        __call__ - Run the function on the given arguments
+
+        Parameters
+        ----------
+            moreargs: tuple
+                - Arguments which change with each iteration
+        Returns
+        -------
+            ans: output of function
+                - The value returned by running the function
+        '''
+
+        args = moreargs+self.args
+        ans = self.func(*args, **self.kwargs)
+        return ans

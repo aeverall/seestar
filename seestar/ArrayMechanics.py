@@ -72,7 +72,7 @@ AngleDisks
 
 import numpy as np
 import pandas as pd
-import gc
+import gc, multiprocessing, time
 import sys, os
 os.path.exists("../../Project/Milky/FitGalaxyModels/")
 sys.path.append("../FitGalMods/")
@@ -717,10 +717,11 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, halfangle,
                                 progress=False, outString=""):
 
     '''
-    AnglePointsToPointingsMatrix - Adds a column to the df with the number of the field pointing
+    AnglePointsToPointingsMatrixS - Adds a column to the df with the number of the field pointing
                                  - Uses matrix algebra
                                     - Fastest method for asigning field pointings
                                     - Requires high memory usage to temporarily hold matrices
+                                - Runs algorithm in serial
 
     Parameters
     ----------
@@ -772,7 +773,10 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, halfangle,
         dfi = df.iloc[i*Nsample:(i+1)*Nsample]
 
         iterated +=  len(dfi)
-        if progress: sys.stdout.write("\r"+outString+"...Assigning: "+str(iterated)+'/'+str(len(df))+"        ")
+        if progress: 
+            sys.stdout.write("\r"+outString+"...Assigning: "+str(iterated)+'/'+str(len(df))+"        ")
+            sys.stdout.flush()
+            
 
         pointings = pointings.reset_index(drop=True)
         pointings = pointings.copy()
@@ -837,6 +841,129 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, halfangle,
 
 
     return newdf
+
+"""
+    # To keep track of iterations
+    iterated=0
+    # Time at start of calculation
+    start = time.time()
+
+    # Create list of sub dataframes to iterate over
+    df_lst = []
+    npercore = (len(df) / ncores) + 1
+    for i in range(ncores):
+        dfi = df.iloc[i*npercore:(i+1)*npercore]
+        df_lst.append(dfi)
+
+    #function = lambda a: multiply(self.x, a)
+    #args = (self.pointings, Phi, Th, 'halfangle')
+    kwargs = {'pointings':pointings, 'Phi':Phi, 'Th':Th, 'halfangle':halfangle, 'IDtype':IDtype,
+             'Nsample':Nsample, 'outString':outString, 'progress':progress}
+    func = assignment(**kwargs)
+    # Create processor pools for multiprocessing
+    with multiprocessing.Pool( ncores ) as pool:
+        # Run class obsMultiFunction.__call___ as external function for each field
+        results = pool.map(func, df_lst)
+
+    # Join all dataframes together
+    newdf = pd.DataFrame()
+    for r in results:
+        newdf = pd.concat((newdf, r))
+    return newdf
+"""
+
+class APTPM_parallel():
+
+    def __init__(self, pointings=None, Phi=None, Th=None, halfangle=None, IDtype=None,
+                    Nsample=0, outString='', progress=False):
+
+        self.pointings=pointings
+        self.Phi=Phi
+        self.Th=Th
+        self.halfangle=halfangle
+        self.IDtype=IDtype
+        self.Nsample=Nsample
+
+    def __call__(self, df):
+
+        # Reformat dataframe
+        df = df.copy()
+        if 'points' in list(df): df.drop('points', axis=1, inplace=True)
+
+        # Number of stars iterated in core
+        iterated=0
+        # Initialise empty df for results
+        newdf = pd.DataFrame()
+        # Iterate over portions of size, Nsample to constrain memory usage.
+        for i in range(int(len(df)/self.Nsample) + 1):
+
+            dfi = df.iloc[i*self.Nsample:(i+1)*self.Nsample]
+
+            self.pointings = self.pointings.reset_index(drop=True).copy()
+            
+            Mp_df = np.repeat([getattr(dfi,self.Phi)], 
+                                len(self.pointings), 
+                                axis=0)
+            Mt_df = np.repeat([getattr(dfi,self.Th)], 
+                                len(self.pointings), 
+                                axis=0)
+            Mp_point = np.transpose(np.repeat([getattr(self.pointings,self.Phi)],
+                                                len(dfi), 
+                                                axis=0))
+            Mt_point = np.transpose(np.repeat([getattr(self.pointings,self.Th)], 
+                                                len(dfi), 
+                                                axis=0))
+            Msa_point = np.transpose(np.repeat([getattr(self.pointings,self.halfangle)], 
+                                                len(dfi), 
+                                                axis=0))
+            # Boolean matrix specifying whether each point lies on that pointing       
+            Mbool = AngleSeparation(Mp_df,
+                                    Mt_df,
+                                    Mp_point,
+                                    Mt_point) < Msa_point
+            # Clear the matrices in order to conserve memory
+            del(Mt_df)
+            del(Mp_df)
+            del(Mp_point)
+            del(Mt_point)
+            del(Msa_point)
+            gc.collect()
+
+            Plates = self.pointings.fieldID.astype(str).tolist()
+            # Convert Mbool to a dataframe with Plates for headers
+            Mbool = pd.DataFrame(np.transpose(Mbool), columns=Plates)
+            Mplates = pd.DataFrame(np.repeat([Plates,], len(dfi), axis=0), columns=Plates)
+            Mplates = Mplates*Mbool
+            # Remove "" entries from the lists
+            def filtering(x, remove):
+                x = [elem for elem in x if elem!=remove]
+                return x
+            # Do filtering for fields
+            field_listoflists = Mplates.values.tolist()
+            field_listoflists = [filtering(x, '') for x in field_listoflists]
+            # Clear the matrices in order to conserve memory
+            del(Mplates)
+            gc.collect()
+            # Convert type of all field IDs back to correct type
+            field_listoflists = [[self.IDtype(elem) for elem in row] for row in field_listoflists]   
+            # Convert list to series then series to dataframe column
+            field_series = pd.Series(field_listoflists)
+            field_series = pd.DataFrame(field_series, columns=['points'])
+            # Reset index to merge on position then bring index back
+            dfi = dfi.reset_index()
+            dfi = dfi.merge(field_series, how='inner', right_index=True, left_index=True)
+            dfi.index = dfi['index']
+            dfi.drop('index', inplace=True, axis=1)
+        
+            # Add dataframe to newdf
+            newdf = pd.concat((newdf, dfi))
+
+            iterated += len(dfi)
+            if self.progress: 
+                sys.stdout.write("\r"+self.outString+"...Assigning: "+str(iterated)+'/'+str(len(df))+"        ")
+                sys.stdout.flush()
+
+        return newdf
 
 def EqAreaCircles(delta, N):
 
