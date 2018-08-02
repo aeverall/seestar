@@ -23,8 +23,13 @@ In the remainder of this README file, we will explain how to install and run **s
 ***
 # Download and install code package <a name="install"></a>
 
-Go to the location where you would like to store the repository.
+### From pip
+```
+$ pip install seestar==1.0
+```
 
+### From Github
+Go to the location where you would like to store the repository.
 ```
 $ git clone https://github.com/aeverall/seestar.git
 $ cd seestar
