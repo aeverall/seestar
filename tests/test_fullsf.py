@@ -10,7 +10,7 @@ def testfunc(a, b):
 
 def testSucceed():
 
-	assert testfunc(3, 4) = 7
+	assert testfunc(3, 4) == 7
 
 def testFail():
 

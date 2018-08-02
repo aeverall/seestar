@@ -1,0 +1,4 @@
+{
+  "tests/test_fullsf.py::testFail": true, 
+  "tests/test_fullsf.py::testfunc": true
+}
