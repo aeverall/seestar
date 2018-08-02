@@ -2,7 +2,6 @@
 Test the full selection function process
 
 
-
 '''
 
 def testfunc(a, b):
