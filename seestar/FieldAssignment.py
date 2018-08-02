@@ -727,10 +727,10 @@ class HealpixAssignment():
             fileinfo - class instance of surveyInformation
         '''
         
-        print('Clearing field files...')
+        print('Clearing field files...', end="")
         
         # Take headers from source files (photometric catalogue)
-        headers = pd.read_csv(self.photometric_files[0], nrows = 1, usecols=fileinfo.photo_coords)[:0]
+        headers = pd.read_csv(self.photometric_files[0], nrows = 1, usecols=self.fileinfo.photo_coords)[:0]
         
         # Write all field files with the appropriate headers
         for field in self.fields:
@@ -792,6 +792,8 @@ class HealpixAssignment():
         for filename in self.photometric_files:
             # Run through data in N_import sized chunks
             for df in pd.read_csv(filename, chunksize=self.N_import, low_memory=False, usecols=self.fileinfo.photo_coords):
+                # Clean df of bad datatypes and null values
+                df = cleanData(df, self.fileinfo)
                 # Get columns in right order to agree with headers
                 df = df[self.fileinfo.photo_coords]
                 # Increase stars analysed for each chunk which is imported
@@ -824,8 +826,7 @@ class HealpixAssignment():
                 # String describing progress
                 outString = '\r'+'File: '+fname+'  '+\
                                'Complete: '+str(starsanalysed)+'/'+str(self.total)+'('+\
-                               str(perc)+'%)  Time: '+str(duration)+'m  Projected: '+str(hours)+'h'+str(minutes)+'m'+\
-                               '...fieldID: '+str(field)  
+                               str(perc)+'%)  Time: '+str(duration)+'m  Projected: '+str(hours)+'h'+str(minutes)+'m'
 
         for field in open_files:
             open_files[field].close()
@@ -910,6 +911,8 @@ class HealpixAssignment():
         for filename in self.photometric_files:
             # Run through data in N_import sized chunks
             for df in pd.read_csv(filename, chunksize=self.N_import, low_memory=False, usecols=self.fileinfo.photo_coords):
+                # Clean df of bad datatypes and null values
+                df = cleanData(df, self.fileinfo)
                 # Get columns in right order to agree with headers
                 df = df[self.fileinfo.photo_coords]
                 # Increase stars analysed for each chunk which is imported
@@ -946,8 +949,7 @@ class HealpixAssignment():
                 # String describing progress
                 outString = '\r'+'File: '+fname+'  '+\
                                'Complete: '+str(starsanalysed)+'/'+str(self.total)+'('+\
-                               str(perc)+'%)  Time: '+str(duration)+'m  Projected: '+str(hours)+'h'+str(minutes)+'m'+\
-                               '...fieldID: '+str(field)
+                               str(perc)+'%)  Time: '+str(duration)+'m  Projected: '+str(hours)+'h'+str(minutes)+'m'
 
                 # Once all files have headers set firstfile is turned to false
                 firstfile=False
