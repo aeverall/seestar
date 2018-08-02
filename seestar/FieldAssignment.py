@@ -731,6 +731,7 @@ class HealpixAssignment():
         
         # Take headers from source files (photometric catalogue)
         headers = pd.read_csv(self.photometric_files[0], nrows = 1, usecols=self.fileinfo.photo_coords)[:0]
+        headers = headers[self.fileinfo.photo_coords]
         
         # Write all field files with the appropriate headers
         for field in self.fields:
