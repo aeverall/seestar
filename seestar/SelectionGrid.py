@@ -108,7 +108,7 @@ class SFGenerator():
         AnglePointsToPointingsMatrix
     '''
     
-    def __init__(self, pickleFile, ncores=1, memory=1):
+    def __init__(self, pickleFile, ncores=0, memory=1):
 
         # Check what components of the selection function already exist
         gen_intsf, use_intsf, gen_obssf, use_obssf, use_isointerp = path_check(pickleFile)
@@ -330,9 +330,12 @@ class SFGenerator():
 
         if data_source=='spectro': 
             coords = ['fieldID','phi', 'theta', 'appA', 'appB', 'appC']
-        elif data_source=='field':
+        elif (data_source=='field') & (self.fileinfo.style=='mf'):
             coords = ['fieldID', 'phi', 'theta', 'halfangle', 'Magmin', 'Magmax', 'Colmin', 'Colmax']
             #coords.extend(['halfangle'])
+        elif (data_source=='field') & (self.fileinfo.style=='as'):
+            coords = ['fieldID', 'Magmin', 'Magmax', 'Colmin', 'Colmax']
+        else: raise ValueError('fileinfo.style needs to be as or mf for allsky or multifibre')
 
         # Replace given coordinates with standardised ones
         print(dict(zip(coord_labels, coords)))
@@ -407,11 +410,7 @@ class SFGenerator():
         start = time.time()
 
 
-        multiCore = True
-        if multiCore:
-            # Create processor pools for multiprocessing
-            nCores = self.ncores
-            pool = multiprocessing.Pool( nCores )
+        if self.ncores>0:
 
             # List of fields in pointings database
             field_list = self.pointings.fieldID.values.tolist()
@@ -428,8 +427,6 @@ class SFGenerator():
             # zip field name, iteration number and spectroscopic points together
             field_iter = zip(field_list, field_number, spectro_points_lst)
 
-
-
             # Build results into a full list of multiprocessing instances
             print("multiprocessing - observable SF calculation - running on %d cores..." % nCores)
 
@@ -439,12 +436,13 @@ class SFGenerator():
                                         self.photo_coords, self.pointings, cm_limits=self.cm_limits,
                                         spectro_model=self.spectro_model, photo_model=self.photo_model,
                                         tstart=start, fieldN=len(field_list))
+            # Create processor pools for multiprocessing
+            
+            pool = multiprocessing.Pool( self.ncores )
             # Run class obsMultiFunction.__call___ as external function for each field
             results = pool.map(iter_inst, field_iter)
-
             # Exit the pools as they won't be used again
-            pool.close()
-            pool.join()
+            pool.teminate()
 
             # Locations for storage of solutions
             obsSF_dicts = {}
@@ -822,7 +820,7 @@ class multiprocessObsSF():
 
         # Time taken to get to this point
         tnow = (time.time() - self.tstart)/60.
-        tleft = tnow*(float(fieldL)/self.fieldN - 1)
+        tleft = tnow*(1 - float(fieldL)/self.fieldN)
         # output progress to stdout
         sys.stdout.write("\rCurrent field in col-mag calculation: %s, %d/%d, Time: %dm, Left: %dm" \
                         % (str(field), fieldL, self.fieldN, int(tnow), int(tleft)))
