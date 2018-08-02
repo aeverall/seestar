@@ -157,6 +157,8 @@ class surveyInformation():
 
         self.photo_field_paths = {field: os.path.join(self.photo_path, self.photo_field_files[field]) for field in self.photo_field_files}
 
+        self.fieldlabel_type = self.spectro_dtypes[0]
+
         self.example_string = \
 """
 # Get file names and coordinates from pickled file
@@ -282,8 +284,9 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
                         if not df[self.spectro_coords[i]].dtype == self.spectro_dtypes[i]:
                             print("Datatype of column %s given as %s but is actually %s." % (self.spectro_coords[i], str(self.spectro_dtypes[i]), str(df[self.spectro_coords[i]].dtype.type)))
                             self.spectro_dtypes[i] = df[self.spectro_coords[i]].dtype.type
-                            print("Changed dtype to %s, run self.save() to keep these changes." % df[self.spectro_coords[i]].dtype.type)
+                            print("Changed dtype to %s, run fileinfo.save() to keep these changes." % df[self.spectro_coords[i]].dtype.type)
                             good = False
+                            if i==0: self.fieldlabel_type = self.spectro_dtypes[i]
                     # Check that longitude and latitude are in the right range
                     theta = df[self.spectro_coords[2]]
                     phi = df[self.spectro_coords[1]]
@@ -319,9 +322,9 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
                         if not df[self.field_coords[i]].dtype == self.field_dtypes[i]:
                             print("Datatype of column %s given as %s but is actually %s." % (self.field_coords[i], str(self.field_dtypes[i]), str(df[self.field_coords[i]].dtype.type)))
                             self.field_dtypes[i] = df[self.field_coords[i]].dtype.type
-                            print("Changed dtype to %s, run self.save() to keep these changes." % df[self.field_coords[i]].dtype.type)
+                            print("Changed dtype to %s, run fileinfo.save() to keep these changes." % df[self.field_coords[i]].dtype.type)
                             good = False
-
+                            if i==0: self.fieldlabel_type = self.spectro_dtypes[i]
                     if self.style == 'mf':
                         # Check that longitude and latitude are in the right range
                         theta = df[self.field_coords[2]]
@@ -373,7 +376,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
                         if not df[self.photo_coords[i]].dtype == self.photo_dtypes[i]:
                             print("Datatype of column %s given as %s but is actually %s." % (self.photo_coords[i], str(self.photo_dtypes[i]), str(df[self.photo_coords[i]].dtype.type)))
                             self.photo_dtypes[i] = df[self.photo_coords[i]].dtype.type
-                            print("Changed dtype to %s, run self.save() to keep these changes." % df[self.photo_coords[i]].dtype.type)
+                            print("Changed dtype to %s, run fileinfo.save() to keep these changes." % df[self.photo_coords[i]].dtype.type)
                             good = False
                     # Check that longitude and latitude are in the right range
                     theta = df[self.photo_coords[1]]
@@ -464,7 +467,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
                         if not df[self.photo_coords[i]].dtype == self.photo_dtypes[i]:
                             print("Datatype of column %s given as %s but is actually %s." % (self.photo_coords[i], str(self.photo_dtypes[i]), str(df[self.photo_coords[i]].dtype.type)))
                             self.photo_dtypes[i] = df[self.photo_coords[i]].dtype.type
-                            print("Changed dtype to %s, run self.save() to keep these changes." % df[self.photo_coords[i]].dtype.type)
+                            print("Changed dtype to %s, run fileinfo.save() to keep these changes." % df[self.photo_coords[i]].dtype.type)
                             good = False
                     # Check that longitude and latitude are in the right range
                     theta = df[self.photo_coords[1]]

@@ -84,7 +84,7 @@ def create():
 	# magA-magB = Colour, magC = m (for selection limits)
 	FileInfo.spectro_coords = ['fieldID', 'glon', 'glat', 'Japp', 'Kapp', 'Happ']
 	if style=='mf': FileInfo.spectro_dtypes = [FileInfo.fieldlabel_type, float, float, float, float, float]
-	elif style=='as': FileInfo.spectro_dtypes = [None, float, float, float, float, float]
+	elif style=='as': FileInfo.spectro_dtypes = [FileInfo.fieldlabel_type, float, float, float, float, float]
 	else: print("Houston, we have a problem! code 1")
 
 	# Filename (in FileInfo.spectro file) for field pointings
