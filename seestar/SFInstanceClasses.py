@@ -285,6 +285,184 @@ class intrinsicIMFSF():
         self.mass_scaled = np.linspace(0.01, 0.99, 500)
 
     def __call__(self, agemhs, obsSF):
+        
+
+        '''
+        __call__ - Calculate the intrinsic selection function from the intrinsic coordinates.
+
+        Parameters
+        ----------
+            agemhs: tuple of floats or arrays: (age, mh, s)
+                - age, mh, mass and s of stars for which the selection function is being calculated
+            obsSF: observableSF instance
+                - Class for calculating the observable selection function from colour and magnitude
+
+        Inherited
+        ---------
+            IsoCalculator: IsochroneScaling.IntrinsicToObservable instance
+                - Class with functions for converting between intrinsic and observable coordinates
+            mass_scaled: array
+                - Set of scaled mass values in range [0, 1] which will be integrated over with the IMF
+
+        Returns
+        -------
+            SF: float or array
+                - Selection function for given intrinsic coordinates.
+        '''
+
+        age, mh, s = agemhs
+        self.mass_scaled = np.linspace(0.01, 0.99, 500)
+        n_obj = len(age.ravel())
+        # Shape to be used for a reshape later
+        gridshape = self.mass_scaled.shape + age.shape
+
+        # Convert values into grids expanded over mass values
+        age = np.repeat([age,], len(self.mass_scaled), axis=0).ravel()
+        mh = np.repeat([mh,], len(self.mass_scaled), axis=0).ravel()
+        s = np.repeat([s,], len(self.mass_scaled), axis=0).ravel()
+        mass_s = np.repeat([self.mass_scaled,], n_obj, axis=0).T.ravel()
+
+        # Unscale the mass and calculate the IMF contribution
+        Mmin = self.IsoCalculator.Mmin_interp((age, mh))
+        Mmax = self.IsoCalculator.Mmax_interp((age, mh))
+        mass = self.IsoCalculator.unscaling( mass_s, Mmax, Mmin )
+        weight = functionIMFKoupra( mass )
+
+        # Find colour and apparent magnitude values for age, mh, m_scaled, s
+        col, mag = self.IsoCalculator(age, mh, mass, s)
+
+        # Reshape
+        col = col.reshape(gridshape)
+        mag = mag.reshape(gridshape)
+        weight = weight.reshape(gridshape)
+        # Integrate over IMF
+        SF = np.sum( obsSF((mag, col)) * weight , axis=0 )
+        # Normalisation factors for IMF
+        Norm = np.sum( weight , axis=0 )
+        SF = SF/Norm
+
+        return SF
+
+    def save(self, filename):
+
+        '''
+        save - Converts attributes of class to a dictionary and saves the dictionary.
+
+        Parameters
+        ----------
+            filename: str
+                - File where data is saved.
+        '''
+
+        # Convert attributes to dictionary
+        attr_dict = vars(self)
+
+        # Dump pickled dictionary of attributes
+        with open(filename, 'wb') as handle:
+            pickle.dump(attr_dict, handle)
+
+    def load(self, filename):
+
+        '''
+        load - Loads attributes of class from the saved dictionary.
+
+        Parameters
+        ----------
+            filename: str
+                - File where data is saved.
+        '''
+
+        # Load pickled dictionary of attributes
+        with open(filename, "rb") as insert:
+            file_dict  = pickle.load(insert) 
+
+        # Convert dictionary to attributes  
+        for key in file_dict:
+            setattr(self, key, file_dict[key])
+
+    def attr_dict(self):
+
+        # Dictionary of attributes
+        return vars(self)
+
+
+def setattrs(_self, **kwargs):
+
+    '''
+    setattrs - Sets the attributes of a class from a dictionary
+
+    **kwargs
+    --------
+        _self: class instance
+            - Instance of class having attributes set.
+
+        dictionary containing all attributes of the class.
+    '''
+
+    for k,v in kwargs.items():
+        setattr(_self, k, v)
+
+# Koupra's initial mass function
+def functionIMFKoupra(mass):
+
+    '''
+    functionIMFKoupra - Calculate initial mass function weight of mass value.
+
+    Parameters
+    ----------
+        mass: float or array
+            - Initial mass of objects for calculating IMF weight.
+
+    Returns
+    -------
+        IMF: float or array
+            - Initial mass function value for given mass.
+    '''
+
+    a = 10.44
+    IMF = np.zeros(np.shape(mass))
+
+    con1 = (mass<0.08)
+    con2 = (mass>0.08)&(mass<0.5)
+    con3 = (mass>0.5)
+
+    IMF[con1] = a * (mass[con1]**(-0.3))
+    IMF[con2] = a * 0.08 * (mass[con2]**(-1.3))
+    IMF[(mass>0.5)] = a * 0.08 * 0.5 * (mass[con3]**(-2.3))
+
+    return IMF
+
+
+
+class intrinsicIMFSF_old():
+
+    '''
+    THIS SHOULD NOW BE OUTDATED
+
+    intrinsicIMFSF - Intrinsic selection function determined with Isochrone Calculator
+        - Integrated over the initial mass function so not dependent on mass
+
+    Functions
+    ---------
+        __call__ - Calculate the intrinsic selection function from the intrinsic coordinates.
+        save - Converts attributes of class to a dictionary and saves the dictionary.
+        load - Loads attributes of class from the saved dictionary.
+
+    Dependencies
+    ------------
+        IsoCalculator: IsochroneScaling.IntrinsicToObservable instance
+            - Class with functions for converting between intrinsic and observable coordinates
+    '''
+
+    def __init__(self):
+
+        # Calculator for getting col, mag from age, mh, s
+        self.IsoCalculator = None
+
+        # List of masses to integrate over
+        self.mass_scaled = np.linspace(0.01, 0.99, 500)
+
+    def __call__(self, agemhs, obsSF):
 
         '''
         __call__ - Calculate the intrinsic selection function from the intrinsic coordinates.
@@ -387,50 +565,3 @@ class intrinsicIMFSF():
 
         # Dictionary of attributes
         return vars(self)
-
-
-def setattrs(_self, **kwargs):
-
-    '''
-    setattrs - Sets the attributes of a class from a dictionary
-
-    **kwargs
-    --------
-        _self: class instance
-            - Instance of class having attributes set.
-
-        dictionary containing all attributes of the class.
-    '''
-
-    for k,v in kwargs.items():
-        setattr(_self, k, v)
-
-# Koupra's initial mass function
-def functionIMFKoupra(mass):
-
-    '''
-    functionIMFKoupra - Calculate initial mass function weight of mass value.
-
-    Parameters
-    ----------
-        mass: float or array
-            - Initial mass of objects for calculating IMF weight.
-
-    Returns
-    -------
-        IMF: float or array
-            - Initial mass function value for given mass.
-    '''
-
-    a = 10.44
-    IMF = np.zeros(np.shape(mass))
-
-    con1 = (mass<0.08)
-    con2 = (mass>0.08)&(mass<0.5)
-    con3 = (mass>0.5)
-
-    IMF[con1] = a * (mass[con1]**(-0.3))
-    IMF[con2] = a * 0.08 * (mass[con2]**(-1.3))
-    IMF[(mass>0.5)] = a * 0.08 * 0.5 * (mass[con3]**(-2.3))
-
-    return IMF

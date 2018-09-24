@@ -384,7 +384,7 @@ class IntrinsicToObservable():
                 metallicity of objects to be calculated
             mass - array or float (solar mass)
                 mass of objects to be calculated
-            s - array or float (kpc)
+            s - array, float or series (kpc)
                 distance of objects to be calculated
 
         Returns
@@ -396,7 +396,9 @@ class IntrinsicToObservable():
         '''
 
         Colour, Mabs = self.ColourMabs(age, mh, mass)
-        s = s.values # Convert from series to array
+        try: s = s.values # Convert from series to array
+        except AttributeError: pass # If s is already an array
+
         Mapp = self.appmag(Mabs, s)
 
         return Colour, Mapp
