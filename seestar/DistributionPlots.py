@@ -220,15 +220,17 @@ def plotSpectroscopicSF2(intSF, obsSF, field,
                         srange = (0.01, 20.), mh = -0.2,
                         mass_val=False, mass=None,
                         continuous=False, nlevels=10, title='',
-                        save=False, fname='', **kwargs):
+                        save=False, fname='',
+                        logage=False, **kwargs):
 
     # Array for the coordinates in each dimension
     smin, smax, ns = srange[0], srange[1], 80
     agemin, agemax, nage = 0.01, 12., 100
     
     smod    = np.logspace(np.log10(smin),np.log10(smax),ns)
-    agemod  = np.linspace(agemin,agemax,nage)
-    #agemod    = np.logspace(np.log10(agemin),np.log10(agemax),nage)
+    if logage: agemod    = np.logspace(np.log10(agemin),np.log10(agemax),nage)
+    else: agemod  = np.linspace(agemin,agemax,nage)
+    
 
     # Labels and ticks for the grid plots
     axis_ticks = {'s': smod, 'age': agemod}
@@ -260,6 +262,7 @@ def plotSpectroscopicSF2(intSF, obsSF, field,
     im = plt.contourf(age2d,s2d,sf2d,
                      levels=levels,colormap='YlGnBu')    
     plt.yscale('log')
+    if logage: plt.xscale('log')
     plt.xlabel(r'$\tau (Gyr)$')
     plt.ylabel(r'$s (kpc)$')
     plt.title(title)#r"$\mathrm{P}(\mathrm{S}|\mathrm{[M/H] = -0.2},\, s,\, \tau)$")
@@ -490,7 +493,151 @@ def plotSFInterpolants(fieldInts, varx, vary, var1, var2,
         print(fname)
         plt.savefig(fname, bbox_inches='tight')
 
+def plotIntSFDist(intSF, obsSF, field,
+                 varx='age', vary='s', z=-0.2, mass=None, 
+                srng=(0.01,10.), agerng=(0.01,13.), mhrng=(-2.5,0.5),
+                 logx=False, logy=False, nx=100, ny=100,
+                nlevels=10, colbar=True, levels=None,
+                 title=None, fig=None,
+                save=False, fname='', xlab=True, ylab=True, ytick=True, xtick=True,
+                Titlefont={'fontname':'serif', 'fontsize':20},
+                Axisfont={'fontname':'serif', 'fontsize':40},
+                Tickfont = {'fontname':'serif', 'fontsize':40},
+                **kwargs):
+    
+    '''
+    plotIntSFDist - Plot the intrinsic selection function distribution as a filled
+                    contour over parameter space
 
+    Parameters
+    ----------
+        intSF - instance of SFInstanceClasses.intrinsicIMFSF class
+            Stored in the selection function as SF.instanceIMFSF
+        obsSF - instance of SFInstanceClasses.observableSF class
+            Stored in the selection function as SF.obsSF
+        field - field type
+            Label of field to be used for distribution
+
+    **kwargs
+    --------
+        varx='age', vary='s' - str ('s', 'age' or 'mh')
+            - The variables to be used for x and y respectively
+        z=-0.2 - float
+            - The value of the third variable to be used as a slice
+        mass=None - None or float
+            - The value of mass to be taken for distribution
+            - If None, the IMF is integrated over
+        srng=(0.01,10.), agerng=(0.01,13.),mhrng=(-2.5,0.5) - tuple of float
+            - The ranges of values to be used for each coordinate if taken as variable
+        logx=False, logy=False - bool
+            - Use a log scale for x or y respectively
+        nx=100, ny=100 - int
+            - Number of values for x and y variable to use respectively
+        nlevels=10 - int
+            - Number of levels of contour to use
+        levels=None - None or array of float
+            - Levels to be used for contour plot
+            - If None, levels are automatically decided
+        title=None - None or str
+            - Title of plot
+            - If None, uses the field label and z coord value as title
+        fig=None - None or ax instance
+            - Axes for figure to be plotted on
+            - If None, a new figure is created
+        save=False - bool
+            - Do you want to save the figure
+        fname='' - str
+            - Filename for the saved figure
+        xlab=True, ylab=True - bool
+            - Label x and y axes with variable name
+        xtick=True, ytick=True - bool
+            - Display x and y ticks on axis
+        Titlefont={'fontname':'serif', 'fontsize':20} - dict
+            - Font details for figure title
+        Axisfont={'fontname':'serif', 'fontsize':40} - dict
+            - Font details for axis labels
+        Tickfont = {'fontname':'serif', 'fontsize':40} - dict
+            - Font details for axis ticks
+    Returns
+    -------
+        im - contourf instance
+            - Can be used for generating a colourbar outside the function
+    '''
+
+    variables=['s','age','mh']
+    variables.remove(varx)
+    variables.remove(vary)
+    
+    axis_labels = {'s': r"$s$ (kpc)",
+                  'age': r"$\tau$ (Gyr)",
+                  'mh': r"[M/H]",
+                  'fields': 'Field ID'}
+    
+    options = {'s': srng,
+               'age': agerng,
+               'mh': mhrng}
+    
+    # Array for the coordinates in each dimension
+    xmin, xmax, nx = options[varx][0], options[varx][1], nx
+    ymin, ymax, ny = options[vary][0], options[vary][1], ny
+    
+    if logx: xmod = np.logspace(np.log10(xmin),np.log10(xmax),nx)
+    else: xmod = np.linspace(xmin,xmax,nx)
+    if logy: ymod = np.logspace(np.log10(ymin),np.log10(ymax),ny)
+    else: ymod  = np.linspace(ymin,ymax,ny)
+    
+
+    # Labels and ticks for the grid plots
+    #axis_ticks = {'s': smod, 'age': agemod}
+
+    # Create 3D grids to find values of interpolants over age, mh, s
+    x2d = np.stack([xmod,]*len(xmod))
+    y2d = np.transpose(np.stack([ymod,]*len(ymod)))
+    z2d = np.zeros(np.shape(x2d))+z
+    
+    values = {varx: x2d,
+             vary: y2d,
+             variables[0]: z2d}
+    
+    if mass is not None:
+        mass2d = np.zeros(np.shape(x2d))+mass
+        sf2d = intSF((values['age'], values['mh'], mass2d, values['s']), obsSF[field])     
+    else:
+        sf2d = intSF((values['age'], values['mh'], values['s']), obsSF[field])
+
+    # Normalise contour levels to see the full range of contours
+    gridmax = np.max(sf2d)
+    if gridmax>0: 
+        if levels is None: levels = np.linspace(0, gridmax, nlevels)
+    else: 
+        levels = np.linspace(0., 1., nlevels)
+        print('SF zero everywhere')
+    
+    # Create figure
+    if fig is None: fig = plt.figure(figsize=(15, 15))
+    else: plt.sca(fig)
+    im = plt.contourf(x2d,y2d,sf2d,
+                     levels=levels,colormap='YlGnBu')    
+    if logy: plt.yscale('log')
+    if logx: plt.xscale('log')
+        
+    if xlab: plt.xlabel(axis_labels[varx], **Axisfont)
+    if ylab: plt.ylabel(axis_labels[vary], **Axisfont)
+    plt.xticks(**Tickfont)
+    plt.yticks(**Tickfont)
+    if not xtick: plt.setp(fig.get_xticklabels(), visible=False)
+    if not ytick: plt.setp(fig.get_yticklabels(), visible=False)
+    
+    if title is None: title = "Field {0}, {1} = {2}".format(str(field), axis_labels[variables[0]], str(z))
+    plt.title(title, fontdict=Titlefont)
+    #r"$\mathrm{P}(\mathrm{S}|\mathrm{[M/H] = -0.2},\, s,\, \tau)$")
+    if colbar: plt.colorbar(im, format="%.3f")
+
+    if save:
+        print(fname)
+        plt.savefig(fname, bbox_inches='tight')
+        
+    return im
 
 
 
