@@ -19,7 +19,7 @@ Requirements
 ArrayMechanics.py
 '''
 
-import dill, sys, pickle
+import sys, pickle
 import numpy as np
 import pandas as pd
 from itertools import  product

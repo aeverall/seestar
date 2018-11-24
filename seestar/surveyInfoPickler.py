@@ -32,7 +32,7 @@ class surveyInformation():
 
     Attributes
     ------------------
-        data_path - str - Path to directory containing Galaxia3 and isoPARSEC folders - e.g. '/home/user/PATHTOFOLDER/'
+        data_path - str - Path to directory containing e.g. 'Galaxia3' and isoPARSEC folders - e.g. '/home/user/PATHTOFOLDER/'
         photo_path - str - Path to folder containing photometric survey data - e.g. '/PATH/Galaxia3/photometric'
 
         spectro - str - Name of spectroscopic survey - e.g. 'Galaxia3'
@@ -501,41 +501,39 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
 
     def printValues(self):
 
-        print("Location of spectroscopic catalogue")
-        print("spectro_path: " + self.spectro_path)
-        print("Filename (in Demo.spectro file) for field pointings")
-        print("field_path: " + self.field_path +'\n')
-        print("Location of photometric folder of field files")
-        print("photo_path: " + self.photo_path)
+        print("Filename for spectroscopic catalogue:")
+        print("     spectro_path: " + self.spectro_path)
+        print("Filename for spectroscopic field pointings:")
+        print("     field_path: " + self.field_path +'\n')
+        print("Folder containing photometric samples in the spectroscopic field pointings:")
+        print("     photo_path: " + self.photo_path)
 
-        print("""Column headers and dtypes for spectrograph information [ fieldID, Phi, Th, magA, magB, magC]
-where magA-magB = Colour, magC = m (for selection limits)""")
-        print("spectro_coords: " + str(self.spectro_coords))
-        print("spectro_dtypes: " + str(self.spectro_dtypes))
-        print("Column headers for field pointing information [fieldID, Phi, Th, halfangle, Magmin, Magmax, Colmin, Colmax]")
-        print("field_coords: " + str(self.field_coords))
-        print("field_dtypes: " + str(self.field_dtypes))
+        print("""Column headers and dtypes for spectroscopic files [ fieldID, Phi, Th, magA, magB, magC]
+where magA-magB = Colour, magC = m (for selection limits):""")
+        print("     spectro_coords: " + str(self.spectro_coords))
+        print("     spectro_dtypes: " + str(self.spectro_dtypes))
+        print("Column headers for field pointing information [fieldID, Phi, Th, halfangle, Magmin, Magmax, Colmin, Colmax]:")
+        print("     field_coords: " + str(self.field_coords))
+        print("     field_dtypes: " + str(self.field_dtypes))
         print("""Column headers and dtypes for photometric field files [ Phi, Th, magA, magB, magC]
-where magA-magB = Colour, magC = m (for selection limits)""")
-        print("photo_coords: " + str(self.photo_coords))
-        print("photo_dtypes: " + str(self.photo_dtypes))
+where magA-magB = Colour, magC = m (for selection limits):""")
+        print("     photo_coords: " + str(self.photo_coords))
+        print("     photo_dtypes: " + str(self.photo_dtypes))
 
-        print('Coordinate system of angles ("Equatorial" or "Galactic")')
-        print("coord_system:" + str(self.coord_system) +'\n')
+        print('Coordinate system of angles ("Equatorial" or "Galactic"):')
+        print("     coord_system:" + str(self.coord_system) +'\n')
 
-        print("pickled file locations which will store the selection function information:")
-        print("sf_pickle_path: " + self.sf_pickle_path)
-        print("obsSF_pickle_path: " + self.obsSF_pickle_path +'\n')
+        print("Names of pickled files that will store the selection function information:")
+        print("     sf_pickle_path: " + self.sf_pickle_path)
+        print("     obsSF_pickle_path: " + self.obsSF_pickle_path +'\n')
 
-        print("File types for photometric data")
-        print("photo_tag: " + str(self.photo_tag))
+        print("File types for photometric data:")
+        print("     photo_tag: " + str(self.photo_tag))
 
-        print("File containing dill instance of isochrone data.")
-        print("iso_data_file: " + self.iso_data_path)
-        print("File containing pickled isochrone interpolants.")
-        print("iso_interp_path: " + self.iso_interp_path)
-        print("File containing pickled isochrone magnitudes.")
-        print("iso_mag_path: " + self.iso_mag_path +'\n')
+        print("File containing pickled instance of isochrone data:")
+        print("     iso_data_file: " + self.iso_data_path)
+        print("File containing pickled isochrone interpolants:")
+        print("     iso_interp_path: " + self.iso_interp_path)
 
     def example(self):
 

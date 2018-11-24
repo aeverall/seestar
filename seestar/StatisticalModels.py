@@ -314,7 +314,6 @@ class GaussianEM():
                 sys.stdout.write("\r"+str(self.params_i))
                 if finite: print("")
 
-
         params = self.params_i
 
         # Test runs different versions of the optimizer to find the best.
@@ -470,15 +469,13 @@ class GaussianEM():
         # Point component of poisson log likelihood: contPoints \sum(\lambda(x_i))
         model = function(*(self.x_s, self.y_s))
         contPoints = np.sum( np.log(model) )
-        # Integral of the smooth function over the entire region
-        contInteg = integrationRoutine(function, params, self.nComponents, *(self.rngx_s, self.rngy_s))
-
-        lnL = contPoints - contInteg
+      
+        lnL = contPoints # Contour integral converges to zero
         if self.runningL:
             sys.stdout.write("\rlogL: %.2f, sum log(f(xi)): %.2f, integral: %.2f            " % (lnL, contPoints, contInteg))
             sys.stdout.flush()
 
-        return contPoints - contInteg
+        return lnL
 
     def lnprior(self, params):
         
@@ -1562,7 +1559,7 @@ def Gauss(x, mu=0, sigma=1):
 def cdf(func, xmin, xmax, N, **kwargs):
 
     '''
-    cdf - Normalised cumulative distribution function of 1D dunction between limits.
+    cdf - Normalised cumulative distribution function of 1D function between limits.
 
     Parameters
     ----------
