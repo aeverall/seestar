@@ -23,7 +23,7 @@ CLASSIFIERS = ['Topic :: Scientific/Engineering :: Astronomy',
 setup(
     name="seestar",
     version=1.0,
-    
+
     # Project uses reStructuredText, so ensure that the docutils get
     # installed or upgraded on the target machine
     install_requires=['numpy', 'pandas', 'scipy', 'regex', 'matplotlib', 'seaborn', 'dill'],
@@ -48,7 +48,7 @@ setup(
     author_email="andrew.everall1995@gmail.com",
     description="Selection Function package",
     license="GPLv3",
-    url="https://github.aeverall/seestar.git",   # project home page, if any
+    url="https://github.com/aeverall/seestar",   # project home page, if any
 
     # could also include long_description, download_url, classifiers, etc.
 )

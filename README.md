@@ -23,11 +23,6 @@ In the remainder of this README file, we will explain how to install and run **s
 ***
 # Download and install code package <a name="install"></a>
 
-### From pip
-```
-$ pip install seestar==1.0
-```
-
 ### From Github
 Go to the location where you would like to store the repository.
 ```
@@ -35,6 +30,12 @@ $ git clone https://github.com/aeverall/seestar.git
 $ cd seestar
 $ python setup.py install
 ```
+Or, if working on a hosted server without admin privaleges:
+```
+$ python setup.py install --user
+```
+which will install the build to your ~/.local directory.
+
 The package requires the following dependencies:
 * [NumPy](http://www.numpy.org/)
 * [pandas](https://pandas.pydata.org/)
@@ -45,7 +46,8 @@ The package requires the following dependencies:
 * [seaborn](https://seaborn.pydata.org/)
 * [pickle](https://docs.python.org/2/library/pickle.html), [dill](https://pypi.python.org/pypi/dill)
 
-The code is built for Python 3.5 and is currently incompatible with Python 2.7.
+The code is built for Python 2.7 and is currently incompatible with Python 3.5.
+(We're working on making the repository compatible with both python versions)
 
 ***
 # Calculate selection functions <a name="SF"></a>
@@ -133,11 +135,11 @@ array = np.loadtxt(file_path)
 # Generate a pandas dataframe from the array
 dataframe = pd.DataFrame(array, columns=['glon', 'glat', 'Happ', 'colour'])
 
-# Calculation of selection function 
+# Calculation of selection function
 # - the dataframe is returned with columns for the fields of the stars and selection probability.
 dataframe = Galaxia_sf(dataframe, method='observable',
 				coords=['Happ', 'colour'], angle_coords=['glon', 'glat'])
-# Method='observable' means calculating the selection function using observable properties 
+# Method='observable' means calculating the selection function using observable properties
 # (i.e. apparent magnitude and colour).
 
 dataframe.union # The column of selection function probabilities
@@ -228,7 +230,7 @@ This may raise some warnings if the datastructure in the files is not the same a
 Respond n to stop running and fix the warnings (such as changing column headers and coordinates to radians).
 Respond y to ignore the warnings and continue.
 
-The size of iteration steps is decided by checking the memory available on your system. 
+The size of iteration steps is decided by checking the memory available on your system.
 (Hasn't been tested on a cluster so not sure how well it works there.)
 
 ### Generating the selection function in observable coordinates (as a function of colour and magnitude)
@@ -253,7 +255,7 @@ Path to intrinsic SF (Galaxia3_new_SF.pickle) exists. Load SF in from here? (y/n
 Path to observable SF (Galaxia3_new_obsSF.pickle) exists. Use this to ? (y/n)
 ```
 * y - Loads in the previously generated selection function (done in seconds)
-* n - Generates a new selection function which will overwrite the previous ones. 
+* n - Generates a new selection function which will overwrite the previous ones.
 (Calculating the observable SF from scratch can take hours depending on the survey)
 
 
@@ -294,11 +296,11 @@ array = np.loadtxt(file_path)
 # Generate a pandas dataframe from the array
 dataframe = pd.DataFrame(array, columns=['glon', 'glat', 'Happ', 'colour'])
 
-# Calculation of selection function 
+# Calculation of selection function
 # - the dataframe is returned with columns for the fields of the stars and selection probability.
 dataframe = Galaxia_sf(dataframe, method='observable',
 				coords=['Happ', 'colour'], angle_coords=['glon', 'glat'])
-# Method='observable' means calculating the selection function using observable properties 
+# Method='observable' means calculating the selection function using observable properties
 # (i.e. apparent magnitude and colour).
 
 dataframe.union # The column of selection function probabilities
@@ -333,10 +335,10 @@ Data for the isochrones is provided in two formats:
 
 	with open(iso_pickle, "rb") as input:
 	    pi = dill.load(input)
-	
+
 	interpname  = "age"+str(pi.isoage)+"mh"+str(pi.isomh)
 	isochrone   = pi.isodict[interpname] # NumPy array of datapoints along the isochrone
-	
+
 	Mi = isochrone[:,2] # Initial mass
 	J = isochrone[:,13]
 	H = isochrone[:,14]
@@ -345,28 +347,28 @@ Data for the isochrones is provided in two formats:
 
 2. Isochrone interpolants
 	The interpolants are generated from a grid of age vs metallicity vs scaled initial mass (the scaled initial mass varies between 0 and 1 along any isochrone).
-	
+
 	Example: You have a comma separated txt file with 6 columns: galactic longitude (glon), galactic latitude (glat), distance (s), age, metallicity (mh), mass ([as used here](#reformat)).
 	You want to know the H-band apparent magnitude and colour of the stars (neglecting dust extinction).
 	```python
 	import numpy as np
 	import pandas as pd
-	
+
 	file_path = 'PATH/TO/FILE.txt'
 	array = np.loadtxt(file_path)
-	
+
 	dataframe = pd.DataFrame(array, columns=['glon', 'glat', 's', 'age', 'mh', 'mass'])
-	
-	
+
+
 	from seestar import IsochroneScaling
 	isoCalculator = IsochroneScaling.IntrinsicToObservable()
-	
+
 	# If just calculating H-absolute and colour(J-K):
 	isoCalculator.LoadColMag("*path*/isoPARSEC/isochrone_interpolantinstances.pickle")
 	colour, Habs = isoCalculator.ColourMabs(dataframe.age, dataframe.mh, dataframe.mass)
 	# For calculating apparent magnitude
 	colour, Happ = isoCalculator.ColourMapp(dataframe.age, dataframe.mh, dataframe.mass, dataframe.s)
-	
+
 	# If calculating all magnitudes:
 	isoCalculator.LoadMagnitudes("[directory]/evoTracks/isochrone_magnitudes.pickle")
 	Habs, Jabs, Kabs = isoCalculator.AbsMags(dataframe.age, dataframe.mh, dataframe.mass)
@@ -374,7 +376,3 @@ Data for the isochrones is provided in two formats:
 	```
 
 As with all modules in the package, docstrings have been constructed for the module and all internal functions so if you're unsure about the parameters, outputs or contents of a function, class or module, running help on the object should provide more information.
-
-
-
-
