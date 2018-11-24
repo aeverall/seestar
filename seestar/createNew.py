@@ -37,7 +37,7 @@ def create():
 	'''
 
 	# Ask for a directory name
-	directory = input("Where is the directory? ")
+	directory = input("Where will the new directory be created? e.g. data ")
 	while not os.path.exists(directory):
 		directory = input("Directory does not exist, please give a real location: ")
 
