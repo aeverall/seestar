@@ -45,7 +45,7 @@ import numpy as np
 import pandas as pd
 import healpy as hp
 from itertools import product
-import re, dill, pickle, multiprocessing
+import re, pickle, multiprocessing
 import cProfile, pstats, time
 import sys, os
 from scipy.interpolate import RegularGridInterpolator as RGI
@@ -71,8 +71,8 @@ from seestar import FieldAssignment
 class SFGenerator():
 
     '''
-    FieldInterpolants - Class for building a dictionary of interpolants for each of the survey Fields
-                        The interpolants are used for creating Field selection functions
+    FieldInterpolants - Class for building a dictionary of interpolants for each of the survey fields
+                        The interpolants are used for creating field selection functions
 
     Parameters
     ----------
@@ -92,7 +92,7 @@ class SFGenerator():
 
         PointingsDataframe - Creates a dataframe of relevant relevant information on the coordinates of RAVE Fields
 
-        IterateFields - Runs CreateInterpolant for each Field in the RAVE database
+        IterateFields - Runs CreateInterpolant for each Field in the database
 
         CreateInterpolant - Creates an interpoland in colour-magnitude space for the given rave Field
                             Adds information on the SF for the Field to self.interpolants dictionary
@@ -100,7 +100,7 @@ class SFGenerator():
     Returns
     -------
         self.interpolants: dictionary of floats and interpolants
-                - Dictionary with an entry for each RAVE Field with the interpolant, mag_range, col_range, grid_area
+                - Dictionary with an entry for each field with the interpolant, mag_range, col_range, grid_area
     
     Dependencies
     ------------
@@ -154,8 +154,8 @@ class SFGenerator():
 
         if gen_intsf: # If we want to generate an intrinsic selection function    
             if use_intsf: # Use a premade intrinsic selection function
-                # Unpickle survey selection function
-                print("Unpickling survey selection function...")
+                # Unpickle intrinsic selection function
+                print("Unpickling intrinsic selection function...")
                 with open(sf_pickle_path, "rb") as f:
                     instanceSF_dict, instanceIMFSF_dict, self.agerng, self.mhrng, \
                     magrng, colrng = pickle.load(f)
@@ -173,10 +173,10 @@ class SFGenerator():
 
             else:
 
-                print('Creating Distance Age Metalicity interpolants...')
+                print('Creating distance-age-metallicity interpolants...')
                  #surveysf, agerng, mhrng, srng = self.createDistMhAgeInterp()
                 instanceSF, instanceIMFSF, agerng, mhrng, magrng, colrng = self.createDistMhAgeInterp()
-                # Comvert classes to dictionaries of attributes
+                # Convert classes to dictionaries of attributes
                 instanceSF_dict = vars(instanceSF)
                 instanceIMFSF_dict = vars(instanceIMFSF)
                 with open(sf_pickle_path, 'wb') as handle:
@@ -201,11 +201,11 @@ class SFGenerator():
                     obsSF_dicts = pickle.load(f)
                 print("...done.\n")
             else: # Create new observable selection function
-                print('Importing data for Colour-Magnitude Field interpolants...')
+                print('Importing data for colour-magnitude field interpolants...')
                 self.spectro_df = self.ImportDataframe(spectro_path, spectro_coords)
                 print("...done.\n")
             
-                print('Creating Colour-Magnitude Field interpolants...')
+                print('Creating colour-magnitude field interpolants...')
                 obsSF_dicts = self.iterateAllFields()
                 print('\nnow pickling them...')
                 with open(obsSF_pickle_path, 'wb') as handle:
@@ -278,8 +278,7 @@ class SFGenerator():
                 catalogue['sfprob'][isfield] = SFcalc(field, catalogue[isfield])
 
         return catalogue
-        
-        
+         
     def ImportDataframe(self, path,
                         coord_labels, 
                         data_source = 'spectro'):
@@ -428,7 +427,7 @@ class SFGenerator():
             field_iter = zip(field_list, field_number, spectro_points_lst)
 
             # Build results into a full list of multiprocessing instances
-            print("multiprocessing - observable SF calculation - running on %d cores..." % nCores)
+            print("multiprocessing - observable SF calculation - running on %d cores..." % self.ncores)
 
             # multiprocessing needs to run through an external class, otherwise it's not happy.
             # Initialise class
@@ -441,8 +440,6 @@ class SFGenerator():
             pool = multiprocessing.Pool( self.ncores )
             # Run class obsMultiFunction.__call___ as external function for each field
             results = pool.map(iter_inst, field_iter)
-            # Exit the pools as they won't be used again
-            pool.teminate()
 
             # Locations for storage of solutions
             obsSF_dicts = {}
@@ -460,8 +457,8 @@ class SFGenerator():
             # Field numbering to show progress
             fieldN = 0
             fieldL = len(field_list)
-            tnow = 0
-            tleft = 0
+            tnow   = 0
+            tleft  = 0
             for field in field_list:
 
                 fieldN+=1
@@ -564,8 +561,6 @@ class SFGenerator():
         SFInstanceClasses.setattrs(intrinsicIMFSF, IsoCalculator = IsoCalculator)
 
         return intrinsicSF, intrinsicIMFSF, agerng, mhrng, magrng, colrng
-
-    
             
     def ProjectGrid(self, field):
 
@@ -669,7 +664,7 @@ class SFGenerator():
             func = AM.APTPM_parallel(**kwargs)
 
             # Build results into a full list of multiprocessing instances
-            print("multiprocessing - field assigment - running on %d cores..." % nCores)
+            print("multiprocessing - field assigment - running on %d cores..." % self.ncores)
 
             # Create processor pools for multiprocessing
             with multiprocessing.Pool( self.ncores ) as pool:
@@ -827,9 +822,6 @@ class multiprocessObsSF():
         sys.stdout.flush()
 
         return ans
-
-
-
     
 def iterateField(spectro_points, photo_path, field, photo_tag, photo_coords, fieldpointing, cm_limits=None, 
                     spectro_model=('GMM', 1), photo_model=('GMM', 2)):
@@ -951,7 +943,6 @@ def iterateField(spectro_points, photo_path, field, photo_tag, photo_coords, fie
                                     DF_colrange = (0,0),
                                     SF_magrange = (0,0),
                                     SF_colrange = (0,0))
-        
 
     return instanceSF, field
 
