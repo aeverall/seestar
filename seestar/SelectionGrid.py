@@ -7,7 +7,7 @@ Classes
     SFGenerator - Class for building a dictionary of interpolants for each of the survey Fields
                         The interpolants are used for creating Field selection functions
 
-    obsMultiFunction - 
+    obsMultiFunction -
 
 Functions
 ---------
@@ -16,7 +16,7 @@ Functions
     IndexColourMagSG - Creates an interpolant of the RAVE star density in col-mag space
                      - For the points given which are from one specific observation plate
 
-    fieldInterp - Converts grids of colour and magnitude coordinates and a 
+    fieldInterp - Converts grids of colour and magnitude coordinates and a
                   colour-magnitude interpolant into the age, mh, s selection
                   function interpolant.
 
@@ -101,13 +101,13 @@ class SFGenerator():
     -------
         self.interpolants: dictionary of floats and interpolants
                 - Dictionary with an entry for each field with the interpolant, mag_range, col_range, grid_area
-    
+
     Dependencies
     ------------
         EquatToGal
         AnglePointsToPointingsMatrix
     '''
-    
+
     def __init__(self, pickleFile, ncores=0, memory=1):
 
         # Check what components of the selection function already exist
@@ -144,22 +144,22 @@ class SFGenerator():
         self.photo_model = fileinfo.photo_model
         self.spectro_model = fileinfo.spectro_model
 
-        # Import the dataframe of pointings        
-        pointings = self.ImportDataframe(field_path, self.field_coords, 
+        # Import the dataframe of pointings
+        pointings = self.ImportDataframe(field_path, self.field_coords,
                                          data_source='field')
         pointings = pointings.set_index(self.field_coords[0], drop=False)
         pointings = pointings.drop_duplicates(subset = self.field_coords[0])
         #pointings = pointings[pointings.fieldID==2001.0]
         self.pointings = pointings
 
-        if gen_intsf: # If we want to generate an intrinsic selection function    
+        if gen_intsf: # If we want to generate an intrinsic selection function
             if use_intsf: # Use a premade intrinsic selection function
                 # Unpickle intrinsic selection function
                 print("Unpickling intrinsic selection function...")
                 with open(sf_pickle_path, "rb") as f:
                     instanceSF_dict, instanceIMFSF_dict, self.agerng, self.mhrng, \
                     magrng, colrng = pickle.load(f)
-                print("...done.\n") 
+                print("...done.\n")
 
                 # Load class instance from saved dictionary
                 self.instanceSF = SFInstanceClasses.intrinsicSF()
@@ -180,14 +180,14 @@ class SFGenerator():
                 instanceSF_dict = vars(instanceSF)
                 instanceIMFSF_dict = vars(instanceIMFSF)
                 with open(sf_pickle_path, 'wb') as handle:
-                        pickle.dump((instanceSF_dict, instanceIMFSF_dict, agerng, mhrng, magrng, colrng), handle)
+                        pickle.dump((instanceSF_dict, instanceIMFSF_dict, agerng, mhrng, magrng, colrng), handle, protocol=2)
                 self.instanceSF=instanceSF
                 self.instanceIMFSF=instanceIMFSF
-                
+
                 # Can't set cm_limits because they use absolute magnitude
                 self.cm_limits = None
                 #self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
-                
+
                 print("...done.\n")
         else: # Still need cm_limits for obsSF
             self.cm_limits = None
@@ -204,18 +204,18 @@ class SFGenerator():
                 print('Importing data for colour-magnitude field interpolants...')
                 self.spectro_df = self.ImportDataframe(spectro_path, spectro_coords)
                 print("...done.\n")
-            
+
                 print('Creating colour-magnitude field interpolants...')
                 obsSF_dicts = self.iterateAllFields()
                 print('\nnow pickling them...')
                 with open(obsSF_pickle_path, 'wb') as handle:
-                    pickle.dump(obsSF_dicts, handle)
+                    pickle.dump(obsSF_dicts, handle, protocol=2)
                 print("...done\n.")
             # Initialise dictionary
             self.obsSF = SFInstanceClasses.obsSF_dicttoclass(obsSF_dicts)
-        
-    def __call__(self, catalogue, method='intrinsic', 
-                coords = ['age', 'mh', 's', 'mass'], 
+
+    def __call__(self, catalogue, method='intrinsic',
+                coords = ['age', 'mh', 's', 'mass'],
                 angle_coords=['phi','theta'],
                 rng_phi=(0, 2*np.pi), rng_th=(-np.pi/2, np.pi/2)):
 
@@ -237,7 +237,7 @@ class SFGenerator():
                     - 'inion', 'field_info', 'points'
         '''
 
-        if method=='observable': 
+        if method=='observable':
             SFcalc = lambda field, df: np.array( self.obsSF[field]((df[coords[0]], df[coords[1]])) )
         elif method=='IMFint':
             SFcalc = lambda field, df: self.instanceIMFSF( (df[coords[0]], df[coords[1]], df[coords[2]]), self.obsSF[field] )
@@ -252,11 +252,11 @@ class SFGenerator():
             # Drop column which will be readded if this has been calculated before.
             if 'SFprob' in list(catalogue): catalogue = catalogue.drop('SFprob', axis=1)
             print('Calculating all SF values...')
-            catalogue = FieldUnions.GenerateMatrices(catalogue, self.pointings, 
-                                                    angle_coords, point_coords, 'halfangle', 
+            catalogue = FieldUnions.GenerateMatrices(catalogue, self.pointings,
+                                                    angle_coords, point_coords, 'halfangle',
                                                     SFcalc, IDtype=self.fieldlabel_type)
             print('...done')
-            
+
             # The SF probabilities are used to calculate the field union.
             print('Calculating union contribution...')
             FUInstance = FieldUnions.FieldUnion()
@@ -278,9 +278,9 @@ class SFGenerator():
                 catalogue['sfprob'][isfield] = SFcalc(field, catalogue[isfield])
 
         return catalogue
-         
+
     def ImportDataframe(self, path,
-                        coord_labels, 
+                        coord_labels,
                         data_source = 'spectro'):
 
         '''
@@ -317,17 +317,17 @@ class SFGenerator():
             self.col_range: tuple
                     - Maximum and minimum values of J-K in the star data
 
-        '''         
+        '''
 
         # Use .xxx in file path to determine file type
         re_dotfile = re.compile('.+\.(?P<filetype>[a-z]+)')
         filetype = re_dotfile.match(path).group('filetype')
 
         # Import data as a pandas DataFrame
-        df = getattr(pd, 'read_'+filetype)(path, 
+        df = getattr(pd, 'read_'+filetype)(path,
                                              usecols = coord_labels)
 
-        if data_source=='spectro': 
+        if data_source=='spectro':
             coords = ['fieldID','phi', 'theta', 'appA', 'appB', 'appC']
         elif (data_source=='field') & (self.fileinfo.style=='mf'):
             coords = ['fieldID', 'phi', 'theta', 'halfangle', 'Magmin', 'Magmax', 'Colmin', 'Colmax']
@@ -360,7 +360,7 @@ class SFGenerator():
         if coordinates == 'Equatorial': df['l'], df['b'] = AngleDisks.EquatToGal(df.RA, df.Dec)
         if coordinates == 'Galactic': df['RA'], df['Dec'] = AngleDisks.GalToEquat(df.l, df.b)"""
 
-        if data_source=='spectro': 
+        if data_source=='spectro':
             df['Colour'] = df.appA - df.appB
 
             # Magnitude and colour ranges from full sample
@@ -379,7 +379,7 @@ class SFGenerator():
 
             #Save field df in the class variable
             return df
-            
+
     def iterateAllFields(self):
 
         '''
@@ -436,7 +436,7 @@ class SFGenerator():
                                         spectro_model=self.spectro_model, photo_model=self.photo_model,
                                         tstart=start, fieldN=len(field_list))
             # Create processor pools for multiprocessing
-            
+
             pool = multiprocessing.Pool( self.ncores )
             # Run class obsMultiFunction.__call___ as external function for each field
             results = pool.map(iter_inst, field_iter)
@@ -561,7 +561,7 @@ class SFGenerator():
         SFInstanceClasses.setattrs(intrinsicIMFSF, IsoCalculator = IsoCalculator)
 
         return intrinsicSF, intrinsicIMFSF, agerng, mhrng, magrng, colrng
-            
+
     def ProjectGrid(self, field):
 
         '''
@@ -597,9 +597,9 @@ class SFGenerator():
         '''
 
         points = self.spectro_df[self.spectro_df.field_ID == field]
-        
+
         interp, pop_grid, mag, col = self.CreateInterpolant(points, Grid=True)
-        
+
         try:
             fig = plt.figure(figsize=(15,10))
             plt.contourf(mag, col, pop_grid)
@@ -609,9 +609,9 @@ class SFGenerator():
         except ValueError:
             print(pop_grid)
             print('No stars on this Field')
-        
+
         return interp, pop_grid, mag, col
-    
+
     def PointsToPointings(self, stars, Phi='phi', Th='theta'):
 
         '''
@@ -673,7 +673,7 @@ class SFGenerator():
             df = pd.DataFrame()
             for r in results:
                 df = pd.concat((df, r))
-        
+
         return df
 
     def PlotPlates(self, **kwargs):
@@ -718,7 +718,7 @@ class SFGenerator():
 
         if plates_given['pointings']:
             PhiRad = np.copy(self.pointings.phi)
-            ThRad = np.copy(self.pointings.theta)      
+            ThRad = np.copy(self.pointings.theta)
         else:
             PhiRad = np.copy(self.pointings.loc[fieldIDs].phi)
             ThRad = np.copy(self.pointings.loc[fieldIDs].theta)
@@ -766,7 +766,7 @@ class multiprocessObsSF():
             - Number of fields in calculation
     '''
 
-    def __init__(self, spectro_df, photo_path, photo_tag, photo_coords, 
+    def __init__(self, spectro_df, photo_path, photo_tag, photo_coords,
                     pointings, cm_limits=None, spectro_model=None, photo_model=None,
                     tstart=0, fieldN=0):
 
@@ -809,7 +809,7 @@ class multiprocessObsSF():
 
         field, fieldL, spectro_points = field_iter
 
-        ans = iterateField(spectro_points, self.photo_path, field, self.photo_tag, 
+        ans = iterateField(spectro_points, self.photo_path, field, self.photo_tag,
                             self.photo_coords, self.pointings.loc[field], cm_limits=self.cm_limits,
                             spectro_model=self.spectro_model, photo_model=self.photo_model)
 
@@ -822,8 +822,8 @@ class multiprocessObsSF():
         sys.stdout.flush()
 
         return ans
-    
-def iterateField(spectro_points, photo_path, field, photo_tag, photo_coords, fieldpointing, cm_limits=None, 
+
+def iterateField(spectro_points, photo_path, field, photo_tag, photo_coords, fieldpointing, cm_limits=None,
                     spectro_model=('GMM', 1), photo_model=('GMM', 2)):
 
     '''
@@ -841,7 +841,7 @@ def iterateField(spectro_points, photo_path, field, photo_tag, photo_coords, fie
         photo_coords: list of str
             Column headers of relevant columns in dataframe
         fieldpointing:
-    
+
     kwargs
     ------
         cm_limits=None: 4-tuple of float
@@ -868,7 +868,7 @@ def iterateField(spectro_points, photo_path, field, photo_tag, photo_coords, fie
     except IOError: photo_points = pd.read_csv(photofile)
 
     coords = ['appA', 'appB', 'appC']
-    photo_points=photo_points.rename(index=str, 
+    photo_points=photo_points.rename(index=str,
                                      columns=dict(zip(photo_coords[2:5], coords)))
     photo_points['Colour'] = photo_points.appA - photo_points.appB
 
@@ -1043,7 +1043,7 @@ def PoissonLikelihood(points,
         model = StatisticalModels.GaussianEM(x=x, y=y, nComponents=nComponents, rngx=mag_range, rngy=col_range)
         #model = StatisticalModels.GaussianMM(x, y, nComponents, mag_range, col_range)
         # Add in SFxDF<DF constraint for the spectrograph distribution
-        if datatype == "spectro": 
+        if datatype == "spectro":
             model.photoDF, model.priorDF = (photoDF, True)
         model.runningL = False
         model.optimizeParams()
@@ -1064,14 +1064,14 @@ def PoissonLikelihood(points,
 
     return model
 
-def fieldInterp(fieldInfo, agegrid, mhgrid, sgrid, 
+def fieldInterp(fieldInfo, agegrid, mhgrid, sgrid,
                 age_mh, col, mag, weight, obsSF,
                 mass_sf=False, massgrid=None,
                 fieldN=0, fieldL=0):
                 #spectro, photo):
 
     '''
-    fieldInterp - Converts grids of colour and magnitude coordinates and a 
+    fieldInterp - Converts grids of colour and magnitude coordinates and a
                   colour-magnitude interpolant into the age, mh, s selection
                   function interpolant.
 
@@ -1211,9 +1211,9 @@ def sfFieldColMag(field, col, mag, weight, spectro, photo):
                 - Array with same dimensions as col/mag giving the ratio of spectro/2MASS interpolants normalised
                   by the grid areas.
     '''
-    
+
     grid = np.zeros_like(col)
-    
+
     # If dictionary contains nan values, the field contains no stars
     if ~np.isnan(spectro['grid_area']):
 
@@ -1221,8 +1221,8 @@ def sfFieldColMag(field, col, mag, weight, spectro, photo):
                 (mag>spectro['mag_range'][0])&(mag<spectro['mag_range'][1])
 
         grid[bools] = (spectro['interp']((mag[bools],col[bools]))/spectro['grid_area'])/\
-                      (photo['interp']((mag[bools],col[bools]))/photo['grid_area'])   
-        
+                      (photo['interp']((mag[bools],col[bools]))/photo['grid_area'])
+
         grid[grid==np.inf]=0.
         grid[np.isnan(grid)] = 0.
 
@@ -1260,18 +1260,18 @@ def findNearestFields(anglelist, pointings, Phistr, Thstr):
     -------
         fieldlist - list of fields which coorrespont to closest pointings to the points.
     '''
-    
+
     fieldlist = []
-    
+
     for i in range(len(anglelist[0])):
         Phi = anglelist[0][i]
         Th = anglelist[1][i]
         points = pointings[[Phistr, Thstr, 'fieldID']]
         displacement = AM.AngleSeparation(points[Phistr], points[Thstr], Phi, Th)
         field = points[displacement == displacement.min()]['fieldID'].iloc[0]
-        
+
         fieldlist.append(field)
-        
+
     return fieldlist
 
 def path_check(pickleFile):
@@ -1402,7 +1402,7 @@ def path_check(pickleFile):
 
     # Model
     print("The spectro model description is:"+str(fileinfo.spectro_model))
-    print("The photo model description is:"+str(fileinfo.photo_model))    
+    print("The photo model description is:"+str(fileinfo.photo_model))
 
 
     print('')
@@ -1423,14 +1423,14 @@ class external():
         kwargs: dict
             - All stationary kwarguments of function
     '''
-    
+
     def __init__(self, func, args, kwargs):
         self.func = func
         self.args = args
         self.kwargs = kwargs
-        
+
     def __call__(self, moreargs):
-        
+
         '''
         __call__ - Run the function on the given arguments
 

@@ -79,7 +79,7 @@ class observableSF():
 
     Functions
     ---------
-        __call__ - Calculate the value of the selection function interpolant at the given 
+        __call__ - Calculate the value of the selection function interpolant at the given
             magnitude and colour (x and y).
         save - Converts attributes of class to a dictionary and saves the dictionary.
         load - Loads attributes of class from the saved dictionary.
@@ -101,7 +101,7 @@ class observableSF():
     def __call__(self, xy):
 
         '''
-        __call__ - Calculate the value of the selection function interpolant at the given 
+        __call__ - Calculate the value of the selection function interpolant at the given
             magnitude and colour (x and y).
 
         Parameters
@@ -147,7 +147,7 @@ class observableSF():
 
         # Dump pickled dictionary of attributes
         with open(filename, 'wb') as handle:
-            pickle.dump(attr_dict, handle)
+            pickle.dump(attr_dict, handle, protocol=2)
 
     def load(self, filename):
 
@@ -162,9 +162,9 @@ class observableSF():
 
         # Load pickled dictionary of attributes
         with open(filename, "rb") as insert:
-            file_dict  = pickle.load(insert) 
+            file_dict  = pickle.load(insert)
 
-        # Convert dictionary to attributes  
+        # Convert dictionary to attributes
         for key in file_dict:
             setattr(self, key, file_dict[key])
 
@@ -237,7 +237,7 @@ class intrinsicSF():
 
         # Dump pickled dictionary of attributes
         with open(filename, 'wb') as handle:
-            pickle.dump(attr_dict, handle)
+            pickle.dump(attr_dict, handle , protocol=2)
 
     def load(self, filename):
 
@@ -252,9 +252,9 @@ class intrinsicSF():
 
         # Load pickled dictionary of attributes
         with open(filename, "rb") as insert:
-            file_dict  = pickle.load(insert) 
+            file_dict  = pickle.load(insert)
 
-        # Convert dictionary to attributes  
+        # Convert dictionary to attributes
         for key in file_dict:
             setattr(self, key, file_dict[key])
 
@@ -285,7 +285,7 @@ class intrinsicIMFSF():
         self.mass_scaled = np.linspace(0.01, 0.99, 500)
 
     def __call__(self, agemhs, obsSF):
-        
+
 
         '''
         __call__ - Calculate the intrinsic selection function from the intrinsic coordinates.
@@ -359,7 +359,7 @@ class intrinsicIMFSF():
 
         # Dump pickled dictionary of attributes
         with open(filename, 'wb') as handle:
-            pickle.dump(attr_dict, handle)
+            pickle.dump(attr_dict, handle, , protocol=2)
 
     def load(self, filename):
 
@@ -374,9 +374,9 @@ class intrinsicIMFSF():
 
         # Load pickled dictionary of attributes
         with open(filename, "rb") as insert:
-            file_dict  = pickle.load(insert) 
+            file_dict  = pickle.load(insert)
 
-        # Convert dictionary to attributes  
+        # Convert dictionary to attributes
         for key in file_dict:
             setattr(self, key, file_dict[key])
 
@@ -540,7 +540,7 @@ class intrinsicIMFSF_old():
 
         # Dump pickled dictionary of attributes
         with open(filename, 'wb') as handle:
-            pickle.dump(attr_dict, handle)
+            pickle.dump(attr_dict, handle, , protocol=2)
 
     def load(self, filename):
 
@@ -555,9 +555,9 @@ class intrinsicIMFSF_old():
 
         # Load pickled dictionary of attributes
         with open(filename, "rb") as insert:
-            file_dict  = pickle.load(insert) 
+            file_dict  = pickle.load(insert)
 
-        # Convert dictionary to attributes  
+        # Convert dictionary to attributes
         for key in file_dict:
             setattr(self, key, file_dict[key])
 

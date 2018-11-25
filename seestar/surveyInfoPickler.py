@@ -3,7 +3,7 @@ surveyInfoPickler.py
 
 Classes
 ---------
-    surveyInformation - Creating a pickled instance with all of the file locations and 
+    surveyInformation - Creating a pickled instance with all of the file locations and
                         data structure information for running the selection function.
 
 '''
@@ -19,7 +19,7 @@ import numpy as np
 class surveyInformation():
 
     '''
-    surveyInformation - Creating a pickled instance with all of the file locations and 
+    surveyInformation - Creating a pickled instance with all of the file locations and
                         data structure information for running the selection function.
 
     Functions
@@ -39,7 +39,7 @@ class surveyInformation():
         spectro_fname - str - Name of file containing spectroscopic survey data - e.g. 'Galaxia3_survey.csv'
         field_fname - str - data file for field pointings - e.g. 'Galaxia3_fieldinfo.csv'
 
-        spectro_coords - list of str - List of column headers taken from spectroscopic survey - 
+        spectro_coords - list of str - List of column headers taken from spectroscopic survey -
                     - e.g. ['fieldid', 'glon', 'glat', 'Happ', 'Japp', 'Kapp']
         field_coords - tuple of list and str - List of column headers taken from pointings file and coord system (Equatorial or Galactic)
                     - e.g. ['fieldID', 'glon', 'glat', 'Magmin', 'Magmax', 'Colmin', 'Colmax']
@@ -60,7 +60,7 @@ class surveyInformation():
         photo_tag - str - File type tagged on the end of photometric data folders - e.g. '.csv'
         fieldlabel_type - obj - Data type used for names of fields in the pointings catalogue - e.g. str
 
-        iso_pickle_file - str - File name for pickled isochrones instances - e.g. "/evoTracks/isochrone_distributions_resampled.pickle" 
+        iso_pickle_file - str - File name for pickled isochrones instances - e.g. "/evoTracks/isochrone_distributions_resampled.pickle"
 
     Example:
     --------
@@ -192,7 +192,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
 
         # Can you pickle a class from inside the class?
         with open(filename, 'wb') as handle:
-            pickle.dump(self, handle)
+            pickle.dump(self, handle, , protocol=2)
 
     def save(self):
 
@@ -211,8 +211,8 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
 
         # Load pickled dictionary of attributes
         with open(filename, "rb") as f:
-            file_dict  = pickle.load(f) 
-        # Convert dictionary to attributes  
+            file_dict  = pickle.load(f)
+        # Convert dictionary to attributes
         for key in file_dict:
             setattr(self, key, file_dict[key])
 
@@ -223,20 +223,20 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
 
                 # False until we get a y/n response
                 reset = None
-                
+
                 # Now enter while loop
                 while not reset in ('y','n'):
                     print(reset)
                     reset = input("File location has changed, reset the file locations? (y/n)")
                     print(reset)
                 # Reset file names to correct path
-                if reset == 'y': 
+                if reset == 'y':
                     relocate(filename)
 
                     # Load new pickled dictionary of attributes
                     with open(filename, "rb") as f:
-                        file_dict  = pickle.load(f) 
-                    # Convert dictionary to attributes  
+                        file_dict  = pickle.load(f)
+                    # Convert dictionary to attributes
                     for key in file_dict:
                         setattr(self, key, file_dict[key])
 
@@ -342,7 +342,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
                                 (str(min(halfangle)), str(max(halfangle))))
                             good = False
                         print("(make sure halfangle is in units of radians.)")
-        if good: print("OK")        
+        if good: print("OK")
         print('')
 
         # 4) Test photo file - column headers, data types
@@ -386,10 +386,10 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
                         print("photo_path angle range not correct. Should be -pi/2<=theta<=pi/2, 0<=pi<=2pi. Data gives %s<=theta=<%s, %s<=phi<=%s." % \
                             (str(min(theta)), str(max(theta)), str(min(phi)), str(max(phi))))
                         good = False
-        else: 
+        else:
             print("Path to folder of photometric files, %s, not found." % self.photo_path)
             good = False
-        if good: print("OK")            
+        if good: print("OK")
         print('')
 
         # 5) Test SF paths
@@ -401,7 +401,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
         if not os.path.exists(self.obsSF_pickle_path):
             print("The path to your selection function pickled instance, obsSF_pickle_path, does not exist: %s" % self.obsSF_pickle_path)
             good = False
-        if not good: 
+        if not good:
             print("^ These files should exist for an already made selection function. If you're starting from scratch, ignore this!")
         else: print("OK")
         print('')
@@ -426,7 +426,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
         Parameters
         ----------
             photo_files: list of str
-        
+
         **kwargs
         --------
 
@@ -477,14 +477,14 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
                         print("photo_path angle range not correct. Should be -pi/2<=theta<=pi/2, 0<=pi<=2pi. Data gives %s<=theta=<%s, %s<=phi<=%s." % \
                             (str(min(theta)), str(max(theta)), str(min(phi)), str(max(phi))))
                         good = False
-            if good: 
-                print("File OK")    
+            if good:
+                print("File OK")
                 forward_bool = True
-            else: 
+            else:
                 good_response = False
                 while not good_response:
-                    forward = input("Tests on the files have raised some warnings. Would you like to continue anyway? (y/n)")        
-                    if forward == 'n': 
+                    forward = input("Tests on the files have raised some warnings. Would you like to continue anyway? (y/n)")
+                    if forward == 'n':
                         forward_bool = False
                         good_response = True
                     elif forward == 'y':
@@ -555,6 +555,6 @@ def relocate(fileinfo_path):
     fileinfo.data_path = directory
     # Update remaining entries
     fileinfo()
-    
+
     # Repickle file
     fileinfo.save()
