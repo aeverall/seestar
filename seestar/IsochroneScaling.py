@@ -71,7 +71,7 @@ class IntrinsicToObservable():
 
     Dependencies
     ------------
-        dill, pickle
+        pickle
     '''
 
     def __init__(self):
@@ -244,7 +244,7 @@ class IntrinsicToObservable():
         '''
 
         with open(pickle_path, 'wb') as handle:
-            pickle.dump((self.Mmax_interp, self.Mmin_interp, 
+            pickle.dump((self.Mmax_interp, self.Mmin_interp,
                          self.magA_interp, self.magB_interp, self.magC_interp), handle, protocol=2)
 
     def LoadColMag(self, pickle_path):
@@ -494,13 +494,13 @@ class IntrinsicToObservable():
 def ImportIsochrones(iso_pickle):
 
     '''
-    ImportIsochrones - Loads in dill file of isochrone information.
+    ImportIsochrones - Loads in pickle file of isochrone information.
         - Could potentially generalise this to more data formats
 
     Parameters
     ----------
         iso_pickle: str
-            - path to dill file of isochrones
+            - path to pickle file of isochrones
 
     Returns
     -------

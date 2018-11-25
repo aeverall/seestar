@@ -192,7 +192,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
 
         # Can you pickle a class from inside the class?
         with open(filename, 'wb') as handle:
-            pickle.dump(self, handle, , protocol=2)
+            pickle.dump(self, handle, protocol=2)
 
     def save(self):
 

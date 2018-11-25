@@ -44,7 +44,7 @@ The package requires the following dependencies:
 * [re (regex for python)](https://docs.python.org/2/library/re.html)
 * [matplotlib](https://matplotlib.org/)
 * [seaborn](https://seaborn.pydata.org/)
-* [pickle](https://docs.python.org/2/library/pickle.html), [dill](https://pypi.python.org/pypi/dill)
+* [pickle](https://docs.python.org/2/library/pickle.html)
 
 The code is built for Python 2.7 and is currently incompatible with Python 3.5.
 (We're working on making the repository compatible with both python versions)
@@ -327,25 +327,7 @@ Downloaded isochrone data files from [here](https://drive.google.com/drive/folde
 
 Data for the isochrones is provided in two formats:
 
-1. Isochrone track files
-	These provide the values of absolute magnitude bands given mass of the star on each isochrone. To access the data of an isochrone:
-	```python
-	import dill
-	iso_pickle = 'PATH/TO/DIRECTORY/isoPARSEC/stellarprop_parsecdefault_currentmass.dill'
-
-	with open(iso_pickle, "rb") as input:
-	    pi = dill.load(input)
-
-	interpname  = "age"+str(pi.isoage)+"mh"+str(pi.isomh)
-	isochrone   = pi.isodict[interpname] # NumPy array of datapoints along the isochrone
-
-	Mi = isochrone[:,2] # Initial mass
-	J = isochrone[:,13]
-	H = isochrone[:,14]
-	K = isochrone[:,15]
-	```
-
-2. Isochrone interpolants
+1. Isochrone interpolants
 	The interpolants are generated from a grid of age vs metallicity vs scaled initial mass (the scaled initial mass varies between 0 and 1 along any isochrone).
 
 	Example: You have a comma separated txt file with 6 columns: galactic longitude (glon), galactic latitude (glat), distance (s), age, metallicity (mh), mass ([as used here](#reformat)).
@@ -374,5 +356,23 @@ Data for the isochrones is provided in two formats:
 	Habs, Jabs, Kabs = isoCalculator.AbsMags(dataframe.age, dataframe.mh, dataframe.mass)
 	Happ, Japp, Kapp = isoCalculator.AppMags(dataframe.age, dataframe.mh, dataframe.mass, dataframe.s)
 	```
+
+2. Isochrone data file
+	  This contains all the data on the isochrones before they've been resampled to minimize displacement errors in calculating the intrinsic selection function.
+		I would advise that if the interpolantinstance.pickle file is available, use that as it's far simpler and less memory intensive.
+
+		To load this into the Isochrone Calculator, perform the following:
+		```python
+		import numpy as np
+		import pandas as pd
+
+		file_path = "*path*/isoPARSEC/iso_fulldata.pickle"
+
+		# Create isochrone calculator
+		from seestar import IsochroneScaling
+		IsoCalculator = IsochroneScaling.IntrinsicToObservable()
+		IsoCalculator.CreateFromIsochrones(fileinfo.iso_data_path)
+		IsoCalculator.pickleColMag(fileinfo.iso_interp_path)
+		```
 
 As with all modules in the package, docstrings have been constructed for the module and all internal functions so if you're unsure about the parameters, outputs or contents of a function, class or module, running help on the object should provide more information.
