@@ -226,12 +226,25 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
 
                 # Now enter while loop
                 while not reset in ('y','n'):
-                    print(reset)
-                    reset = input("File location has changed, reset the file locations? (y/n)")
-                    print(reset)
+                    # Tuple of steps to file location
+                    root = filename.split("/")[:-2]
+                    # Directory in which data is stored
+                    directory = "/".join(root)
+
+                    question = "File location has changed, reset the file locations? (y/n) \n New root (fileinfo.data_path) will be %s  " % directory
+                    reset = input(question)
                 # Reset file names to correct path
                 if reset == 'y':
-                    relocate(filename)
+                    # Change name of fileinfo_path
+                    self.fileinfo_path = filename
+                    
+                    # Replace directory with the correct one
+                    self.data_path = directory
+                    # Update remaining entries
+                    self.__call__()
+
+                    # Repickle file
+                    self.save()
 
                     # Load new pickled dictionary of attributes
                     with open(filename, "rb") as f:
@@ -538,23 +551,3 @@ where magA-magB = Colour, magC = m (for selection limits):""")
     def example(self):
 
         print(self.example_string)
-
-def relocate(fileinfo_path):
-
-    fileinfo = surveyInformation(fileinfo_path, locQ=False)
-
-    # Change name of fileinfo_path
-    fileinfo.fileinfo_path = fileinfo_path
-
-    # Tuple of steps to file location
-    root = fileinfo_path.split("/")[:-2]
-    # Directory in which data is stored
-    directory = "/".join(root)
-
-    # Replace directory with the correct one
-    fileinfo.data_path = directory
-    # Update remaining entries
-    fileinfo()
-
-    # Repickle file
-    fileinfo.save()
