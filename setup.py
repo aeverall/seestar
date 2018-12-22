@@ -15,8 +15,6 @@ CLASSIFIERS = ['Topic :: Scientific/Engineering :: Astronomy',
                 'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
                 'Natural Language :: English',
                 'Programming Language :: Python :: 2.7',
-                'Programming Language :: Python :: 2 :: Only',
-                'Programming Language :: Python :: 3 :: Only',
                 'Programming Language :: Python :: 3.5']
 
 
