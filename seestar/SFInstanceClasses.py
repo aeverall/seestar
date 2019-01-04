@@ -359,7 +359,7 @@ class intrinsicIMFSF():
 
         # Dump pickled dictionary of attributes
         with open(filename, 'wb') as handle:
-            pickle.dump(attr_dict, handle, , protocol=2)
+            pickle.dump(attr_dict, handle, protocol=2)
 
     def load(self, filename):
 
@@ -540,7 +540,7 @@ class intrinsicIMFSF_old():
 
         # Dump pickled dictionary of attributes
         with open(filename, 'wb') as handle:
-            pickle.dump(attr_dict, handle, , protocol=2)
+            pickle.dump(attr_dict, handle, protocol=2)
 
     def load(self, filename):
 

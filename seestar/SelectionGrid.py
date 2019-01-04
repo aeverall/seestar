@@ -116,7 +116,7 @@ class SFGenerator():
 
         # If SF paths are not given in kwargs, set to default
         if obsSF_path is None: obsSF_path = fileinfo.obsSF_pickle_path
-        if insSF_path is None: intSF_path = fileinfo.intSF_pickle_path
+        if intSF_path is None: intSF_path = fileinfo.sf_pickle_path
         # Check what components of the selection function already exist
         gen_intsf, use_intsf, gen_obssf, use_obssf, use_isointerp = path_check(pickleFile, obsSF_path, intSF_path)
 
@@ -153,66 +153,19 @@ class SFGenerator():
         self.pointings = pointings
 
         if gen_intsf: # If we want to generate an intrinsic selection function
-            if use_intsf: # Use a premade intrinsic selection function
-                # Unpickle intrinsic selection function
-                print("Unpickling intrinsic selection function...")
-                with open(fileinfo.sf_pickle_path, "rb") as f:
-                    instanceSF_dict, instanceIMFSF_dict, self.agerng, self.mhrng, \
-                    magrng, colrng = pickle.load(f)
-                print("...done.\n")
-
-                # Load class instance from saved dictionary
-                self.instanceSF = SFInstanceClasses.intrinsicSF()
-                self.instanceIMFSF = SFInstanceClasses.intrinsicIMFSF()
-                SFInstanceClasses.setattrs(self.instanceSF, **instanceSF_dict)
-                SFInstanceClasses.setattrs(self.instanceIMFSF, **instanceIMFSF_dict)
-
-                # Can't set cm_limits because they use absolute magnitude
-                self.cm_limits = None
-                #self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
-
+            if use_intsf:
+                # Use a premade intrinsic selection function
+                self.load_intSF(intSF_path=intSF_path)
             else:
-
-                print('Creating distance-age-metallicity interpolants...')
-                 #surveysf, agerng, mhrng, srng = self.createDistMhAgeInterp()
-                instanceSF, instanceIMFSF, agerng, mhrng, magrng, colrng = self.createDistMhAgeInterp()
-                # Convert classes to dictionaries of attributes
-                instanceSF_dict = vars(instanceSF)
-                instanceIMFSF_dict = vars(instanceIMFSF)
-                with open(fileinfo.sf_pickle_path, 'wb') as handle:
-                        pickle.dump((instanceSF_dict, instanceIMFSF_dict, agerng, mhrng, magrng, colrng), handle, protocol=2)
-                self.instanceSF=instanceSF
-                self.instanceIMFSF=instanceIMFSF
-
-                # Can't set cm_limits because they use absolute magnitude
-                self.cm_limits = None
-                #self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
-
-                print("...done.\n")
+                self.gen_intSF(intSF_path=intSF_path)
         else: # Still need cm_limits for obsSF
             self.cm_limits = None
 
         if gen_obssf: # We want an observable selection function
             if use_obssf: # Use the premade one
-                # Once Colour Magnitude selection functions have been created
-                # Unpickle colour-magnitude interpolants
-                print("Unpickling colour-magnitude interpolant dictionaries...")
-                with open(fileinfo.obsSF_pickle_path, "rb") as f:
-                    obsSF_dicts = pickle.load(f)
-                print("...done.\n")
+                self.load_obsSF(obsSF_path=obsSF_path)
             else: # Create new observable selection function
-                print('Importing data for colour-magnitude field interpolants...')
-                self.spectro_df = self.ImportDataframe(spectro_path, spectro_coords)
-                print("...done.\n")
-
-                print('Creating colour-magnitude field interpolants...')
-                obsSF_dicts = self.iterateAllFields()
-                print('\nnow pickling them...')
-                with open(fileinfo.obsSF_pickle_path, 'wb') as handle:
-                    pickle.dump(obsSF_dicts, handle, protocol=2)
-                print("...done\n.")
-            # Initialise dictionary
-            self.obsSF = SFInstanceClasses.obsSF_dicttoclass(obsSF_dicts)
+                self.gen_obsSF(obsSF_path=obsSF_path)
 
     def __call__(self, catalogue, method='intrinsic',
                 coords = ['age', 'mh', 's', 'mass'],
@@ -379,6 +332,94 @@ class SFGenerator():
 
             #Save field df in the class variable
             return df
+
+    def load_intSF(self, intSF_path=None):
+
+        # Unpickle intrinsic selection function
+        print("Unpickling intrinsic selection function...")
+        with open(intSF_path, "rb") as f:
+            instanceSF_dict, instanceIMFSF_dict, self.agerng, self.mhrng, \
+            magrng, colrng = pickle.load(f)
+        print("...done.\n")
+
+        # Load class instance from saved dictionary
+        self.instanceSF = SFInstanceClasses.intrinsicSF()
+        self.instanceIMFSF = SFInstanceClasses.intrinsicIMFSF()
+        SFInstanceClasses.setattrs(self.instanceSF, **instanceSF_dict)
+        SFInstanceClasses.setattrs(self.instanceIMFSF, **instanceIMFSF_dict)
+
+        # Can't set cm_limits because they use absolute magnitude
+        self.cm_limits = None
+        #self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
+
+    def load_obsSF(self, obsSF_path=None):
+
+        # Once Colour Magnitude selection functions have been created
+        # Unpickle colour-magnitude interpolants
+        print("Unpickling colour-magnitude interpolant dictionaries...")
+        with open(obsSF_path, "rb") as f:
+            obsSF_dicts = pickle.load(f)
+        print("...done.\n")
+
+        # Initialise dictionary
+        self.obsSF = SFInstanceClasses.obsSF_dicttoclass(obsSF_dicts)
+
+    def gen_intSF(self, intSF_path=None):
+
+        print('Creating distance-age-metallicity interpolants...')
+         #surveysf, agerng, mhrng, srng = self.createDistMhAgeInterp()
+        instanceSF, instanceIMFSF, agerng, mhrng, magrng, colrng = self.createDistMhAgeInterp()
+        # Convert classes to dictionaries of attributes
+        instanceSF_dict = vars(instanceSF)
+        instanceIMFSF_dict = vars(instanceIMFSF)
+        print("...done.\n")
+
+        # Decide whether to save pickled instance
+        save_bool = None
+        while not save_bool in ('y','n'):
+            if os.path.exists(intSF_path): save_bool = input("Overwrite %s? (y/n)" % intSF_path)
+            else: save_bool = input("Save as %s? (y/n)" % intSF_path)
+
+        # Save pickled instance
+        if save_bool=='y':
+            raise ValueError("Testing phase. Don't overwrite!")
+            print('\nPickling intrinsic SF...')
+            with open(intSF_path, 'wb') as handle:
+                    pickle.dump((instanceSF_dict, instanceIMFSF_dict,
+                                agerng, mhrng, magrng, colrng), handle, protocol=2)
+
+        self.instanceSF=instanceSF
+        self.instanceIMFSF=instanceIMFSF
+
+        # Can't set cm_limits because they use absolute magnitude
+        self.cm_limits = None
+        #self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
+
+    def gen_obsSF(self, obsSF_path=None):
+
+        print('Importing data for colour-magnitude field interpolants...')
+        self.spectro_df = self.ImportDataframe(self.fileinfo.spectro_path, self.fileinfo.spectro_coords)
+        print("...done.\n")
+
+        print('Creating colour-magnitude field interpolants...')
+        obsSF_dicts = self.iterateAllFields()
+        print("...done\n.")
+        
+        # Decide whether to save pickled instance
+        save_bool = None
+        while not save_bool in ('y','n'):
+            if os.path.exists(obsSF_path): save_bool = input("Overwrite %s? (y/n)" % obsSF_path)
+            else: save_bool = input("Save as %s? (y/n)" % obsSF_path)
+
+        # Save pickled instance
+        if save_bool=='y':
+            raise ValueError("Testing phase. Don't overwrite!")
+            print('\nPickling observable SF...')
+            with open(obsSF_path, 'wb') as handle:
+                pickle.dump(obsSF_dicts, handle, protocol=2)
+
+        # Initialise dictionary
+        self.obsSF = SFInstanceClasses.obsSF_dicttoclass(obsSF_dicts)
 
     def iterateAllFields(self):
 
@@ -1273,7 +1314,7 @@ def findNearestFields(anglelist, pointings, Phistr, Thstr):
 
     return fieldlist
 
-def path_check(pickleFile, obsSF_path, insSF_path):
+def path_check(pickleFile, obsSF_path, intSF_path):
 
     '''
     path_check - Generates a set of booleans which determine which parts of the selection function
@@ -1304,22 +1345,14 @@ def path_check(pickleFile, obsSF_path, insSF_path):
 
     fileinfo = surveyInfoPickler.surveyInformation(pickleFile)
 
-    def input_file():
-        exists = False:
-        while not exists:
-            file_name = input("Please give a file name.")
-            if os.path.exists(file_name): exists = True
-            else: print("File, %s does not exist.")
-        return file_name
-
     def ask_use_file(filepath, descriptor):
-        if os.path.exists(obsSF_path, 'observable SF'):
+        if os.path.exists(filepath):
             response = None
             while not response in ('u','o','q'):
-                response = input("Path to %s (%s) exists. use this, overwrite it or quit? (u/o/q)" % (descriptor, obsSF_path))
+                response = input("Path to %s (%s) exists. use this, overwrite it or quit? (u/o/q)" % (descriptor, filepath))
             if response == 'u': return True
-            elif response == 'l': return False
-            else: raise InputError('You quit the run.')
+            elif response == 'o': return False
+            else: raise ValueError('You quit the run.')
         else: return False
 
     gen_obssf = True
@@ -1352,7 +1385,8 @@ def path_check(pickleFile, obsSF_path, insSF_path):
     return gen_intsf, use_intsf, gen_obssf, use_obssf, use_isointerp
 
 
-def path_check(pickleFile):
+
+def path_check_old(pickleFile):
 
     '''
     path_check - Generates a set of booleans which determine which parts of the selection function
@@ -1380,7 +1414,7 @@ def path_check(pickleFile):
     fileinfo = surveyInfoPickler.surveyInformation(pickleFile)
 
     def input_file():
-        exists = False:
+        exists = False
         while not exists:
             file_name = input("Please give a file name.")
             if os.path.exists(file_name): exists = True
@@ -1475,7 +1509,7 @@ def path_check(pickleFile):
                         good = True
                         obsSF_pickle_path = file_options[index]
                     elif use_sf == 'n':
-                        print("We'll build from scratch.)
+                        print("We'll build from scratch.")
                         use_obssf = False
                         good = True
                         obsSF_pickle_path = input_file()
@@ -1507,6 +1541,7 @@ def path_check(pickleFile):
     print('')
 
     return gen_intsf, use_intsf, gen_obssf, use_obssf, use_isointerp
+
 
 
 class external():
