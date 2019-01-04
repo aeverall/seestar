@@ -108,19 +108,22 @@ class SFGenerator():
         AnglePointsToPointingsMatrix
     '''
 
-    def __init__(self, pickleFile, ncores=0, memory=1):
+    def __init__(self, pickleFile, obsSF_path=None, intSF_path=None, ncores=0, memory=1):
 
+        # Load survey information from pickleFile
+        fileinfo = surveyInfoPickler.surveyInformation(pickleFile)
+        self.fileinfo = fileinfo
+
+        # If SF paths are not given in kwargs, set to default
+        if obsSF_path is None: obsSF_path = fileinfo.obsSF_pickle_path
+        if insSF_path is None: intSF_path = fileinfo.intSF_pickle_path
         # Check what components of the selection function already exist
-        gen_intsf, use_intsf, gen_obssf, use_obssf, use_isointerp = path_check(pickleFile)
+        gen_intsf, use_intsf, gen_obssf, use_obssf, use_isointerp = path_check(pickleFile, obsSF_path, intSF_path)
 
         # Hold number of cores and memory available to use
         self.ncores=ncores
         # Memory isn't actually being used in this, might try to build it in
         self.memory=memory
-
-        # Load survey information from pickleFile
-        fileinfo = surveyInfoPickler.surveyInformation(pickleFile)
-        self.fileinfo = fileinfo
 
         spectro_coords = fileinfo.spectro_coords
         spectro_path = fileinfo.spectro_path
@@ -130,9 +133,6 @@ class SFGenerator():
 
         self.field_coords = fileinfo.field_coords
         field_path = fileinfo.field_path
-
-        obsSF_pickle_path = fileinfo.obsSF_pickle_path
-        sf_pickle_path = fileinfo.sf_pickle_path
 
         self.photo_tag = fileinfo.photo_tag
         self.fieldlabel_type = fileinfo.field_dtypes[0]
@@ -156,7 +156,7 @@ class SFGenerator():
             if use_intsf: # Use a premade intrinsic selection function
                 # Unpickle intrinsic selection function
                 print("Unpickling intrinsic selection function...")
-                with open(sf_pickle_path, "rb") as f:
+                with open(fileinfo.sf_pickle_path, "rb") as f:
                     instanceSF_dict, instanceIMFSF_dict, self.agerng, self.mhrng, \
                     magrng, colrng = pickle.load(f)
                 print("...done.\n")
@@ -179,7 +179,7 @@ class SFGenerator():
                 # Convert classes to dictionaries of attributes
                 instanceSF_dict = vars(instanceSF)
                 instanceIMFSF_dict = vars(instanceIMFSF)
-                with open(sf_pickle_path, 'wb') as handle:
+                with open(fileinfo.sf_pickle_path, 'wb') as handle:
                         pickle.dump((instanceSF_dict, instanceIMFSF_dict, agerng, mhrng, magrng, colrng), handle, protocol=2)
                 self.instanceSF=instanceSF
                 self.instanceIMFSF=instanceIMFSF
@@ -197,7 +197,7 @@ class SFGenerator():
                 # Once Colour Magnitude selection functions have been created
                 # Unpickle colour-magnitude interpolants
                 print("Unpickling colour-magnitude interpolant dictionaries...")
-                with open(obsSF_pickle_path, "rb") as f:
+                with open(fileinfo.obsSF_pickle_path, "rb") as f:
                     obsSF_dicts = pickle.load(f)
                 print("...done.\n")
             else: # Create new observable selection function
@@ -208,7 +208,7 @@ class SFGenerator():
                 print('Creating colour-magnitude field interpolants...')
                 obsSF_dicts = self.iterateAllFields()
                 print('\nnow pickling them...')
-                with open(obsSF_pickle_path, 'wb') as handle:
+                with open(fileinfo.obsSF_pickle_path, 'wb') as handle:
                     pickle.dump(obsSF_dicts, handle, protocol=2)
                 print("...done\n.")
             # Initialise dictionary
@@ -477,7 +477,6 @@ class SFGenerator():
                 tleft = tnow*(float(fieldL)/fieldN - 1)
 
         return obsSF_dicts
-
 
     def createDistMhAgeInterp(self, agerng=(0,13), mhrng=(-2.5,0.5)):
 
@@ -1274,6 +1273,85 @@ def findNearestFields(anglelist, pointings, Phistr, Thstr):
 
     return fieldlist
 
+def path_check(pickleFile, obsSF_path, insSF_path):
+
+    '''
+    path_check - Generates a set of booleans which determine which parts of the selection function
+        need to be loaded in and which files can be pulled from.
+
+    Parameters
+    ----------
+        pickleFile: str
+            - Path to survey information pickle file
+        obsSF_path: str
+            - Path to where observable selection function will be saved
+        intSF_path: str
+            - Path to where the intrinsic selection function will be saved
+
+    Returns
+    -------
+        gen_intsf: bool
+            - Does an intrinsic selection function need to be generated?
+        use_intsf: bool
+            - Can we load the intrinsic SF from a premade file?
+        gen_obssf: bool
+            - Does an observable selection function need to be generated?
+        use_obssf: bool
+            - Can we load the observable SF from a premade file?
+        use_isointerp: bool
+            - Can we load the isochrone information from the interp pickle file?
+    '''
+
+    fileinfo = surveyInfoPickler.surveyInformation(pickleFile)
+
+    def input_file():
+        exists = False:
+        while not exists:
+            file_name = input("Please give a file name.")
+            if os.path.exists(file_name): exists = True
+            else: print("File, %s does not exist.")
+        return file_name
+
+    def ask_use_file(filepath, descriptor):
+        if os.path.exists(obsSF_path, 'observable SF'):
+            response = None
+            while not response in ('u','o','q'):
+                response = input("Path to %s (%s) exists. use this, overwrite it or quit? (u/o/q)" % (descriptor, obsSF_path))
+            if response == 'u': return True
+            elif response == 'l': return False
+            else: raise InputError('You quit the run.')
+        else: return False
+
+    gen_obssf = True
+    gen_intsf = True
+    # if observable SF path exists we'll either need to use it or overwrite
+    use_obssf = ask_use_file(obsSF_path, 'observable SF')
+    # if intrinisic SF path exists we'll either need to use it or overwrite
+    use_intsf = ask_use_file(intSF_path, 'intrinsic SF')
+
+    # ISOCHRONES
+    if not use_intsf: # Only need isochrones for generating an intrinsic Selection Function.
+        if os.path.exists(fileinfo.iso_interp_path):
+            print("Path to interpolated isochrones (%s) exists. These will be used." % fileinfo.iso_interp_file)
+            use_isointerp = True
+        elif os.path.exists(fileinfo.iso_data_path):
+            print("No interpolated isochrones. They will be generated from %s." % fileinfo.iso_data_file)
+            use_isointerp = False
+        else:
+            print("No isochrone files at %s or %s, intrinsic selection function won't be caculated" % (fileinfo.iso_interp_path, fileinfo.iso_data_path))
+            gen_intsf = False
+    else: use_isointerp = 'na'
+
+    # Model
+    print("The spectro model description is:"+str(fileinfo.spectro_model))
+    print("The photo model description is:"+str(fileinfo.photo_model))
+
+
+    print('')
+
+    return gen_intsf, use_intsf, gen_obssf, use_obssf, use_isointerp
+
+
 def path_check(pickleFile):
 
     '''
@@ -1300,6 +1378,15 @@ def path_check(pickleFile):
     '''
 
     fileinfo = surveyInfoPickler.surveyInformation(pickleFile)
+
+    def input_file():
+        exists = False:
+        while not exists:
+            file_name = input("Please give a file name.")
+            if os.path.exists(file_name): exists = True
+            else: print("File, %s does not exist.")
+        return file_name
+
 
     # INTRINSIC AND OBSERVABLE SELECTION FUNCTIONS
     good_type = False
@@ -1373,18 +1460,30 @@ def path_check(pickleFile):
             use_intsf = False # Must be false if gen_intsf is false
             good = False
             while not good:
-                if os.path.exists(fileinfo.obsSF_pickle_path):
-                    use_sf = input("Path to observable SF (%s) exists. Use this to ? (y/n)" % fileinfo.obsSF_pickle_fname)
-                    if use_sf == 'y':
+                # Dictionary of possible obsSF_pickle_paths
+                file_options = {}
+                for key in fileinfo.obsSF_pickle_paths.keys():
+                    if os.path.exists(fileinfo.obsSF_pickle_paths[key]):
+                        file_options[key] = fileinfo.obsSF_pickle_paths[key]
+                # If any of the saved files exist!
+                if len(options)>0:
+                    for key in file_options.keys():
+                        print key, ": ", file_options[key]
+                    use_sf = input("If you would like to load from one of the above files, give the number, else input 'n'")
+                    if use_sf in file_options.keys():
                         use_obssf = True
                         good = True
+                        obsSF_pickle_path = file_options[index]
                     elif use_sf == 'n':
+                        print("We'll build from scratch.)
                         use_obssf = False
                         good = True
+                        obsSF_pickle_path = input_file()
                     else: pass # Good stays false cause input wasn't y/n
                 else: # No premade observed selection function
-                    print("No observed SF found at %s, we'll build observable seleciton function from scratch." % fileinfo.obsSF_pickle_path)
+                    print("No save obsSF file found. We'll build from scratch.")
                     use_obssf = False
+                    obsSF_pickle_path = input_file()
                     good = True
 
         else: pass # sf_type is not in a, b, or c

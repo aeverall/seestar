@@ -118,6 +118,8 @@ class surveyInformation():
         self.sf_pickle_path = os.path.join(self.survey_folder, self.sf_pickle_fname)
         self.obsSF_pickle_fname = ''
         self.obsSF_pickle_path = os.path.join(self.survey_folder, self.obsSF_pickle_fname)
+        self.obsSF_pickle_paths = {}
+        self.sf_pickle_paths = {}
 
         self.photo_tag = None
         self.fieldlabel_type = None #self.spectro_dtypes[0]
@@ -216,12 +218,11 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
         for key in file_dict:
             setattr(self, key, file_dict[key])
 
+        # kwarg to stop asking the question
         if locQ:
-
             # If the path to the data has changed
             if filename != self.fileinfo_path:
-
-                # False until we get a y/n response
+                # None until we get a y/n response
                 reset = None
 
                 # Now enter while loop
@@ -237,7 +238,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
                 if reset == 'y':
                     # Change name of fileinfo_path
                     self.fileinfo_path = filename
-                    
+
                     # Replace directory with the correct one
                     self.data_path = directory
                     # Update remaining entries
