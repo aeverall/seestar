@@ -108,15 +108,17 @@ class SFGenerator():
         AnglePointsToPointingsMatrix
     '''
 
-    def __init__(self, pickleFile, obsSF_path=None, intSF_path=None, ncores=0, memory=1):
+    def __init__(self, pickleFile, ncores=0, memory=1, **kwargs):
 
         # Load survey information from pickleFile
         fileinfo = surveyInfoPickler.surveyInformation(pickleFile)
         self.fileinfo = fileinfo
 
-        # If SF paths are not given in kwargs, set to default
-        if obsSF_path is None: obsSF_path = fileinfo.obsSF_pickle_path
-        if intSF_path is None: intSF_path = fileinfo.sf_pickle_path
+        options = {'obsSF_path':fileinfo.obsSF_pickle_path,
+                    'intSF_path':fileinfo.sf_pickle_path}
+        options.update(kwargs)
+        obsSF_path = options['obsSF_path']
+        intSF_path = options['intSF_path']
         # Check what components of the selection function already exist
         gen_intsf, use_intsf, gen_obssf, use_obssf, use_isointerp = path_check(pickleFile, obsSF_path, intSF_path)
 
@@ -152,20 +154,7 @@ class SFGenerator():
         #pointings = pointings[pointings.fieldID==2001.0]
         self.pointings = pointings
 
-        if gen_intsf: # If we want to generate an intrinsic selection function
-            if use_intsf:
-                # Use a premade intrinsic selection function
-                self.load_intSF(intSF_path=intSF_path)
-            else:
-                self.gen_intSF(intSF_path=intSF_path)
-        else: # Still need cm_limits for obsSF
-            self.cm_limits = None
-
-        if gen_obssf: # We want an observable selection function
-            if use_obssf: # Use the premade one
-                self.load_obsSF(obsSF_path=obsSF_path)
-            else: # Create new observable selection function
-                self.gen_obsSF(obsSF_path=obsSF_path)
+        self.cm_limits = None
 
     def __call__(self, catalogue, method='intrinsic',
                 coords = ['age', 'mh', 's', 'mass'],
@@ -333,7 +322,11 @@ class SFGenerator():
             #Save field df in the class variable
             return df
 
-    def load_intSF(self, intSF_path=None):
+    def load_intSF(self, **kwargs):
+
+        options={'intSF_path':self.fileinfo.sf_pickle_path}
+        options.update(kwargs)
+        intSF_path = options['intSF_path']
 
         # Unpickle intrinsic selection function
         print("Unpickling intrinsic selection function...")
@@ -352,7 +345,11 @@ class SFGenerator():
         self.cm_limits = None
         #self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
 
-    def load_obsSF(self, obsSF_path=None):
+    def load_obsSF(self, **kwargs):
+
+        options={'obsSF_path':self.fileinfo.obsSF_pickle_path}
+        options.update(kwargs)
+        obsSF_path = options['obsSF_path']
 
         # Once Colour Magnitude selection functions have been created
         # Unpickle colour-magnitude interpolants
@@ -364,7 +361,11 @@ class SFGenerator():
         # Initialise dictionary
         self.obsSF = SFInstanceClasses.obsSF_dicttoclass(obsSF_dicts)
 
-    def gen_intSF(self, intSF_path=None):
+    def gen_intSF(self, **kwargs):
+
+        options={'intSF_path':self.fileinfo.sf_pickle_path}
+        options.update(kwargs)
+        intSF_path = options['intSF_path']
 
         print('Creating distance-age-metallicity interpolants...')
          #surveysf, agerng, mhrng, srng = self.createDistMhAgeInterp()
@@ -382,7 +383,6 @@ class SFGenerator():
 
         # Save pickled instance
         if save_bool=='y':
-            raise ValueError("Testing phase. Don't overwrite!")
             print('\nPickling intrinsic SF...')
             with open(intSF_path, 'wb') as handle:
                     pickle.dump((instanceSF_dict, instanceIMFSF_dict,
@@ -395,7 +395,11 @@ class SFGenerator():
         self.cm_limits = None
         #self.cm_limits = (magrng[0], magrng[1], colrng[0], colrng[1])
 
-    def gen_obsSF(self, obsSF_path=None):
+    def gen_obsSF(self, **kwargs):
+
+        options={'obsSF_path':self.fileinfo.obsSF_pickle_path}
+        options.update(kwargs)
+        obsSF_path = options['obsSF_path']
 
         print('Importing data for colour-magnitude field interpolants...')
         self.spectro_df = self.ImportDataframe(self.fileinfo.spectro_path, self.fileinfo.spectro_coords)
@@ -404,7 +408,7 @@ class SFGenerator():
         print('Creating colour-magnitude field interpolants...')
         obsSF_dicts = self.iterateAllFields()
         print("...done\n.")
-        
+
         # Decide whether to save pickled instance
         save_bool = None
         while not save_bool in ('y','n'):
@@ -413,7 +417,6 @@ class SFGenerator():
 
         # Save pickled instance
         if save_bool=='y':
-            raise ValueError("Testing phase. Don't overwrite!")
             print('\nPickling observable SF...')
             with open(obsSF_path, 'wb') as handle:
                 pickle.dump(obsSF_dicts, handle, protocol=2)

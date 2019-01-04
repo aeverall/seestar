@@ -95,7 +95,13 @@ To initialise prebuilt selection function:
 from seestar import SelectionGrid
 
 # To initialise the prebuilt selection function:
-Galaxia_sf = SeletionGrid.SFGenerator('/home/USER/PATH/Galaxia3/Galaxia3_fileinfo.pickle')
+Galaxia_sf = SelectionGrid.SFGenerator('/home/USER/PATH/Galaxia3/Galaxia3_fileinfo.pickle')
+
+# Load in observable selection function
+Galaxia_sf.load_obsSF()
+
+# Load in intrinsic selection function
+Galaxia_sf.load_intSF()
 ```
 
 Having created the selection function instance for Galaxia, we now wish to calculate selection probabilities of stars:
@@ -235,29 +241,20 @@ The size of iteration steps is decided by checking the memory available on your 
 
 ### Generating the selection function in observable coordinates (as a function of colour and magnitude)
 
-Generate the selection function.
+Initialise selection function.
 ```python
 from seestar import SelectionGrid
 
-Survey_sf = SeletionGrid.SFGenerator('/home/PATH/TO/DIRECTORY/SURVEY/SURVEY_fileinfo.pickle')
-```
-This will raise the question:
-```
-Would you like the selection function in: a) observable, b) intrinsic, c) both? (return a, b or c)
-```
-* ```a``` - Generates a selection function in observable coordinates (magnitude, colour). Doesn't require Isochrone data if this is unavailable.
-* ```b``` - Generates a selection function in intrinsic coordinates (age, metallicity, mass, distance). Requires the isochrone files.
-* ```c``` - Generates both of the above and keeps them loaded in to be used when wanted.
+Survey_sf = SelectionGrid.SFGenerator('/home/PATH/TO/DIRECTORY/SURVEY/SURVEY_fileinfo.pickle')
 
-If the selection function has been previously run, the following will automatically appear:
-```
-Path to intrinsic SF (Galaxia3_new_SF.pickle) exists. Load SF in from here? (y/n)
-Path to observable SF (Galaxia3_new_obsSF.pickle) exists. Use this to ? (y/n)
-```
-* y - Loads in the previously generated selection function (done in seconds)
-* n - Generates a new selection function which will overwrite the previous ones.
-(Calculating the observable SF from scratch can take hours depending on the survey)
+# Generate observable selection function:
+Survey_sf.gen_obsSF(obsSF_path='path_to_obsSF')
+# Generate intrinsic selection function
+Survey_sf.gen_intSF(intSF_path='path_to_intSF')
 
+# Optional obsSF_path/intSF_path arguments.
+# The default is SURVEY/SURVEY_obsSF.pickle/SURVEY_SF.pickle
+```
 
 Having created the selection function instance for ```SURVEY-NAME```, we now wish to calculate selection probabilities of stars:
 
