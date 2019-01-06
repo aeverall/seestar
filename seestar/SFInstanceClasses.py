@@ -66,6 +66,35 @@ def obsSF_dicttoclass(obsSF_dicts):
 
     return obsSF_classes
 
+def obsSF_classtodict(obsSF_classes):
+
+    '''
+    obsSF_classtodict - Convert dict-of-classes to dict-of-dicts instances
+
+    Parameters
+    ----------
+        obsSF_classes: dict of class instances
+            - Dictionary of instances of observableSF class
+
+    Returns
+    -------
+
+    '''
+
+    obsSF_dicts = {}
+    for field in obsSF_classes: # Load classes from dictionaries
+
+        # Get dictionary of attributes from class
+        obsSF_field = vars(obsSF_classes)
+        # Get dictionary of attributes from classes within obsSF_classes
+        obsSF_field['DF_model'] = vars(obsSF_classes.DF_model)
+        obsSF_field['SF_model'] = vars(obsSF_classes.SF_model)"
+
+        # Add class instance to dictionary
+        obsSF_dicts[field] = obsSF_field
+
+    return obsSF_dicts
+
 class observableSF():
 
     '''
