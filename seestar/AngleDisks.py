@@ -6,13 +6,13 @@ Functions
 ---------
 
     AngleShift - Converts latitudinal coordinates from range [-pi, pi] to range [pi, 0]
-               - Converting from zero in plane to zero at +ve z-axis 
+               - Converting from zero in plane to zero at +ve z-axis
 
     InvAngleShift - Converts latitudinal coordinates from range [pi, 0] to range [-pi, pi]
-                  - Converting from zero in plane to zero at +ve z-axis 
+                  - Converting from zero in plane to zero at +ve z-axis
 
     Rotation - Returns same points rotated by a given set of angles
-                  
+
     InverseRotation - Returns same points rotated by a given set of angles
                       towards the z-axis
 
@@ -21,7 +21,7 @@ Functions
     GenerateCircle - Creates a circle of points around a position on a sphere
 
     EquatToGal - Transformation from equatorial angles (RA, Dec) to Galactic angles (l,b)
-               - Same as Payel's CoordTrans.EquatorialToGalactic but only 
+               - Same as Payel's CoordTrans.EquatorialToGalactic but only
                  requiring angles to be transformed.
 
     EquatorialFields - Plots all plates in catalogue as circles of points in Equatorial coordinates
@@ -60,7 +60,7 @@ def AngleShift(Th):
 
     '''
     AngleShift - Converts latitudinal coordinates from range [-pi, pi] to range [pi, 0]
-               - Converting from zero in plane to zero at +ve z-axis 
+               - Converting from zero in plane to zero at +ve z-axis
     Parameters
     ----------
         Th: 1D array of floats (radians [-pi,pi])
@@ -80,7 +80,7 @@ def InvAngleShift(x):
 
     '''
     InvAngleShift - Converts latitudinal coordinates from range [pi, 0] to range [-pi, pi]
-                  - Converting from zero in plane to zero at +ve z-axis 
+                  - Converting from zero in plane to zero at +ve z-axis
     Parameters
     ----------
         Th: 1D array of floats (radians [0,pi])
@@ -93,7 +93,7 @@ def InvAngleShift(x):
     '''
     x -= np.pi/2
     x = -x
-    return x  
+    return x
 
 def Rotation(Phi, Th, Phi0, Th0):
     '''
@@ -126,26 +126,26 @@ def Rotation(Phi, Th, Phi0, Th0):
     '''
     Th = AngleShift(Th)
     Th0 = AngleShift(Th0)
-    
+
     x = np.sin(Th) * np.cos(Phi) * np.cos(Th0) * np.cos(Phi0) + \
         np.sin(Th0) * np.cos(Th) * np.cos(Phi0) - \
         np.sin(Th) * np.sin(Phi) * np.sin(Phi0)
-        
+
     y = np.sin(Th) * np.cos(Phi) * np.cos(Th0) * np.sin(Phi0) + \
         np.sin(Th0) * np.cos(Th) * np.sin(Phi0) + \
         np.sin(Th) * np.sin(Phi) * np.cos(Phi0)
-        
+
     z = - np.sin(Th0) * np.sin(Th) * np.cos(Phi) + \
         np.cos(Th0) * np.cos(Th)
-        
+
     Phi_out = np.arctan(y/x)
     Th_out = np.arccos(z)
-    
+
     Phi_out[x<0] += np.pi
-    
+
     #Th_out[Th_out>np.pi/2] -= np.pi
     Th_out = InvAngleShift(Th_out)
-    
+
     return Phi_out, Th_out
 
 def InverseRotation(Phi, Th, Phi0, Th0):
@@ -179,32 +179,32 @@ def InverseRotation(Phi, Th, Phi0, Th0):
     '''
     Th = AngleShift(Th)
     Th0 = AngleShift(Th0)
-    
+
     x = np.sin(Th) * np.cos(Phi) * np.cos(Phi0) * np.cos(Th0) + \
         np.sin(Th) * np.sin(Phi) * np.sin(Phi0) * np.cos(Th0) - \
         np.cos(Th) * np.sin(Th0)
-        
+
     y = - np.sin(Th) * np.cos(Phi) * np.sin(Phi0) + \
         np.sin(Th) * np.sin(Phi) * np.cos(Phi0)
-        
+
     z = np.sin(Th) * np.cos(Phi) * np.cos(Phi0) * np.sin(Th0) + \
         np.sin(Th) * np.sin(Phi) * np.sin(Phi0) * np.sin(Th0) + \
         np.cos(Th) * np.cos(Th0)
-        
+
     Phi_out = np.arctan(y/x)
     Th_out = np.arccos(z)
-    
+
     Phi_out[(x<0) & (y>0)] += np.pi
     Phi_out[(x<0) & (y<0)] -= np.pi
-    
+
     #Th_out[Th_out>np.pi/2] -= np.pi
     Th_out = InvAngleShift(Th_out)
-    
+
     return Phi_out, Th_out
 
 def PlotDisk(l, b, ax,
-                    org=0, 
-                    title='', 
+                    org=0,
+                    title='',
                     rad = True,
                     s=0.5):
 
@@ -293,7 +293,7 @@ def GenerateCircle(Phi_coord, Th_coord, SolidAngle):
                 - Longitudinal coordinates of circle around point
 
         Th: 1D array of floats
-                - Latitudinal coordinates of circle around point   
+                - Latitudinal coordinates of circle around point
     '''
 
     N = 30
@@ -318,7 +318,7 @@ def EquatToGal(ra, dec):
 
     '''
     EquatToGal - Transformation from equatorial angles (RA, Dec) to Galactic angles (l,b)
-               - Same as Payel's CoordTrans.EquatorialToGalactic but only 
+               - Same as Payel's CoordTrans.EquatorialToGalactic but only
                  requiring angles to be transformed.
 
     Parameters
@@ -336,7 +336,7 @@ def EquatToGal(ra, dec):
 
         b: 1D array of floats (radians [-pi/2, pi/2])
                 - b coordinate of points
-    '''    
+    '''
 
     # Equatorial coordinate system constants
     ragp   = 3.36603292
@@ -357,7 +357,7 @@ def GalToEquat(l,b):
 
     '''
     GalToEquat - Transformation from Galactic angles (l,b) to Equatorial angles (RA, Dec)
-               - Same as Payel's CoordTrans.GalacticToEquatorial but only 
+               - Same as Payel's CoordTrans.GalacticToEquatorial but only
                  requiring angles to be transformed.
 
     Parameters
@@ -375,7 +375,7 @@ def GalToEquat(l,b):
 
         dec: 1D array of floats (radians [-pi/2, pi/2])
                 - Right Ascension of points to be transformed
-    '''    
+    '''
 
     # Equatorial coordinate system constants
     ragp   = 3.36603292
@@ -389,7 +389,7 @@ def GalToEquat(l,b):
     ra     = ragp+np.arctan2(cb*np.sin(lcp-l),sb*np.cos(decgp)-cb*np.sin(decgp)*np.cos(l-lcp))
     ra[ra>2.*np.pi] = ra[ra>2.*np.pi] - 2.*np.pi
 
-        
+
     return ra, dec
 
 def EquatorialFields(save = False, saven = '', title = ''):
