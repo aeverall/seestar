@@ -90,7 +90,7 @@ def BoundaryToCentre(bin_bounds):
 
     Parameters
     ----------
-        bin_bounds: 1d np array  
+        bin_bounds: 1d np array
                     Edge coordinates of each bin
 
     Returns
@@ -110,7 +110,7 @@ def BoundaryToCentreNU(bin_bounds):
 
     Parameters
     ----------
-        bin_bounds: 1d np array  
+        bin_bounds: 1d np array
                     Edge coordinates of each bin
 
     Returns
@@ -137,8 +137,8 @@ def DensityArray(data_frame, x_label, y_label, x_range, y_range, bins):
         data_frame: pandas DataFrame
                     df including all coordinates for stars in sample
 
-        x_label, y_label: string, string - 
-                    coordinates used for x and y axes of grid, 
+        x_label, y_label: string, string -
+                    coordinates used for x and y axes of grid,
                     same as column headers in dataframe
 
     **kwargs
@@ -157,7 +157,7 @@ def DensityArray(data_frame, x_label, y_label, x_range, y_range, bins):
 
         num_grid: 2d array of same length as x, y
                     number of points per grid square
-    
+
         x, y: 1d np arrays
                     x_coordinates and y_coordinates of grid
     '''
@@ -168,7 +168,7 @@ def DensityArray(data_frame, x_label, y_label, x_range, y_range, bins):
     bins_y = np.linspace(y_range[0],
                          y_range[1],
                          bins)
-    
+
     num_grid, x_bounds, y_bounds = np.histogram2d(x = getattr(data_frame, x_label),
                                                    y = getattr(data_frame, y_label),
                                                    bins = [bins_x, bins_y])
@@ -176,7 +176,7 @@ def DensityArray(data_frame, x_label, y_label, x_range, y_range, bins):
     x = BoundaryToCentre(x_bounds)
     y = BoundaryToCentre(y_bounds)
     num_grid = np.transpose(num_grid)
-    
+
     return num_grid, x, y
 
 
@@ -193,14 +193,14 @@ def ContourPlot(df, x_label, y_label, **kwargs):
         x_label: string
             x coordinate of plot
 
-        y_label: string- 
+        y_label: string-
             y coordinate of plot
 
     Returns
     ------
         None
     '''
-    
+
     options = {'cont_levels': np.linspace(1, 1000, 100),
                'x_range': FindRange(df, x_label, Plot = False),
                'y_range': FindRange(df, y_label, plot = False),
@@ -208,19 +208,19 @@ def ContourPlot(df, x_label, y_label, **kwargs):
                'save': False,
                'save_name': 'Unknown'}
     options.update(kwargs)
-    
+
     units = 'km/s'
     grid, x, y = DensityArray(df, x_label, y_label,
                                 x_range = options['x_range'],
                                 y_range = options['y_range'],
                                 bins = options['bins'])
-    
-    plt.contourf(x, y, grid, 
+
+    plt.contourf(x, y, grid,
                 levels = options['cont_levels'],
                 cmap = 'Blues')
     plt.xlabel(x_label + ' ('+units+')')
     plt.ylabel(y_label + ' ('+units+')')
-    
+
     if options['save']:
         fig.savefig('../Figures/' + options['save_name'])
 
@@ -235,20 +235,20 @@ def ParamRangeHighlight(df, parameter, param_range, **kwargs):
     ------
         df: pandas DataFrame
             Data on stars being analysed
-        
+
         parameter: string
             Column header in df of parameter imposing filter
-        
+
         param_range: tuple of doubles
             Max and min value of parameter to be plotted
-    
+
     **kwargs
     --------
         save: bool - default = False
             Change to True if you want to save the figure
-    
+
         save_name: string - default = 'Unknown'
-            Enter name of file to save as within Research2017/Figures/ 
+            Enter name of file to save as within Research2017/Figures/
 
     Returns
     ------
@@ -258,24 +258,24 @@ def ParamRangeHighlight(df, parameter, param_range, **kwargs):
     options = {'save': False,
                'save_name': 'Unknown'}
     options.update(kwargs)
-    
+
     x_label = 'Jphi'
     y_label = 'Jr'
-    
+
     colours = np.ones((len(getattr(df, parameter))))
     colours[(getattr(df, parameter) > param_range[1]) | \
             (getattr(df, parameter) < param_range[0])] = 0
-    
+
     fig, axes = plt.subplots(1, 3, figsize=(30, 10))
     title = parameter + ':_' + \
             '{0:.3}'.format(param_range[0]) + \
             '_:_' + \
             '{0:.3}'.format(param_range[1])
     fig.suptitle(title)
-    
+
     plt.sca(axes[0])
     x, y = getattr(df, x_label), getattr(df, y_label)
-    plt.scatter(x, y, 
+    plt.scatter(x, y,
                 s = 0.5,
                 c = colours,
                 cmap = 'Blues')
@@ -283,15 +283,15 @@ def ParamRangeHighlight(df, parameter, param_range, **kwargs):
     plt.ylim(0., .1)
     plt.xlabel(x_label)
     plt.ylabel(y_label)
-    
+
     df_filtered = df[(getattr(df, parameter) > param_range[0]) & \
                      (getattr(df, parameter) < param_range[1])]
-    
+
     plt.sca(axes[1])
     ContourPlot(df_filtered, x_label, y_label,
                 x_range = (1.4, 2.6), y_range = (0., 0.1),
                 cont_levels = np.linspace(1, 300, 80))
-    
+
     plt.sca(axes[2])
     ContourPlot(df_filtered, 'U', 'V',
                 x_range = (-80, 40), y_range = (-80, 50),
@@ -312,7 +312,7 @@ def FindRange(df, Coordinate, **kwargs):
         df: pandas DataFrame
                     Data of stars in sample
 
-        Coordinate: string 
+        Coordinate: string
                     Column header in df
 
     **kwargs
@@ -373,7 +373,7 @@ def FindRange(df, Coordinate, **kwargs):
     #Take full data range when Gaussian cannot be fitted
     except RuntimeError:
         x_limits = (np.min(Values), np.max(Values))
-    
+
     return x_limits
 
 
@@ -393,7 +393,7 @@ def Histogram2D(x_data, y_data, **kwargs):
                     y coordinates of all stars in sample
     **kwargs
     --------
-        
+
         xbounds: tuple of doubles
                     upper and lower limit of grid in x axis
         ybounds: tuple of doubles
@@ -417,34 +417,34 @@ def Histogram2D(x_data, y_data, **kwargs):
                     edge coordinates of all histogram bins in y-axis
 
     '''
-    
+
     options = {'xbounds': (np.min(x_data), np.max(x_data)),
                'ybounds': (np.min(y_data), np.max(y_data)),
                'xbins': 10,
                'ybins': 10}
     options.update(kwargs)
-    
+
     xbins, ybins = options['xbins'], options['ybins']
-    
+
     xy_data = pd.DataFrame(np.transpose(np.array((x_data, y_data))),
                              columns = ['x', 'y'])
-    
-    x_bounds = np.linspace(options['xbounds'][0], 
-                           options['xbounds'][1], 
+
+    x_bounds = np.linspace(options['xbounds'][0],
+                           options['xbounds'][1],
                            xbins)
-    y_bounds = np.linspace(options['ybounds'][0], 
-                           options['ybounds'][1], 
+    y_bounds = np.linspace(options['ybounds'][0],
+                           options['ybounds'][1],
                            ybins)
-    num_map = np.zeros((xbins-1, 
+    num_map = np.zeros((xbins-1,
                         ybins-1))
-    
+
     for i in range(xbins-1):
         for j in range(ybins-1):
             num_map[i,j] = len(xy_data[(xy_data.x>x_bounds[i]) & \
                                        (xy_data.x<x_bounds[i+1]) & \
                                        (xy_data.y>y_bounds[j]) & \
                                        (xy_data.y>x_bounds[j+1])])
-    
+
     return num_map, x_bounds, y_bounds
 
 
@@ -580,21 +580,21 @@ def PointsToPointings(df, pointings):
                 - a column added which provides the number of the field pointing
 
     '''
-    
+
     df['point'] = -1
-    
+
     point = np.zeros(len(df)) - 1
 
     for i in range(len(pointings)):
         df['bool'+str(i)] = Distance(df.x, df.y,
-                                     pointings.x.loc[i], 
+                                     pointings.x.loc[i],
                                      pointings.y.loc[i]) < pointings.r.loc[i]
-        
+
         point[df['bool'+str(i)]] = i
     df.point = point
-    
+
     return df
-    
+
 def PointsToPointingsOverlap(df, pointings):
 
     '''
@@ -617,19 +617,19 @@ def PointsToPointingsOverlap(df, pointings):
                 - a column added which provides the numbers of all possible field pointings
 
     '''
-    
+
     df['point'] = -1
 
     for i in range(len(pointings)):
         df['bool'+str(i)] = Distance(df.x, df.y,
-                                     pointings.x.loc[i], 
+                                     pointings.x.loc[i],
                                      pointings.y.loc[i]) < pointings.r.loc[i]
-        
+
         point_i = np.zeros(len(df)).astype(str)
         point_i[:] = ''
         point_i[df['bool'+str(i)]] = str(i)
         df['point'] = np.core.defchararray.add(np.array(df['point']).astype(str), point_i)
-    
+
     return df
 
 def PointsToPointingsMatrix(df, pointings):
@@ -656,30 +656,30 @@ def PointsToPointingsMatrix(df, pointings):
                 - a column added which provides the number of the field pointing
 
     '''
-    
+
     df['point'] = -1
-    
+
     point = np.zeros(len(df)) - 1
-    
+
     Mx_df = np.repeat([df.x], len(pointings), axis=0)
     My_df = np.repeat([df.y], len(pointings), axis=0)
     Mx_point = np.transpose(np.repeat([pointings.x], len(df), axis=0))
     My_point = np.transpose(np.repeat([pointings.y], len(df), axis=0))
     Mr_point = np.transpose(np.repeat([pointings.r], len(df), axis=0))
-    
+
     Mbool = Distance(Mx_df,
                      My_df,
                      Mx_point,
                      My_point) < Mr_point
-    
+
     for i in range(len(pointings)):
         point[Mbool[i,:]] = i
-        
+
     df.point = point
-    
+
     return df
-    
-    
+
+
 def PointsInPointings(df, pointings):
 
     '''
@@ -701,7 +701,7 @@ def PointsInPointings(df, pointings):
         Plots points which are near enough to pointings
 
     '''
-    
+
     def plotting(condition):
         df_conditioned = df[condition]
         plt.scatter(df_conditioned.x, df_conditioned.y)
@@ -712,8 +712,8 @@ def PointsInPointings(df, pointings):
     for i in range(len(pointings)):
         plotting(df['bool'+str(i)])
 
-def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, halfangle, 
-                                IDtype = str, Nsample = 10000, 
+def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, halfangle,
+                                IDtype = str, Nsample = 10000,
                                 progress=False, outString=""):
 
     '''
@@ -743,7 +743,7 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, halfangle,
     kwargs
     ------
         IDtype: object
-            Type of python object used for field IDs 
+            Type of python object used for field IDs
 
         Nsample: int
             Number of stars to be assigned per iterations
@@ -773,30 +773,30 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, halfangle,
         dfi = df.iloc[i*Nsample:(i+1)*Nsample]
 
         iterated +=  len(dfi)
-        if progress: 
+        if progress:
             sys.stdout.write("\r"+outString+"...Assigning: "+str(iterated)+'/'+str(len(df))+"        ")
             sys.stdout.flush()
-            
+
 
         pointings = pointings.reset_index(drop=True)
         pointings = pointings.copy()
-        
-        Mp_df = np.repeat([getattr(dfi,Phi)], 
-                            len(pointings), 
+
+        Mp_df = np.repeat([getattr(dfi,Phi)],
+                            len(pointings),
                             axis=0)
-        Mt_df = np.repeat([getattr(dfi,Th)], 
-                            len(pointings), 
+        Mt_df = np.repeat([getattr(dfi,Th)],
+                            len(pointings),
                             axis=0)
         Mp_point = np.transpose(np.repeat([getattr(pointings,Phi)],
-                                            len(dfi), 
+                                            len(dfi),
                                             axis=0))
-        Mt_point = np.transpose(np.repeat([getattr(pointings,Th)], 
-                                            len(dfi), 
+        Mt_point = np.transpose(np.repeat([getattr(pointings,Th)],
+                                            len(dfi),
                                             axis=0))
-        Msa_point = np.transpose(np.repeat([getattr(pointings,halfangle)], 
-                                            len(dfi), 
+        Msa_point = np.transpose(np.repeat([getattr(pointings,halfangle)],
+                                            len(dfi),
                                             axis=0))
-        # Boolean matrix specifying whether each point lies on that pointing       
+        # Boolean matrix specifying whether each point lies on that pointing
         Mbool = AngleSeparation(Mp_df,
                                 Mt_df,
                                 Mp_point,
@@ -825,7 +825,7 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, halfangle,
         del(Mplates)
         gc.collect()
         # Convert type of all field IDs back to correct type
-        field_listoflists = [[IDtype(elem) for elem in row] for row in field_listoflists]   
+        field_listoflists = [[IDtype(elem) for elem in row] for row in field_listoflists]
         # Convert list to series then series to dataframe column
         field_series = pd.Series(field_listoflists)
         field_series = pd.DataFrame(field_series, columns=['points'])
@@ -836,7 +836,7 @@ def AnglePointsToPointingsMatrix(df, pointings, Phi, Th, halfangle,
         dfi.drop('index', inplace=True, axis=1)
 
         if i == 0: newdf = dfi
-        else: 
+        else:
             newdf = pd.concat((newdf, dfi))
 
 
@@ -900,23 +900,23 @@ class APTPM_parallel():
             dfi = df.iloc[i*self.Nsample:(i+1)*self.Nsample]
 
             self.pointings = self.pointings.reset_index(drop=True).copy()
-            
-            Mp_df = np.repeat([getattr(dfi,self.Phi)], 
-                                len(self.pointings), 
+
+            Mp_df = np.repeat([getattr(dfi,self.Phi)],
+                                len(self.pointings),
                                 axis=0)
-            Mt_df = np.repeat([getattr(dfi,self.Th)], 
-                                len(self.pointings), 
+            Mt_df = np.repeat([getattr(dfi,self.Th)],
+                                len(self.pointings),
                                 axis=0)
             Mp_point = np.transpose(np.repeat([getattr(self.pointings,self.Phi)],
-                                                len(dfi), 
+                                                len(dfi),
                                                 axis=0))
-            Mt_point = np.transpose(np.repeat([getattr(self.pointings,self.Th)], 
-                                                len(dfi), 
+            Mt_point = np.transpose(np.repeat([getattr(self.pointings,self.Th)],
+                                                len(dfi),
                                                 axis=0))
-            Msa_point = np.transpose(np.repeat([getattr(self.pointings,self.halfangle)], 
-                                                len(dfi), 
+            Msa_point = np.transpose(np.repeat([getattr(self.pointings,self.halfangle)],
+                                                len(dfi),
                                                 axis=0))
-            # Boolean matrix specifying whether each point lies on that pointing       
+            # Boolean matrix specifying whether each point lies on that pointing
             Mbool = AngleSeparation(Mp_df,
                                     Mt_df,
                                     Mp_point,
@@ -945,7 +945,7 @@ class APTPM_parallel():
             del(Mplates)
             gc.collect()
             # Convert type of all field IDs back to correct type
-            field_listoflists = [[self.IDtype(elem) for elem in row] for row in field_listoflists]   
+            field_listoflists = [[self.IDtype(elem) for elem in row] for row in field_listoflists]
             # Convert list to series then series to dataframe column
             field_series = pd.Series(field_listoflists)
             field_series = pd.DataFrame(field_series, columns=['points'])
@@ -954,12 +954,12 @@ class APTPM_parallel():
             dfi = dfi.merge(field_series, how='inner', right_index=True, left_index=True)
             dfi.index = dfi['index']
             dfi.drop('index', inplace=True, axis=1)
-        
+
             # Add dataframe to newdf
             newdf = pd.concat((newdf, dfi))
 
             iterated += len(dfi)
-            if self.progress: 
+            if self.progress:
                 sys.stdout.write("\r"+self.outString+"...Assigning: "+str(iterated)+'/'+str(len(df))+"        ")
                 sys.stdout.flush()
 
@@ -986,14 +986,14 @@ def EqAreaCircles(delta, N):
     '''
 
     conc = np.zeros((N))
-    
+
     area = delta**2 / (N-1)
-    
+
     conc[0] = 0
     conc[1] = np.sqrt(area)
     for i in range(2, N):
         conc[i] = np.sqrt(i*area)
-        
+
     return conc
 
 def EqAngleSegments(N):
@@ -1011,7 +1011,7 @@ def EqAngleSegments(N):
         seg: array of floats
                 - Angle of boundary of each segment (radians)
     '''
-    
+
     seg = np.linspace(-np.pi, np.pi, N)
     return seg
 
@@ -1073,10 +1073,10 @@ def integrateGrid(grid, x, axis):
     shape of integral == (4,10,3)
 
     '''
-    
+
     # Need to know the dimensions
     nd = len(np.shape(grid))
-    
+
     # Transpose the grid to put integrating axis as 0
     dims = np.arange(0,nd,1).tolist()
     dims.insert(0, dims.pop(axis))
@@ -1093,7 +1093,7 @@ def integrateGrid(grid, x, axis):
 
     # Integrate over the axis - leaves the same grid missing 1 axis
     integral = np.sum(deltas*avgs, axis=len(dims)-1)
-    
+
     return integral
 
 
@@ -1128,17 +1128,17 @@ def extendGrid(grid, x,
     dims.insert(0, dims.pop(axis))
     grid = np.transpose(grid, axes=dims)
 
-    if x_lbound: 
+    if x_lbound:
         col_first = np.array([grid[0],])
         x_min = x_lb
-    else: 
+    else:
         col_first = np.zeros((1,)+np.shape(grid[0]))
         x_min = x[0]-dx
 
-    if x_ubound: 
+    if x_ubound:
         col_last = np.array([grid[nx-1],])
         x_max = x_ub
-    else: 
+    else:
         col_last = np.zeros((1,)+np.shape(grid[0]))
         x_max = x[len(x)-1]+dx
 
@@ -1149,5 +1149,5 @@ def extendGrid(grid, x,
     dims = np.arange(0,nD,1).tolist()
     dims.insert(axis, dims.pop(0))
     grid = np.transpose(grid, axes=dims)
-    
+
     return grid, x

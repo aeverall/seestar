@@ -37,7 +37,7 @@ class GaussianEM():
     Parameters
     ----------
         x, y - np.array of floats
-            - x and y coordinates for the points generated via poisson point process from 
+            - x and y coordinates for the points generated via poisson point process from
             the smooth model
 
         nComponents - int
@@ -49,21 +49,21 @@ class GaussianEM():
     Functions
     ---------
         __call__ - Returns the value of the smooth GMM distribution at the points x, y
-        optimizeParams - Vary the parameters of the distribution using the given method to optimize the 
+        optimizeParams - Vary the parameters of the distribution using the given method to optimize the
                         poisson likelihood of the distribution
-        initParams - Specify the initial parameters for the Gaussian mixture model as well as 
+        initParams - Specify the initial parameters for the Gaussian mixture model as well as
                     the lower and upper bounds on parameters (used as prior values in the optimization)
         lnprob - ln of the posterior probability of the distribution given the parameters.
                - posterior probability function is proportional to the prior times the likelihood
                - lnpost = lnprior + lnlike
         lnlike - The poisson likelihood disrtibution of the Gaussian mixture model given the observed points
-        lnprior - The test of the parameters of the Gaussian Mixture Model against the specified prior values     
+        lnprior - The test of the parameters of the Gaussian Mixture Model against the specified prior values
         priorTest - Testing the parameters of the GMM against the upper and lower limits specified in
                     self.initParams
         testIntegral - Test the approximate integral calculated using the given integration rule against the accurate
                         integral calculated using cubature for which we know the uncertainty
     '''
-    
+
     def __init__(self, x=np.array(0), y=np.array(0), nComponents=0, rngx=(0,1), rngy=(0,1), runscaling=True):
 
         # Name of the model to used for reloading from dictionary
@@ -72,7 +72,7 @@ class GaussianEM():
         # Distribution from photometric survey for calculation of SF
         self.photoDF = None
         self.priorDF = False
-        
+
         # Number of components of distribution
         self.nComponents = nComponents
         # Starting values for parameters
@@ -83,7 +83,7 @@ class GaussianEM():
         self.params_f = None
         # Shape of parameter set (number of components x parameters per component)
         self.param_shape = ()
-        
+
         # Not run when loading class from dictionary
         if runscaling:
             # Real space parameters
@@ -107,7 +107,7 @@ class GaussianEM():
 
         # Print out likelihood values as calculated
         self.runningL = True
-        
+
     def __call__(self, x, y):
 
         '''
@@ -128,11 +128,11 @@ class GaussianEM():
         # Scale x and y to correct region
         x, y = feature_scaling(x, y, self.mux, self.muy, self.sx, self.sy)
         rngx, rngy = feature_scaling(np.array(self.rngx), np.array(self.rngy), self.mux, self.muy, self.sx, self.sy)
-        
+
         # Value of coordinates x, y in the Gaussian mixture model
         GMMval = self.distribution(self.params_f, x, y)
 
-        if (type(GMMval) == np.array)|(type(GMMval) == np.ndarray)|(type(GMMval) == pd.Series): 
+        if (type(GMMval) == np.array)|(type(GMMval) == np.ndarray)|(type(GMMval) == pd.Series):
             # Not-nan input values
             notnan = (~np.isnan(x))&(~np.isnan(y))
             # Any values outside range - 0
@@ -141,7 +141,7 @@ class GaussianEM():
             GMMval[notnan][~constraint] = 0.
         elif (type(GMMval) == float) | (type(GMMval) == np.float64):
             if (np.isnan(x))|(np.isnan(y)): GMMval = np.nan
-            else: 
+            else:
                 constraint = (x>=rngx[0])&(x<=rngx[1])&(y>=rngy[0])&(y<=rngy[1])
                 if not constraint:
                     GMMval = 0.
@@ -149,7 +149,7 @@ class GaussianEM():
 
         return GMMval
 
-    def EM(self, params, prior=False): 
+    def EM(self, params, prior=False):
 
         '''
         EM - Expectation maximisation algorithm for Gaussian mixture model
@@ -179,13 +179,13 @@ class GaussianEM():
         # Whilst improving by greater than 0.1%
         while improvement > 0.001:
             it+=1
-            response = self.Expectation(params) 
+            response = self.Expectation(params)
             params = self.Maximisation(response, prior=prior)
 
             lnlike_new = self.lnlike(params)
             if 'lnlike_old' in locals():
                 improvement = 100 * (lnlike_new - lnlike_old)/np.abs(lnlike_old)
-            
+
             sys.stdout.write('\rold: %d, new: %d, improvement: %d' % (lnlike_old, lnlike_new, improvement))
 
             lnlike_old = lnlike_new
@@ -264,7 +264,7 @@ class GaussianEM():
         params = np.empty(self.params_i.shape)
         for i in range(response.shape[0]):
 
-            MU = np.dot(response[i,:], X) / np.sum(response[i,:]) 
+            MU = np.dot(response[i,:], X) / np.sum(response[i,:])
 
             diff = X-MU
             XX = np.array([np.outer(elem, elem) for elem in diff])
@@ -279,7 +279,7 @@ class GaussianEM():
             params[i,:] = np.array((MU[0], sigma[0,0], MU[1], sigma[1,1], weight, sigma[1,0]))
 
         return params
-        
+
     def optimizeParams(self, method = "Powell"):
 
         '''
@@ -307,7 +307,7 @@ class GaussianEM():
             lnp = self.lnprob(self.params_i)
             finite = np.isfinite(lnp)
             a+=1
-            if a==100: 
+            if a==100:
                 print("...failed to initialise params on field")
                 finite=True
             if self.runningL:
@@ -365,7 +365,7 @@ class GaussianEM():
 
         # Save evaluated parameters to internal values
         self.params_f = result["x"].reshape(self.param_shape)
-       
+
         return result
 
     def optimize(self, params, method, bounds):
@@ -444,7 +444,7 @@ class GaussianEM():
         # if prior not satisfied, don't calculate lnlike
         if not np.isfinite(lp): return -np.inf
         # if prior satisfied
-        else: return lp + self.lnlike(params) 
+        else: return lp + self.lnlike(params)
 
     def lnlike(self, params):
 
@@ -465,11 +465,11 @@ class GaussianEM():
         # If the DF has already been calculated, directly optimize the SF
         if self.priorDF: function = lambda a, b: self.photoDF(*(a,b)) * self.distribution(params, a, b)
         else: function = lambda a, b: self.distribution(params, a, b)
-        
+
         # Point component of poisson log likelihood: contPoints \sum(\lambda(x_i))
         model = function(*(self.x_s, self.y_s))
         contPoints = np.sum( np.log(model) )
-      
+
         lnL = contPoints # Contour integral converges to zero
         if self.runningL:
             sys.stdout.write("\rlogL: %.2f, sum log(f(xi)): %.2f, integral: %.2f            " % (lnL, contPoints, contInteg))
@@ -478,7 +478,7 @@ class GaussianEM():
         return lnL
 
     def lnprior(self, params):
-        
+
         '''
         lnprior - The test of the parameters of the Gaussian Mixture Model against the prior
 
@@ -512,7 +512,7 @@ class GaussianEM():
         return 0.0
 
     def prior_bounds(self, params):
-        
+
         '''
         prior_bounds - Testing the parameters of the GMM against the upper and lower limits
             - uninformative prior - uniform and non-zero within a specified range of parameter values
@@ -537,11 +537,11 @@ class GaussianEM():
         total = np.sum(params <= self.params_l) + np.sum(params >= self.params_u)
         # prior True if all parameters within priors
         prior = total == 0
-        
+
         return prior
 
     def sigma_bound(self, params):
-        
+
         '''
         sigma_bound - Priors placed on the covariance matrix in the parameters
 
@@ -559,21 +559,21 @@ class GaussianEM():
 
         for i in range(params.shape[0]):
             sigma = np.array([[params[i,1], params[i,5]], [params[i,5], params[i,3]]])
-            try: 
+            try:
                 eigvals = np.linalg.eigvals(sigma)
                 det = np.linalg.det(sigma)
             except np.linalg.LinAlgError:
                 print(params)
                 print(sigma)
                 raise ValueError('bad sigma')
-                
+
             # Eigenvalues in allowed region
             result = np.sum(eigvals < self.s_min)
             if result != 0: return False
-            
+
             # Non-negative determinant
             if det<0: return False
-            
+
         return True
 
 
@@ -584,10 +584,10 @@ class GaussianEM():
                         integral calculated using cubature for which we know the uncertainty
 
         **kwargs
-        --------          
+        --------
             integration='trapezium' - str
                 - The type of integration routine to be tested
-                - 'analytic', 'trapezium', 'simpson', 'cubature'     
+                - 'analytic', 'trapezium', 'simpson', 'cubature'
 
         Returns
         -------
@@ -618,7 +618,7 @@ class GaussianEM():
         return calc_val, real_val, err
 
     def stats(self):
-        
+
         '''
         stats - Prints out the statistics of the model fitting.
 
@@ -669,7 +669,7 @@ class GaussianEM():
 def initParams(nComponents, rngx, rngy, priorDF, nstars=1):
 
     '''
-    initParams - Specify the initial parameters for the Gaussian mixture model as well as 
+    initParams - Specify the initial parameters for the Gaussian mixture model as well as
                 the lower and upper bounds on parameters (used as prior values in the optimization)
 
     Parameters
@@ -728,7 +728,6 @@ def initParams(nComponents, rngx, rngy, priorDF, nstars=1):
 
     return params_i, params_l, params_u
 
-
 def SFprior(function, rngx, rngy):
 
     '''
@@ -771,7 +770,7 @@ def bivariateGauss(params, x, y):
 
     Parameters
     ----------
-        params - arr of float - length 6 
+        params - arr of float - length 6
             - Parameters of the bivariate gaussian
         x, y - arr of float
             - x and y coordinates of points being tested
@@ -822,7 +821,7 @@ def bivGaussMix(params, x, y):
         p - arr of float
             - bivariate Gaussian mixture value for each point in x, y
     '''
-    
+
     p = 0
     for i in range(params.shape[0]):
         p += bivariateGauss(params[i,:], x, y)
@@ -856,11 +855,8 @@ def feature_scaling(x, y, mux, muy, sx, sy):
 
 
 """
-
 INTEGRATION ROUTINES
-
 """
-
 def integrationRoutine(function, param_set, nComponents, rngx, rngy, integration = "trapezium"):
 
     '''
@@ -885,7 +881,7 @@ def integrationRoutine(function, param_set, nComponents, rngx, rngy, integration
     --------
         integration='trapezium' - str
             - The type of integration routine to be tested
-            - 'analytic', 'trapezium', 'simpson', 'cubature'    
+            - 'analytic', 'trapezium', 'simpson', 'cubature'
 
     Returns
     -------
@@ -900,12 +896,11 @@ def integrationRoutine(function, param_set, nComponents, rngx, rngy, integration
     # simpson is a quadratic approximation to the integral - reasonably fast - ~1% accurate
     elif integration == "simpson": contInteg = simpsonIntegrate(function, *(rngx, rngy))
     # cubature is another possibility but this is far slower!
-    elif integration == "cubature": 
+    elif integration == "cubature":
         contInteg, err = cubature(func2d, 2, 1, (rngx[0], rngy[0]), (rngx[1], rngy[1]))
         contInteg = float(contInteg)
 
     return contInteg
-
 
 def multiIntegral(params, nComponents):
 
@@ -953,7 +948,7 @@ def bivariateIntegral(params):
     return contInteg
 
 def numericalIntegrate(function, rngx, rngy, Nx_int=250, Ny_int=250):
-    
+
     '''
     numericalIntegrate - Integrate over region using the trapezium rule
 
@@ -967,7 +962,7 @@ def numericalIntegrate(function, rngx, rngy, Nx_int=250, Ny_int=250):
 
         rngx, rngy - tuple of floats
             - Boundary of region of colour-magnitude space being calculated.
-        
+
 
     **kwargs
     --------
@@ -1030,9 +1025,9 @@ def simpsonIntegrate(function, rngx, rngy):
     x_2d = np.tile(x_coords, ( len(y_coords), 1 ))
     y_2d = np.tile(y_coords, ( len(x_coords), 1 )).T
     z_2d = function(*(x_2d, y_2d))
-    
+
     z_intx = function(*(x_2d + dx/2, y_2d))[:-1, :]
-    z_inty = function(*(x_2d, y_2d + dy/2))[:,:-1]                                      
+    z_inty = function(*(x_2d, y_2d + dy/2))[:,:-1]
 
     volume1 = ( (z_2d[:-1, :] + z_intx*4 + z_2d[1:, :] ) /6 ) * dx * dy
     volume2 = ( (z_2d[:, :-1] + z_inty*4 + z_2d[:, 1:] ) /6 ) * dx * dy
@@ -1041,7 +1036,7 @@ def simpsonIntegrate(function, rngx, rngy):
     return integral
 
 def gridIntegrate(function, rngx, rngy):
-    
+
     '''
     gridIntegrate - Integrate over the grid when using PenalisedGridModel
 
@@ -1061,405 +1056,8 @@ def gridIntegrate(function, rngx, rngy):
 
     #compInteg = integ.dblquad(function, rngx[0], rngx[1], rngy[0], rngy[1])
     compInteg, err = cubature(function, 2, 1, (rngx[0], rngy[0]), (rngx[1], rngy[1]))
-    
+
     return compInteg
-
-'''
-
-Functions for penalised grid fitting models
-
-'''
-
-class PenalisedGridModel():
-    
-    '''
-
-
-    Parameters
-    ----------
-
-
-    **kwargs
-    --------
-
-
-    Returns
-    -------
-
-
-    '''
-
-    def __init__(self, xi, yi, Nside, rngx, rngy, zero_bounds = True):
-
-
-        # Name of the model to used for reloading from dictionary
-        self.modelname = self.__class__.__name__
-        
-        self.nx, self.ny = Nside
-        self.rngx = rngx
-        self.rngy = rngy
-
-        # Starting values for parameters
-        self.zero_bounds = zero_bounds
-        if not zero_bounds:
-        	self.params_i = np.zeros((self.ny+1, self.nx+1)) + 0.01
-        else:
-        	self.params_i = np.zeros((self.ny-1, self.nx-1)) + 0.01
-        	self.grid = np.zeros((self.nx+1, self.ny+1))
-
-        # Final optimal values for parameters
-        self.params_f = []
-        # Min value of parameters as prior
-        #self.underPriors = np.zeros((self.ny+1, self.nx+1)) + 1e-10
-        self.underPriors = 1e-10
-        # Max value of parameters as prior
-        #self.overPriors = np.zeros((self.ny+1, self.nx+1)) + 1e10
-        self.overPriors = 1e10
-
-        self.xi = xi
-        self.yi = yi
-
-        self.penWeight = 0.
-        
-        # Function which calculates the actual distribution
-        self.distribution = gridDistribution
-        
-    def __call__(self,xi, yi):
-        
-        '''
-
-
-        Parameters
-        ----------
-
-
-        **kwargs
-        --------
-
-
-        Returns
-        -------
-
-
-        '''
-
-        # Final interpolant is set after generateInterpolant is called
-        
-        return self.finalInterpolant((xi, yi))
-        
-    def generateInterpolant(self):
-        
-        '''
-
-
-        Parameters
-        ----------
-
-
-        **kwargs
-        --------
-
-
-        Returns
-        -------
-
-
-        '''
-
-        """
-        boundsx = np.linspace(self.rngx[0], self.rngx[1], self.nx+1)
-        boundsy = np.linspace(self.rngy[0], self.rngy[1], self.ny+1)
-        
-        profile = interp.RegularGridInterpolator((boundsx, boundsy), self.params_f)#, kind='cubic')
-        #profile = interp.griddata((boundsx, boundsy), params, (boundsx, boundsy), method='cubic')
-		"""
-
-        profile = self.distribution((self.nx,self.ny), (self.rngx, self.rngy), self.params_f)
-        
-        self.finalInterpolant = profile[0]
-
-        self.instInterpolant = profile[1]
-
-    def integral(self, params):
-
-        '''
-
-
-        Parameters
-        ----------
-
-
-        **kwargs
-        --------
-
-
-        Returns
-        -------
-
-
-        '''
-
-        dx = ( self.rngx[1]-self.rngx[0] )/self.nx
-        dy = ( self.rngy[1]-self.rngy[0] )/self.ny
-        volume1 = ( (params[:-1, :-1] + params[1:, 1:])/2 ) * dx * dy
-        volume2 = ( (params[:-1, 1:] + params[1:, :-1])/2 ) * dx * dy
-        integral = ( np.sum(volume1.flatten()) + np.sum(volume2.flatten()) ) /2
-
-        return integral
-
-    def curvatureIntegral(self, params):
-
-        '''
-
-
-        Parameters
-        ----------
-
-
-        **kwargs
-        --------
-
-
-        Returns
-        -------
-
-
-        '''
-
-        dx = ( self.rngx[1]-self.rngx[0] )/self.nx
-        dy = ( self.rngy[1]-self.rngy[0] )/self.ny
-        ddiag = np.sqrt(dx**2 + dy**2)
-
-        # Curvature in x=y direction
-        c1 = ( params[2:, 2:] - 2*params[1:-1, 1:-1] + params[:-2, :-2] ) / (ddiag**2)
-
-        # Curvature in x=-y direction
-        c2 = ( params[2:, :-2] - 2*params[1:-1, 1:-1] + params[:-2, 2:] ) / (ddiag**2)
-
-        # Curvature in y direction
-        c3 = ( params[2:, :] - 2*params[1:-1, :] + params[:-2, :] ) / (dy**2)
-
-        # Curvature in x direction
-        c4 = ( params[:, 2:] - 2*params[:, 1:-1] + params[:, :-2] ) / (dx**2)
-
-        integral = (np.sum( np.abs(c1.flatten()) ) +\
-                    np.sum( np.abs(c2.flatten()) ) + \
-                    np.sum( np.abs(c3.flatten()) ) + \
-                    np.sum( np.abs(c4.flatten()) ) ) / 4
-
-        return integral
-
-
-    def optimizeParams(self):
-
-        '''
-
-
-        Parameters
-        ----------
-
-
-        **kwargs
-        --------
-
-
-        Returns
-        -------
-
-
-        '''
-
-        # nll is the negative lnlike distribution
-        nll = lambda *args: -self.lnprob(*args)
-        ll = lambda *args: self.lnprob(*args)
-
-        # result is the set of theta parameters which optimize the likelihood given x, y, yerr
-        result = op.minimize(nll, self.params_i.flatten(), method = 'Powell')
-        #opt = Optimizers.nonMarkovOptimizer(ll, self.params_i.flatten())
-        #result = opt()
-
-        # Save evaluated parameters to internal values
-        if not self.zero_bounds:
-            self.params_f = result['x'].reshape((self.nx+1, self.ny+1))
-        else:
-            self.params_f = self.grid
-            self.params_f[1:-1, 1:-1] = result['x'].reshape((self.nx-1, self.ny-1))
-        
-    # ln(Likelihood) based on a Poisson likelihood distribution
-    def lnlike(self, params):
-        
-        '''
-
-
-        Parameters
-        ----------
-
-
-        **kwargs
-        --------
-
-
-        Returns
-        -------
-
-
-        '''
-
-        # Reshape the parameters to make the next stage easy
-        if not self.zero_bounds:
-            param_set = params.reshape((self.nx+1, self.ny+1))
-        else:
-            param_set = self.grid
-            param_set[1:-1, 1:-1] = params.reshape((self.nx-1, self.ny-1))
-
-        model = self.distribution((self.nx, self.ny), (self.rngx, self.rngy), param_set)[0]
-        contPoints = np.sum( np.log( model( (self.xi, self.yi) ) ) )
-            
-        # Integral over region for 2D Gaussian distribution
-        contInteg = gridIntegrate(model, (self.rngx, self.rngy))
-        #contInteg = self.integral(param_set)
-
-        penWeight = self.penWeight#0#0.7
-        curveInteg = self.curvatureIntegral(param_set)
-
-        lnL = contPoints - contInteg - penWeight*curveInteg
-        sys.stdout.write("\rlogL: %.2f, sum log(f(xi)): %.2f, integral: %.2f, curve pen: %.2f" % (lnL, contPoints, contInteg, curveInteg))
-        sys.stdout.flush()
-
-        return lnL
-
-    # "uninformative prior" - uniform and non-zero within a specified range of parameter values
-    def lnprior(self, params):
-        
-        '''
-
-
-        Parameters
-        ----------
-
-
-        **kwargs
-        --------
-
-
-        Returns
-        -------
-
-
-        '''
-
-        param_set = params
-        # Reshape the parameters to make the next stage easy
-        
-        prior = self.priorTest(param_set)
-        
-        if prior:
-            return 0.0
-        else: 
-            return -np.inf
-
-    # posterior probability function is proportional to the prior times the likelihood
-    # lnpost = lnprior + lnlike
-    def lnprob(self, params):
-
-        '''
-
-
-        Parameters
-        ----------
-
-
-        **kwargs
-        --------
-
-
-        Returns
-        -------
-
-
-        '''
-
-        lp = self.lnprior(params)
-        if not np.isfinite(lp):
-            return -np.inf
-        return lp + self.lnlike(params)
-    
-    # Returns a boolean true or false for whether all parameters lie within their range
-    def priorTest(self, params):
-        
-        '''
-
-
-        Parameters
-        ----------
-
-
-        **kwargs
-        --------
-
-
-        Returns
-        -------
-
-
-        '''
-
-        Val = np.array(params).flatten()
-        #minVal = np.array(self.underPriors).flatten()
-        #maxVal = np.array(self.overPriors).flatten()
-        minVal = self.underPriors
-        maxVal = self.overPriors
-
-        minBool = Val > minVal
-        maxBool = Val < maxVal
-        rngBool = minBool*maxBool
-        
-        solution = np.sum(rngBool) - len(Val)
-        if solution == 0:
-            return True
-        else: return False
-
-def gridDistribution(nx, ny, rngx, rngy, params):
-    
-    '''
-
-
-    Parameters
-    ----------
-
-
-    **kwargs
-    --------
-
-
-    Returns
-    -------
-
-
-    '''
-
-    # nx, ny - number of x and y cells
-    # rngx, rngy - ranges of x and y coordinates
-    # params - nx x ny array of cell parameters
-    
-    boundsx = np.linspace(rngx[0], rngx[1], nx+1)
-    boundsy = np.linspace(rngy[0], rngy[1], ny+1)
-
-    #profile = interp.RegularGridInterpolator((boundsx, boundsy), params)
-    #profile = interp.griddata((boundsx, boundsy), params, (boundsx, boundsy), method='cubic')
-   
-    inst = interp.interp2d(boundsy, boundsx, params, kind="cubic")
-    #inst = interp.RectBivariateSpline(boundsx, boundsy, params)
-
-    profile = lambda a, b: np.diag(inst(a, b))
-
-    return profile, inst
-
-"""
-
-
-
-"""
 
 
 # Used when Process == "Number"
@@ -1518,109 +1116,4 @@ class FlatRegion:
                 (y>self.rangey[0]) & \
                 (y<self.rangey[1])] = self.value
 
-        return result
-
-"""
-
-Functions which I don't think are used any more
-
-"""
-
-
-# Gaussian function for generating error distributions
-def Gauss(x, mu=0, sigma=1):
-
-    '''
-    Gauss - Calculates the value of the 1D Gaussian defined by parameters at point x
-    (used for recovering posterior distributions from burnt in Monte Carlo Markov Chains)
-
-    Parameters
-    ----------
-        x - float or np.array of floats
-            - Coordinate at which the Gaussian is calculated.
-
-    **kwargs
-    --------
-        mu = 0 - float
-            - Value of mean of Gaussian
-        sigma=1 - float
-            - Value of standard deviation of Gaussian
-
-    Returns
-    -------
-        G - float or np.array of floats
-            - Value of Gaussian at coordinate x.
-    '''
-
-    G = np.exp(-((x-mu)**2)/(2*sigma**2))
-    return G
-
-# Create cumulative distribution from Gauss(x)
-def cdf(func, xmin, xmax, N, **kwargs):
-
-    '''
-    cdf - Normalised cumulative distribution function of 1D function between limits.
-
-    Parameters
-    ----------
-        func - function or interpolant
-            - The 1D function which is being integrated over
-
-        xmin, xmax - float
-            - min and max values for the range of the distribution
-
-        N - int
-            - Number of steps to take in CDF.
-
-    **kwargs
-    --------
-
-    Returns
-    -------
-        value_interp - interp.interp1d
-            - Interpolant of the CDF over specified range.
-    '''
-
-    points = np.linspace(xmin, xmax, N)
-    
-    # Use trapezium rule to calculate the integrand under individual components
-    dx = points[1:] - points[:len(points)-1]
-    h1 = func(points[:len(points)-1], **kwargs)
-    h2 = func(points[1:], **kwargs)
-    volumes = dx * ( h2 + h1 ) / 2
-    
-    # cumulative distribution function = sum of integrands
-    cdf = np.zeros_like(volumes)
-    for i in range(len(volumes)):
-        cdf[i] = np.sum(volumes[:i+1])
-    
-    # normalisation of cdf
-    cdf *= 1/cdf[-1]
-    cdf[0] = 0.
-
-    # Linear interpolation of cumulative distribution
-    #interpolant = interp.interp1d(points[1:], cdf)
-    # Inverse interpolate to allw generation of probability weighted distributions.
-    value_interp = interp.interp1d(cdf, points[1:], bounds_error=False, fill_value=np.nan)
-    
-    return value_interp
-
-
-class Empty():
-
-    '''
-    Empty - For fields with no stars present
-
-    Functions
-    ---------
-    __call__
-    '''
-    
-    def __init__(self, runscaling=True):
-
-        # Name of the model to used for reloading from dictionary
-        self.modelname = self.__class__.__name__
-
-    def __call__(self, x, y):
-
-        return np.zeros(np.shape(x))
+        return resul
