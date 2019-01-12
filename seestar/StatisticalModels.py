@@ -301,7 +301,8 @@ class GaussianEM():
         finite = False
         a = 0
         while not finite:
-            self.params_i, self.params_l, self.params_u = initParams(self.nComponents, self.rngx_s, self.rngy_s, self.priorDF, nstars=len(self.x_s))
+            self.params_i, self.params_l, self.params_u = \
+                initParams(self.nComponents, self.rngx_s, self.rngy_s, self.priorDF, nstars=len(self.x_s))
             self.param_shape = self.params_i.shape
             self.s_min = self.params_l[0,1] # same as sxx lower bound
             lnp = self.lnprob(self.params_i)
@@ -495,11 +496,11 @@ class GaussianEM():
         '''
 
         # Test parameters against boundary values
-        prior = self.prior_bounds(params)
+        prior = prior_bounds(params, self.params_l, self.params_u)
         if not prior: return -np.inf
 
         # Test parameters against variance
-        if prior: prior = prior & self.sigma_bound(params)
+        if prior: prior = prior & sigma_bound(params, self.s_min)
         if not prior: return -np.inf
 
         # Prior on spectro distribution that it must be less than the photometric distribution
@@ -510,72 +511,6 @@ class GaussianEM():
 
         # All prior tests satiscied
         return 0.0
-
-    def prior_bounds(self, params):
-
-        '''
-        prior_bounds - Testing the parameters of the GMM against the upper and lower limits
-            - uninformative prior - uniform and non-zero within a specified range of parameter values
-
-        Parameters
-        ----------
-            params - array of floats
-                - Values of parameters in the Gaussian Mixture model
-
-        Inherited
-        ---------
-            params_l, params_u: array of float
-                - Lower and upper bounds of parameters
-
-        Returns
-        -------
-             - prior: bool
-                - True if parameters satisfy constraints. False if not.
-        '''
-
-        # Total is 0 if all parameters within priors
-        total = np.sum(params <= self.params_l) + np.sum(params >= self.params_u)
-        # prior True if all parameters within priors
-        prior = total == 0
-
-        return prior
-
-    def sigma_bound(self, params):
-
-        '''
-        sigma_bound - Priors placed on the covariance matrix in the parameters
-
-        Parameters
-        ----------
-            params - array of floats
-                - Values of parameters in the Gaussian Mixture model
-
-        Returns
-        -------
-            - bool
-            - True if good covariance matrix, False if not
-            - Good covariance has det>0
-        '''
-
-        for i in range(params.shape[0]):
-            sigma = np.array([[params[i,1], params[i,5]], [params[i,5], params[i,3]]])
-            try:
-                eigvals = np.linalg.eigvals(sigma)
-                det = np.linalg.det(sigma)
-            except np.linalg.LinAlgError:
-                print(params)
-                print(sigma)
-                raise ValueError('bad sigma')
-
-            # Eigenvalues in allowed region
-            result = np.sum(eigvals < self.s_min)
-            if result != 0: return False
-
-            # Non-negative determinant
-            if det<0: return False
-
-        return True
-
 
     def testIntegral(self, integration='trapezium'):
 
@@ -696,14 +631,17 @@ def initParams(nComponents, rngx, rngy, priorDF, nstars=1):
 
     # Initial guess parameters for a bivariate Gaussian
     # Randomly initialise mean between -1 and 1
-    mux_i, muy_i = np.random.rand(2, nComponents)*2-1
-    # SD 1. as that's what feature scaling has set
-    sxx_i, syy_i = 1., 1.
-    # 0. covariance
-    sxy_i = 0.
+    mux_i, muy_i = np.random.rand(2, nComponents)
+    mux_i = mux_i * (rngx[1]-rngx[0]) + rngx[0]
+    muy_i = muy_i * (rngy[1]-rngy[0]) + rngy[0]
+
+    # Generate initial covariance matrix
+    X = np.random.rand(nComponents, 2, 10)
+    sigma = np.matmul(X, X.transpose(0, 2, 1), np.zeros((nComponents, 2, 2)))
+
     # Weights sum to 1
-    if priorDF: w_i = .1 / nComponents
-    else: w_i = nstars/ nComponents
+    if priorDF: w_i = np.zeros(nComponents) + .1 / nComponents
+    else: w_i = np.zeros(nComponents) + nstars/ nComponents
 
     # Lower and upper bounds on parameters
     # Mean at edge of range
@@ -718,17 +656,71 @@ def initParams(nComponents, rngx, rngy, priorDF, nstars=1):
     w_l = 0.
     w_u = np.inf
 
-    params_i = np.empty((nComponents, 6))
-    params_l = np.empty((nComponents, 6))
-    params_u = np.empty((nComponents, 6))
-    for i in range(nComponents):
-        params_i[i,:] = np.array((mux_i[i], sxx_i, muy_i[i], syy_i, w_i, sxy_i))
-        params_l[i,:] = np.array((mux_l, sxx_l, muy_l, syy_l, w_l, sxy_l))
-        params_u[i,:] = np.array((mux_u, sxx_u, muy_u, syy_u, w_u, sxy_u))
+    print(mux_i.shape, sigma.shape, w_i.shape)
+    params_i = np.vstack((mux_i, sigma[:,0,0], muy_i, sigma[:,1,1], w_i, sigma[:,0,1])).T
+    params_l = np.repeat([[mux_l, sxx_l, muy_l, syy_l, w_l, sxy_l],], nComponents, axis=0)
+    params_u = np.repeat([[mux_u, sxx_u, muy_u, syy_u, w_u, sxy_u],], nComponents, axis=0)
 
     return params_i, params_l, params_u
 
-def SFprior(function, rngx, rngy):
+def sigma_bound(params, s_min):
+
+    '''
+    sigma_bound - Priors placed on the covariance matrix in the parameters
+
+    Parameters
+    ----------
+        params - array of floats
+            - Values of parameters in the Gaussian Mixture model
+
+    Returns
+    -------
+        - bool
+        - True if good covariance matrix, False if not
+        - Good covariance has det>0
+    '''
+    # Construct covariance matrix into nComponent 2x2 arrays
+    sigma = np.zeros((params.shape[0],2,2))
+    sigma[:,[0,0,1,1],[0,1,0,1]] = params[:, [1,5,5,3]]
+    try: eigvals = np.linalg.eigvals(sigma)
+    except np.linalg.LinAlgError:
+        print(params)
+        print(sigma)
+        raise ValueError('bad sigma...params:', params, 'sigma:', sigma)
+
+    if np.sum(eigvals<s_min) > 0: return False
+    else: return True
+
+def prior_bounds(self, params, params_l, params_u):
+
+    '''
+    prior_bounds - Testing the parameters of the GMM against the upper and lower limits
+        - uninformative prior - uniform and non-zero within a specified range of parameter values
+
+    Parameters
+    ----------
+        params - array of floats
+            - Values of parameters in the Gaussian Mixture model
+
+    Inherited
+    ---------
+        params_l, params_u: array of float
+            - Lower and upper bounds of parameters
+
+    Returns
+    -------
+         - prior: bool
+            - True if parameters satisfy constraints. False if not.
+    '''
+
+    # Total is 0 if all parameters within priors
+    total = np.sum(params <= params_l) + np.sum(params >= params_u)
+    # prior True if all parameters within priors
+    prior = total == 0
+
+    return prior
+
+def SFprior(function, rngx, rngy, N=150):
 
     '''
     SFprior - The selection function has to be between 0 and 1 everywhere.
@@ -749,17 +741,11 @@ def SFprior(function, rngx, rngy):
             - Otherwise False
     '''
 
-    N=150
-
     x_coords = np.linspace(rngx[0], rngx[1], N)
     y_coords = np.linspace(rngy[0], rngy[1], N)
-
-    x_2d = np.tile(x_coords, ( len(y_coords), 1 ))
-    y_2d = np.tile(y_coords, ( len(x_coords), 1 )).T
-
-    SF = function(*(x_2d, y_2d))
-
-    prior = not np.max(SF)>1
+    xx, yy = np.meshgrid(x_coords, y_coords)
+    f_max = np.max( function(*(xx, yy)) )
+    prior = not f_max>1
 
     return prior
 
