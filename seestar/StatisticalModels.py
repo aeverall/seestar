@@ -84,6 +84,7 @@ class GaussianEM():
         # Shape of parameter set (number of components x parameters per component)
         self.param_shape = ()
 
+        self.runscaling = runscaling
         # Not run when loading class from dictionary
         if runscaling:
             # Real space parameters
@@ -108,7 +109,7 @@ class GaussianEM():
         # Print out likelihood values as calculated
         self.runningL = True
 
-    def __call__(self, x, y):
+    def __call__(self, x, y, components=None):
 
         '''
         __call__ - Returns the value of the smooth GMM distribution at the points x, y
@@ -119,18 +120,23 @@ class GaussianEM():
                 - x and y coordinates of points at which to take the value of the GMM
                 - From input - x is magnitude, y is colour
 
+            components=None:
+                - List of components to check for distribution values
+
         Returns
         -------
             GMMval: float or np.array of floats
                 - The value of the GMM at coordinates x, y
         '''
 
-        # Scale x and y to correct region
-        x, y = feature_scaling(x, y, self.mux, self.muy, self.sx, self.sy)
-        rngx, rngy = feature_scaling(np.array(self.rngx), np.array(self.rngy), self.mux, self.muy, self.sx, self.sy)
+        # Scale x and y to correct region - Currently done to params_f - line 371  - but could change here instead
+        #x, y = feature_scaling(x, y, self.mux, self.muy, self.sx, self.sy)
+        #rngx, rngy = feature_scaling(np.array(self.rngx), np.array(self.rngy), self.mux, self.muy, self.sx, self.sy)
+        rngx, rngy = np.array(self.rngx), np.array(self.rngy)
 
         # Value of coordinates x, y in the Gaussian mixture model
-        GMMval = self.distribution(self.params_f, x, y)
+        if components is None: components = np.arange(self.nComponents)
+        GMMval = self.distribution(self.params_f[components, :], x, y)
 
         if (type(GMMval) == np.array)|(type(GMMval) == np.ndarray)|(type(GMMval) == pd.Series):
             # Not-nan input values
@@ -280,7 +286,7 @@ class GaussianEM():
 
         return params
 
-    def optimizeParams(self, method = "Powell"):
+    def optimizeParams(self, method="Powell"):
 
         '''
         optimizeParams - Initialise and optimize parameters of Gaussian mixture model.
@@ -302,7 +308,7 @@ class GaussianEM():
         a = 0
         while not finite:
             self.params_i, self.params_l, self.params_u = \
-                initParams(self.nComponents, self.rngx_s, self.rngy_s, self.priorDF, nstars=len(self.x_s))
+                initParams(self.nComponents, self.rngx_s, self.rngy_s, self.priorDF, nstars=len(self.x_s), runscaling=self.runscaling)
             self.param_shape = self.params_i.shape
             self.s_min = self.params_l[0,1] # same as sxx lower bound
             lnp = self.lnprob(self.params_i)
@@ -364,8 +370,14 @@ class GaussianEM():
             if self.runningL: print("\n %s: lnprob=%d, time=%d" % (method, self.lnprob(paramsOP), time.time()-start))
             result = resultOP
 
+        # Get parameters and rescale to fit data
+        params = result["x"].reshape(self.param_shape)
+        if self.runscaling:
+            params[:,[0,2]] += [self.mux, self.muy]
+            params[:,[1,3,5]] *= np.array([self.sx**2, self.sy**2, self.sx*self.sy])
         # Save evaluated parameters to internal values
-        self.params_f = result["x"].reshape(self.param_shape)
+        self.params_f = params
+
 
         return result
 
@@ -397,8 +409,17 @@ class GaussianEM():
         divide = np.seterr()['divide']
         over = np.seterr()['over']
         np.seterr(invalid='ignore', divide='ignore', over='ignore')
+
+        if type(method) is str:
+            if method=='Stoch': optimizer = scipyStoch
+            elif method=='Powell': optimizer = scipyOpt
+            elif method=='Anneal': optimizer = scipyAnneal
+            else: raise ValueError('Name of method not recognised.')
+        else:
+            optimizer = method
+        kwargs = {'method':method, 'bounds':bounds}
         # result is the set of theta parameters which optimize the likelihood given x, y, yerr
-        result = op.minimize(self.nll, params.ravel(), method=method, bounds=bounds)
+        result = optimizer(self.nll, params)
 
         # Potential to use scikit optimize
         #bounds = list(zip(self.params_l.ravel(), self.params_u.ravel()))
@@ -471,7 +492,10 @@ class GaussianEM():
         model = function(*(self.x_s, self.y_s))
         contPoints = np.sum( np.log(model) )
 
-        lnL = contPoints # Contour integral converges to zero
+        # Integral of the smooth function over the entire region
+        contInteg = integrationRoutine(function, params, self.nComponents, *(self.rngx_s, self.rngy_s))
+
+        lnL = contPoints - contInteg
         if self.runningL:
             sys.stdout.write("\rlogL: %.2f, sum log(f(xi)): %.2f, integral: %.2f            " % (lnL, contPoints, contInteg))
             sys.stdout.flush()
@@ -601,7 +625,7 @@ class GaussianEM():
         print("Integration: Used {:.3f}, Half spacing {:.3f}".format(calc_val, calc_val2))
 
 
-def initParams(nComponents, rngx, rngy, priorDF, nstars=1):
+def initParams(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=True):
 
     '''
     initParams - Specify the initial parameters for the Gaussian mixture model as well as
@@ -632,11 +656,16 @@ def initParams(nComponents, rngx, rngy, priorDF, nstars=1):
     # Initial guess parameters for a bivariate Gaussian
     # Randomly initialise mean between -1 and 1
     mux_i, muy_i = np.random.rand(2, nComponents)
-    mux_i = mux_i * (rngx[1]-rngx[0]) + rngx[0]
-    muy_i = muy_i * (rngy[1]-rngy[0]) + rngy[0]
+    if not runscaling: # Random means in range of system
+        mux_i = mux_i * (rngx[1]-rngx[0]) + rngx[0]
+        muy_i = muy_i * (rngy[1]-rngy[0]) + rngy[0]
 
     # Generate initial covariance matrix
-    X = np.random.rand(nComponents, 2, 10)
+    N_gen = 10
+    X = np.random.rand(nComponents, 2, N_gen) / np.sqrt(N_gen)
+    if not runscaling: # Standard deviations scaled to system
+        X[:,0,:] *= np.sqrt(rngx[1]-rngx[0])
+        X[:,1,:] *= np.sqrt(rngy[1]-rngy[0])
     sigma = np.matmul(X, X.transpose(0, 2, 1), np.zeros((nComponents, 2, 2)))
 
     # Weights sum to 1
@@ -645,8 +674,12 @@ def initParams(nComponents, rngx, rngy, priorDF, nstars=1):
 
     # Lower and upper bounds on parameters
     # Mean at edge of range
-    mux_l, mux_u = rngx
-    muy_l, muy_u = rngy
+    if runscaling:
+        mux_l, mux_u = -np.inf, np.inf
+        muy_l, muy_u = -np.inf, np.inf
+    else:
+        mux_l, mux_u = rngx
+        muy_l, muy_u = rngy
     # Zero standard deviation to inf
     sxx_l, syy_l = 0, 0
     sxx_u, syy_u = np.inf, np.inf #rngx[1]-rngx[0], rngy[1]-rngy[0]
@@ -656,7 +689,6 @@ def initParams(nComponents, rngx, rngy, priorDF, nstars=1):
     w_l = 0.
     w_u = np.inf
 
-    print(mux_i.shape, sigma.shape, w_i.shape)
     params_i = np.vstack((mux_i, sigma[:,0,0], muy_i, sigma[:,1,1], w_i, sigma[:,0,1])).T
     params_l = np.repeat([[mux_l, sxx_l, muy_l, syy_l, w_l, sxy_l],], nComponents, axis=0)
     params_u = np.repeat([[mux_u, sxx_u, muy_u, syy_u, w_u, sxy_u],], nComponents, axis=0)
@@ -691,7 +723,7 @@ def sigma_bound(params, s_min):
     if np.sum(eigvals<s_min) > 0: return False
     else: return True
 
-def prior_bounds(self, params, params_l, params_u):
+def prior_bounds(params, params_l, params_u):
 
     '''
     prior_bounds - Testing the parameters of the GMM against the upper and lower limits
@@ -838,6 +870,32 @@ def feature_scaling(x, y, mux, muy, sx, sy):
     scaley = (y-muy)/sy
 
     return scalex, scaley
+
+"""
+Optimizers
+"""
+def scipyOpt(function, params):
+
+    bounds = None
+
+    # result is the set of theta parameters which optimize the likelihood given x, y, yerr
+    result = op.minimize(function, params.ravel(), method='Powell', bounds=bounds)
+
+    return result
+
+def scipyAnneal(function, params):
+
+    # result is the set of theta parameters which optimize the likelihood given x, y, yerr
+    result = op.anneal(function, params.ravel())
+
+    return result
+
+def scipyStoch(function, params):
+
+    # result is the set of theta parameters which optimize the likelihood given x, y, yerr
+    result = op.basinhopping(function, params.ravel(), niter=1)
+
+    return result
 
 
 """
@@ -1044,6 +1102,22 @@ def gridIntegrate(function, rngx, rngy):
     compInteg, err = cubature(function, 2, 1, (rngx[0], rngy[0]), (rngx[1], rngy[1]))
 
     return compInteg
+
+"""
+TESTS
+"""
+def singleGaussianSample(mu, sigma, N = 1000):
+
+    # Generate 2D sample with mean=0, std=1
+    sample = np.random.normal(size=(2, N))
+
+    # Convert sample to given mean and covariance
+    A = np.linalg.cholesky(sigma)
+    sample = mu + np.matmul(A, sample).T
+
+    return sample
+
+
 
 
 # Used when Process == "Number"
