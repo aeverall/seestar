@@ -64,7 +64,7 @@ class GaussianEM():
                         integral calculated using cubature for which we know the uncertainty
     '''
 
-    def __init__(self, x=np.array(0), y=np.array(0), nComponents=0, rngx=(0,1), rngy=(0,1), runscaling=True):
+    def __init__(self, x=np.array(0), y=np.array(0), nComponents=0, rngx=(0,1), rngy=(0,1), runscaling=True, runningL=True):
 
         # Name of the model to used for reloading from dictionary
         self.modelname = self.__class__.__name__
@@ -104,10 +104,10 @@ class GaussianEM():
             self.rngx_s, self.rngy_s = feature_scaling(np.array(rngx), np.array(rngy), self.mux, self.muy, self.sx, self.sy)
 
         # Function which calculates the actual distribution
-        self.distribution = bivGaussMix
+        self.distribution = bivGaussMix_iter
 
         # Print out likelihood values as calculated
-        self.runningL = True
+        self.runningL = runningL
 
     def __call__(self, x, y, components=None):
 
@@ -363,23 +363,17 @@ class GaussianEM():
             bounds = None
             # Run scipy optimizer
             if self.runningL: print("\nInitparam likelihood: %d" % self.lnprob(params))
-            resultOP = self.optimize(params, method, bounds)
-            paramsOP = resultOP["x"].reshape(self.param_shape)
+            paramsOP = self.optimize(params, method, bounds)
             # Check likelihood for parameters
             lnlikeOP = self.lnlike(paramsOP)
-            if self.runningL: print("\n %s: lnprob=%d, time=%d" % (method, self.lnprob(paramsOP), time.time()-start))
-            result = resultOP
+            if self.runningL: print("\n %s: lnprob=%.0f, time=%d" % (method, self.lnprob(paramsOP), time.time()-start))
+            params=paramsOP
 
-        # Get parameters and rescale to fit data
-        params = result["x"].reshape(self.param_shape)
-        if self.runscaling:
-            params[:,[0,2]] += [self.mux, self.muy]
-            params[:,[1,3,5]] *= np.array([self.sx**2, self.sy**2, self.sx*self.sy])
+        if self.runscaling: params = self.unscaleParams(params)
         # Save evaluated parameters to internal values
         self.params_f = params
 
-
-        return result
+        return params
 
     def optimize(self, params, method, bounds):
 
@@ -419,8 +413,8 @@ class GaussianEM():
             optimizer = method
         kwargs = {'method':method, 'bounds':bounds}
         # result is the set of theta parameters which optimize the likelihood given x, y, yerr
-        result = optimizer(self.nll, params)
-
+        params, self.output = optimizer(self.nll, params)
+        params = params.reshape(self.param_shape)
         # Potential to use scikit optimize
         #bounds = list(zip(self.params_l.ravel(), self.params_u.ravel()))
         #result = gp_minimize(self.nll, bounds)
@@ -429,7 +423,7 @@ class GaussianEM():
         np.seterr(invalid=invalid, divide=divide, over=over)
         if self.runningL: print("")
 
-        return result
+        return params
 
     def nll(self, *args):
 
@@ -535,6 +529,21 @@ class GaussianEM():
 
         # All prior tests satiscied
         return 0.0
+
+    def scaleParams(self, params):
+
+        params[:,[0,2]] = (params[:,[0,2]] -  [self.mux, self.muy]) / np.array([self.sx, self.sy])
+        params[:,[1,3,5]] *= 1/np.array([self.sx**2, self.sy**2, self.sx*self.sy])
+
+        return params
+
+    def unscaleParams(self, params):
+
+        params[:,[0,2]] = (params[:,[0,2]] * np.array([self.sx, self.sy])) +  [self.mux, self.muy]
+        params[:,[1,3,5]] *= np.array([self.sx**2, self.sy**2, self.sx*self.sy])
+
+        return params
+
 
     def testIntegral(self, integration='trapezium'):
 
@@ -720,7 +729,7 @@ def sigma_bound(params, s_min):
         print(sigma)
         raise ValueError('bad sigma...params:', params, 'sigma:', sigma)
 
-    if np.sum(eigvals<s_min) > 0: return False
+    if np.sum(eigvals<=s_min) > 0: return False
     else: return True
 
 def prior_bounds(params, params_l, params_u):
@@ -823,7 +832,49 @@ def bivariateGauss(params, x, y):
     p = weight*norm*e
     return p.reshape(shape)
 
-def bivGaussMix(params, x, y):
+def bivGaussMix_vect(params, x, y):
+
+    '''
+    bivariateGauss - Calculation of bivariate Gaussian distribution.
+
+    Parameters
+    ----------
+        params - arr of float - length 6
+            - Parameters of the bivariate gaussian
+        x, y - arr of float
+            - x and y coordinates of points being tested
+    Returns
+    -------
+        p - arr of float
+            - bivariate Gaussian value for each point in x, y
+    '''
+
+    shape = x.shape
+    X = np.vstack((x.ravel(), y.ravel())).T
+
+    mu = np.array((params[:,0], params[:,2]))
+    sigma = np.array([[params[:,1], params[:,5]], [params[:,5], params[:,3]]])
+    weight= params[:,4]
+
+    # Inverse covariance
+    inv_cov = np.linalg.inv(sigma.transpose(2,0,1)).transpose(1,2,0)
+    # Separation of X from mean
+    X = np.moveaxis(np.repeat([X,], mu.shape[-1], axis=0), 0, -1) - mu
+    # X^T * Sigma
+    X_cov = np.einsum('mjn, jkn -> mkn', X, inv_cov)
+    # X * Sigma * X
+    X_cov_X = np.einsum('mkn, mkn -> mn', X_cov, X)
+    # Exponential
+    e = np.exp(-X_cov_X/2)
+
+    # Normalisation term
+    det_cov = np.linalg.det(sigma.transpose(2,0,1))
+    norm = 1/np.sqrt( ((2*np.pi)**2) * det_cov)
+
+    p = np.sum(weight*norm*e, axis=-1)
+    return p.reshape(shape)
+
+def bivGaussMix_iter(params, x, y):
 
     '''
     bivariateGauss - Calculation of bivariate Gaussian mixture distribution.
@@ -840,9 +891,7 @@ def bivGaussMix(params, x, y):
             - bivariate Gaussian mixture value for each point in x, y
     '''
 
-    p = 0
-    for i in range(params.shape[0]):
-        p += bivariateGauss(params[i,:], x, y)
+    p = np.sum(np.array([bivariateGauss(params[i,:], x, y) for i in range(params.shape[0])]), axis=0)
 
     return p
 
@@ -880,22 +929,25 @@ def scipyOpt(function, params):
 
     # result is the set of theta parameters which optimize the likelihood given x, y, yerr
     result = op.minimize(function, params.ravel(), method='Powell', bounds=bounds)
+    params = result["x"]
 
-    return result
+    return params, result
 
 def scipyAnneal(function, params):
 
     # result is the set of theta parameters which optimize the likelihood given x, y, yerr
     result = op.anneal(function, params.ravel())
+    params = result["x"]
 
-    return result
+    return params, result
 
 def scipyStoch(function, params):
 
     # result is the set of theta parameters which optimize the likelihood given x, y, yerr
     result = op.basinhopping(function, params.ravel(), niter=1)
+    params = result["x"]
 
-    return result
+    return params, result
 
 
 """
