@@ -88,7 +88,7 @@ def obsSF_classtodict(obsSF_classes):
         obsSF_field = vars(obsSF_classes)
         # Get dictionary of attributes from classes within obsSF_classes
         obsSF_field['DF_model'] = vars(obsSF_classes.DF_model)
-        obsSF_field['SF_model'] = vars(obsSF_classes.SF_model)"
+        obsSF_field['SF_model'] = vars(obsSF_classes.SF_model)
 
         # Add class instance to dictionary
         obsSF_dicts[field] = obsSF_field

@@ -340,7 +340,7 @@ class SFGenerator():
             instanceSF_dict, instanceIMFSF_dict, self.agerng, self.mhrng, \
             magrng, colrng = pickle.load(f)
         print("...done.\n")
-        self.varrngs.update({'agerng':agerng, 'mhrng':mhrng, 'magrng':magrng, 'colrng':colrng})
+        self.varrngs.update({'agerng':self.agerng, 'mhrng':self.mhrng, 'magrng':magrng, 'colrng':colrng})
 
         # Load class instance from saved dictionary
         self.instanceSF = SFInstanceClasses.intrinsicSF()
@@ -369,6 +369,9 @@ class SFGenerator():
         self.obsSF = SFInstanceClasses.obsSF_dicttoclass(obsSF_dicts)
 
     def gen_intSF(self, **kwargs):
+
+        if self.use_isointerp == 'na':
+            raise IOError("You don't have any isochrone files available to use.")
 
         options={'intSF_path':self.fileinfo.sf_pickle_path}
         options.update(kwargs)
@@ -1389,17 +1392,16 @@ def path_check(pickleFile):
     fileinfo = surveyInfoPickler.surveyInformation(pickleFile)
 
     # ISOCHRONES
-    if not use_intsf: # Only need isochrones for generating an intrinsic Selection Function.
-        if os.path.exists(fileinfo.iso_interp_path):
-            print("Path to interpolated isochrones (%s) exists. These will be used." % fileinfo.iso_interp_file)
-            use_isointerp = True
-        elif os.path.exists(fileinfo.iso_data_path):
-            print("No interpolated isochrones. They will be generated from %s." % fileinfo.iso_data_file)
-            use_isointerp = False
-        else:
-            print("No isochrone files at %s or %s, intrinsic selection function won't be caculated" % (fileinfo.iso_interp_path, fileinfo.iso_data_path))
-            gen_intsf = False
-    else: use_isointerp = 'na'
+    if os.path.exists(fileinfo.iso_interp_path):
+        print("Path to interpolated isochrones (%s) exists. These will be used." % fileinfo.iso_interp_file)
+        use_isointerp = True
+    elif os.path.exists(fileinfo.iso_data_path):
+        print("No interpolated isochrones. They will be generated from %s." % fileinfo.iso_data_file)
+        use_isointerp = False
+    else:
+        print("No isochrone files at %s or %s, intrinsic selection function won't be caculated" % (fileinfo.iso_interp_path, fileinfo.iso_data_path))
+        gen_intsf = False
+        use_isointerp = 'na'
 
     return use_isointerp
 
