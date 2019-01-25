@@ -104,7 +104,7 @@ class GaussianEM():
             self.rngx_s, self.rngy_s = feature_scaling(np.array(rngx), np.array(rngy), self.mux, self.muy, self.sx, self.sy)
 
         # Function which calculates the actual distribution
-        self.distribution = bivGaussMix_iter
+        self.distribution = bivGaussMix_vect_revamp
 
         # Print out likelihood values as calculated
         self.runningL = runningL
@@ -308,13 +308,14 @@ class GaussianEM():
         a = 0
         while not finite:
             self.params_i, self.params_l, self.params_u = \
-                initParams(self.nComponents, self.rngx_s, self.rngy_s, self.priorDF, nstars=len(self.x_s), runscaling=self.runscaling)
+                initParams_revamp(self.nComponents, self.rngx_s, self.rngy_s, self.priorDF,
+                                nstars=len(self.x_s), runscaling=self.runscaling)
             self.param_shape = self.params_i.shape
             self.s_min = self.params_l[0,1] # same as sxx lower bound
             lnp = self.lnprob(self.params_i)
             finite = np.isfinite(lnp)
             a+=1
-            if a==100:
+            if a==10:
                 print("...failed to initialise params on field")
                 finite=True
             if self.runningL:
@@ -518,7 +519,11 @@ class GaussianEM():
         if not prior: return -np.inf
 
         # Test parameters against variance
-        if prior: prior = prior & sigma_bound(params, self.s_min)
+        #if prior: prior = prior & sigma_bound(params, self.s_min)
+        #if not prior: return -np.inf
+
+        # Test parameters against boundary values
+        prior = prior_multim(params)
         if not prior: return -np.inf
 
         # Prior on spectro distribution that it must be less than the photometric distribution
@@ -532,18 +537,17 @@ class GaussianEM():
 
     def scaleParams(self, params):
 
-        params[:,[0,2]] = (params[:,[0,2]] -  [self.mux, self.muy]) / np.array([self.sx, self.sy])
-        params[:,[1,3,5]] *= 1/np.array([self.sx**2, self.sy**2, self.sx*self.sy])
+        params[:,[0,1]] = (params[:,[0,1]] -  [self.mux, self.muy]) / np.array([self.sx, self.sy])
+        params[:,[2,3]] *= 1/np.array([self.sx**2, self.sy**2])
 
         return params
 
     def unscaleParams(self, params):
 
-        params[:,[0,2]] = (params[:,[0,2]] * np.array([self.sx, self.sy])) +  [self.mux, self.muy]
-        params[:,[1,3,5]] *= np.array([self.sx**2, self.sy**2, self.sx*self.sy])
+        params[:,[0,1]] = (params[:,[0,1]] * np.array([self.sx, self.sy])) +  [self.mux, self.muy]
+        params[:,[2,3]] *= np.array([self.sx**2, self.sy**2])
 
         return params
-
 
     def testIntegral(self, integration='trapezium'):
 
@@ -704,6 +708,81 @@ def initParams(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=True):
 
     return params_i, params_l, params_u
 
+def initParams_revamp(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=True, l_rng=[0.1,10.]):
+
+    '''
+    initParams - Specify the initial parameters for the Gaussian mixture model as well as
+                the lower and upper bounds on parameters (used as prior values in the optimization)
+
+    Parameters
+    ----------
+        nComponents: int
+            - Number of components of the Gaussian Mixture model
+
+        rngx, rngy: tuple of float
+            - Range of region in x and y axis
+
+        priorDF: bool
+            - Is there a prior distribution function?
+            - True if calculating for selection function
+
+    Returns
+    -------
+        params_i - array of floats
+            - initial parameters for the Gaussian mixture model
+        params_l - array of floats
+            - lower bounds on the values of GMM parameters
+        params_u - array of floats
+            - upper bounds on the values of GMM parameters
+    '''
+
+    # Initial guess parameters for a bivariate Gaussian
+    # Randomly initialise mean between -1 and 1
+    mux_i, muy_i = np.random.rand(2, nComponents)
+    if not runscaling: # Random means in range of system
+        mux_i = mux_i * (rngx[1]-rngx[0]) + rngx[0]
+        muy_i = muy_i * (rngy[1]-rngy[0]) + rngy[0]
+
+    # Generate initial covariance matrix
+    l1_i, l2_i = np.sort(np.random.rand(2, nComponents), axis=0) * (l_rng[1]-l_rng[0]) + l_rng[0]
+    if not runscaling:
+        l1_i = l1_i * np.min(rngx[1]-rngx[0], rngy[1]-rngy[0])
+        l2_i = l2_i * np.min(rngx[1]-rngx[0], rngy[1]-rngy[0])
+
+    # Initialise thetas
+    th_i = np.random.rand(nComponents) * np.pi
+
+    # Weights sum to 1
+    if priorDF:
+        w_i = np.random.rand(nComponents)*.1/nComponents + .1 / nComponents
+        w_l = 0
+        w_u = np.inf
+    else:
+        w_i = np.random.rand(nComponents)*nstars / nComponents + nstars/ nComponents
+        w_l = 0
+        w_u = np.inf
+
+    # Lower and upper bounds on parameters
+    # Mean at edge of range
+    if runscaling:
+        mux_l, mux_u = -np.inf, np.inf
+        muy_l, muy_u = -np.inf, np.inf
+    else:
+        mux_l, mux_u = rngx
+        muy_l, muy_u = rngy
+    # Zero standard deviation to inf
+    l1_l, l2_l = l_rng[0], l_rng[0]
+    l1_u, l2_u = l_rng[1], l_rng[1] #rngx[1]-rngx[0], rngy[1]-rngy[0]
+    # Covariance must be in range -1., 1.
+    th_l, th_u = 0, np.pi
+
+
+    params_i = np.vstack((mux_i, muy_i, l1_i, l2_i, th_i, w_i)).T
+    params_l = np.repeat([[mux_l, muy_l, l1_l, l2_l, th_l, w_l],], nComponents, axis=0)
+    params_u = np.repeat([[mux_u, muy_u, l1_u, l2_u, th_u, w_u],], nComponents, axis=0)
+
+    return params_i, params_l, params_u
+
 def sigma_bound(params, s_min):
 
     '''
@@ -753,13 +832,29 @@ def prior_bounds(params, params_l, params_u):
          - prior: bool
             - True if parameters satisfy constraints. False if not.
     '''
-
     # Total is 0 if all parameters within priors
     total = np.sum(params <= params_l) + np.sum(params >= params_u)
     # prior True if all parameters within priors
     prior = total == 0
 
     return prior
+
+def prior_multim(params):
+    """
+    prior_multim - Prior on eigenvalues and means of Gaussian mixture models
+                    to remove some degenerate solutions (e.g. reordering components)
+    """
+
+    # Prior on the order of lambda values in one mixture component
+    # Removes degeneracy between eigenvalue and angle
+    l_order = np.sum(params[:,2]>params[:,3])
+    # Prior on order of components.
+    comp_order = np.sum( np.argsort(params[:,0]) != np.arange(params.shape[0]) )
+    prior = l_order+comp_order == 0
+
+    return prior
+
+
 
 def SFprior(function, rngx, rngy, N=150):
 
@@ -874,6 +969,54 @@ def bivGaussMix_vect(params, x, y):
     p = np.sum(weight*norm*e, axis=-1)
     return p.reshape(shape)
 
+def bivGaussMix_vect_revamp(params, x, y):
+
+    '''
+    bivariateGauss - Calculation of bivariate Gaussian distribution.
+
+    Parameters
+    ----------
+        params - arr of float - length 6 - [mux, muy, l1, l2, theta, weight]
+            - Parameters of the bivariate gaussian
+        x, y - arr of float
+            - x and y coordinates of points being tested
+    Returns
+    -------
+        p - arr of float
+            - bivariate Gaussian value for each point in x, y
+    '''
+
+    shape = x.shape
+    X = np.vstack((x.ravel(), y.ravel())).T
+
+    mu = params[:,:2]
+    sigma = np.array([np.diag(a) for a in params[:,2:4]])
+    R = rotation(params[:,4])
+    weight= params[:,5]
+    sigma = np.matmul(R, np.matmul(sigma, R.transpose(0,2,1)))
+
+    # Inverse covariance
+    inv_cov = np.linalg.inv(sigma)
+    # Separation of X from mean
+    X = np.moveaxis(np.repeat([X,], mu.shape[-2], axis=0), 0, -2) - mu
+
+    # X^T * Sigma
+    X_cov = np.einsum('mnj, njk -> mnk', X, inv_cov)
+    # X * Sigma * X
+    X_cov_X = np.einsum('mnk, mnk -> mn', X_cov, X)
+    # Exponential
+    e = np.exp(-X_cov_X/2)
+
+    # Normalisation term
+    det_cov = np.linalg.det(sigma)
+    norm = 1/np.sqrt( ((2*np.pi)**2) * det_cov)
+
+    p = np.sum(weight*norm*e, axis=-1)
+
+    if np.sum(np.isnan(p))>0: print(params)
+
+    return p.reshape(shape)
+
 def bivGaussMix_iter(params, x, y):
 
     '''
@@ -919,6 +1062,13 @@ def feature_scaling(x, y, mux, muy, sx, sy):
     scaley = (y-muy)/sy
 
     return scalex, scaley
+
+def rotation(th):
+
+    R = np.array([[np.cos(th), np.sin(th)],
+                  [-np.sin(th), np.cos(th)]])
+
+    return R.transpose(2,0,1)
 
 """
 Optimizers
