@@ -109,6 +109,11 @@ class GaussianEM():
         # Print out likelihood values as calculated
         self.runningL = runningL
 
+        Nx_int, Ny_int = (100, 100)
+        x_coords = np.linspace(self.rngx_s[0], self.rngx_s[1], Nx_int)
+        y_coords = np.linspace(self.rngy_s[0], self.rngy_s[1], Ny_int)
+        self.x_2d, self.y_2d = np.meshgrid(x_coords, y_coords)
+
     def __call__(self, x, y, components=None):
 
         '''
@@ -488,7 +493,7 @@ class GaussianEM():
         contPoints = np.sum( np.log(model) )
 
         # Integral of the smooth function over the entire region
-        contInteg = integrationRoutine(function, params, self.nComponents, *(self.rngx_s, self.rngy_s))
+        contInteg = integrationRoutine(function, params, self.nComponents, self.rngx_s, self.rngy_s, self.x_2d, self.y_2d)
 
         lnL = contPoints - contInteg
         if self.runningL:
@@ -1103,7 +1108,7 @@ def scipyStoch(function, params):
 """
 INTEGRATION ROUTINES
 """
-def integrationRoutine(function, param_set, nComponents, rngx, rngy, integration = "trapezium"):
+def integrationRoutine(function, param_set, nComponents, rngx, rngy, x_2d, y_2d, integration = "trapezium"):
 
     '''
     integrationRoutine - Chose the method by which the integrate the distribution over the specified region
@@ -1138,7 +1143,8 @@ def integrationRoutine(function, param_set, nComponents, rngx, rngy, integration
     # analytic if we have analytic solution to the distribution - this is the fastest
     if integration == "analytic": contInteg = multiIntegral(param_set, nComponents)
     # trapezium is a simple approximation for the integral - fast - ~1% accurate
-    elif integration == "trapezium": contInteg = numericalIntegrate(function, *(rngx, rngy))
+    elif integration == "trapezium": contInteg = numericalIntegrate_precompute(function, x_2d, y_2d)
+    elif integration == "analyticApprox": contInteg = bivGauss_analytical_approx(param_set, rngx, rngy)
     # simpson is a quadratic approximation to the integral - reasonably fast - ~1% accurate
     elif integration == "simpson": contInteg = simpsonIntegrate(function, *(rngx, rngy))
     # cubature is another possibility but this is far slower!
@@ -1237,6 +1243,69 @@ def numericalIntegrate(function, rngx, rngy, Nx_int=250, Ny_int=250):
     volume1 = ( (z_2d[:-1, :-1] + z_2d[1:, 1:])/2 ) * dx * dy
     volume2 = ( (z_2d[:-1, 1:] + z_2d[1:, :-1])/2 ) * dx * dy
     integral = ( np.sum(volume1.flatten()) + np.sum(volume2.flatten()) ) /2
+
+    return integral
+
+def numericalIntegrate_mesh(function, rngx, rngy, Nx_int=250, Ny_int=250):
+
+    '''
+    numericalIntegrate - Integrate over region using the trapezium rule
+
+    Parameters
+    ----------
+        function - function or interpolant
+            - The function to be integrated over the specified region of space
+
+        nComponents - int
+            - Number of components of the GMM.
+
+        rngx, rngy - tuple of floats
+            - Boundary of region of colour-magnitude space being calculated.
+
+
+    **kwargs
+    --------
+        Nx_int, Ny_int: int
+            - Number of grid spacings to place along the x and y axes
+
+    Returns
+    -------
+        integral: float
+            - Integral over the region
+    '''
+
+    #compInteg = integrate.dblquad(function, rngx[0], rngx[1], rngy[0], rngy[1])
+    Nx_int, Ny_int = (Nx_int, Ny_int)
+
+    x_coords = np.linspace(rngx[0], rngx[1], Nx_int)
+    y_coords = np.linspace(rngy[0], rngy[1], Ny_int)
+
+    dx = ( rngx[1]-rngx[0] )/Nx_int
+    dy = ( rngy[1]-rngy[0] )/Ny_int
+
+    x_2d, y_2d = np.meshgrid(x_coords, y_coords)
+    z_2d = function(*(x_2d, y_2d))
+
+    volume1 = ( (z_2d[:-1, :-1] + z_2d[1:, 1:])/2 ) * dx * dy
+    volume2 = ( (z_2d[:-1, 1:] + z_2d[1:, :-1])/2 ) * dx * dy
+    integral = ( np.sum(volume1.flatten()) + np.sum(volume2.flatten()) ) /2
+
+    return integral
+
+def numericalIntegrate_precompute(function, x_2d, y_2d):
+
+    z_2d = function(*(x_2d, y_2d))
+
+    dx = x_2d[1:, 1:] - x_2d[1:, :-1]
+    dy = y_2d[1:, 1:] - y_2d[:-1, 1:]
+
+    volume1 = ( (z_2d[:-1, :-1] + z_2d[1:, 1:])/2 ) * dx * dy
+    volume2 = ( (z_2d[:-1, 1:] + z_2d[1:, :-1])/2 ) * dx * dy
+    integral = ( np.sum(volume1.flatten()) + np.sum(volume2.flatten()) ) /2
+
+    return integral
+
+def bivGauss_analytical_approx(params, rngx, rngy):
 
     return integral
 
