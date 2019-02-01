@@ -1316,8 +1316,8 @@ def bivGauss_analytical_approx(params, rngx, rngy):
     erfs = spec.erf( dl / (np.sqrt(2) * np.repeat([params[:,2:4],], 2, axis=0)) ).transpose(1,2,0) / 2
 
     comp_integral = np.zeros(erfs.shape[:2])
-    comp_integral[erfs[:,:,0]<0] = 0.5-erfs[...,1][erfs[:,:,0]<0]
-    comp_integral[erfs[:,:,0]>0] = np.sum(erfs, axis=1)[erfs[:,:,0]>0]
+    comp_integral[erfs[:,0,:]<0] = 0.5-erfs[:,1,:][erfs[:,0,:]<0]
+    comp_integral[erfs[:,0,:]>0] = np.sum(erfs, axis=1)[erfs[:,0,:]>0]
     comp_integral = np.prod(comp_integral, axis=1)
     integral = np.sum(comp_integral*params[:,5])
 
