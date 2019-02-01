@@ -20,12 +20,13 @@ import numpy
 import scipy.interpolate as interp
 import scipy.integrate as integrate
 import scipy.optimize as op
-from skopt import gp_minimize
+import scipy.special as spec
+#from skopt import gp_minimize
 import sys, os, time
 from mpmath import *
 
 # Import cubature for integrating over regions
-from cubature import cubature
+#from cubature import cubature
 
 
 class GaussianEM():
@@ -493,7 +494,8 @@ class GaussianEM():
         contPoints = np.sum( np.log(model) )
 
         # Integral of the smooth function over the entire region
-        contInteg = integrationRoutine(function, params, self.nComponents, self.rngx_s, self.rngy_s, self.x_2d, self.y_2d)
+        contInteg = integrationRoutine(function, params, self.nComponents, self.rngx_s, self.rngy_s,
+                                        self.x_2d, self.y_2d, integration='analyticApprox')
 
         lnL = contPoints - contInteg
         if self.runningL:
@@ -1307,7 +1309,48 @@ def numericalIntegrate_precompute(function, x_2d, y_2d):
 
 def bivGauss_analytical_approx(params, rngx, rngy):
 
+    dl1 = find_dls(rngx, rngy, params)
+    dl2 = find_dls(rngx, rngy, params, rotate=np.pi/2)
+    dl = np.stack((dl1, dl2))
+
+    erfs = spec.erf( dl / (np.sqrt(2) * np.repeat([params[:,2:4],], 2, axis=0)) ).transpose(1,2,0) / 2
+
+    comp_integral = np.zeros(erfs.shape[:2])
+    comp_integral[erfs[:,:,0]<0] = 0.5-erfs[...,1][erfs[:,:,0]<0]
+    comp_integral[erfs[:,:,0]>0] = np.sum(erfs, axis=1)[erfs[:,:,0]>0]
+    comp_integral = np.prod(comp_integral, axis=1)
+    integral = np.sum(comp_integral*params[:,5])
+
     return integral
+
+def find_dls(rngx, rngy, params, rotate=0.):
+
+    # shape 2,2 - xy, minmax
+    rngxy = np.array([rngx, rngy])
+    # shape n,2,1 - components, xy, minmax
+    angle = np.array([np.sin(params[:,4]+rotate), np.cos(params[:,4]+rotate)]).T[:,:,np.newaxis]
+    # shape n,2,1 - components, xy, minmax
+    mean = params[:,:2][:,:,np.newaxis]
+
+    # shape n,2,2 - components, xy, minmax
+    dl = (rngxy - mean)/angle
+    # shape n, 4 - components, xyminmax
+    dl = dl.reshape(dl.shape[0], -1)
+    dl.sort(axis=1)
+
+    dlf = np.zeros((params.shape[0], 2))
+    con = np.sum(dl>0, axis=1)==4
+    dlf[con] = np.array([np.zeros(np.sum(con))-1, dl[con][:,0]]).T
+    con = np.sum(dl>0, axis=1)==3
+    dlf[con] = np.array([np.zeros(np.sum(con))-1, dl[con][:,1]]).T
+    con = np.sum(dl>0, axis=1)==2
+    dlf[con] = np.array([-dl[con][:,1],  dl[con][:,2]]).T
+    con = np.sum(dl>0, axis=1)==1
+    dlf[con] = np.array([np.zeros(np.sum(con))-1, -dl[con][:,2]]).T
+    con = np.sum(dl>0, axis=1)==0
+    dlf[con] = np.array([np.zeros(np.sum(con))-1, -dl[con][:,3]]).T
+
+    return dlf
 
 def simpsonIntegrate(function, rngx, rngy):
 
