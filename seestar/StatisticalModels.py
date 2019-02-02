@@ -312,6 +312,7 @@ class GaussianEM():
         # Set initial parameters
         finite = False
         a = 0
+        print('Initialising parameters...')
         while not finite:
             self.params_i, self.params_l, self.params_u = \
                 initParams_revamp(self.nComponents, self.rngx_s, self.rngy_s, self.priorDF,
@@ -321,12 +322,10 @@ class GaussianEM():
             lnp = self.lnprob(self.params_i)
             finite = np.isfinite(lnp)
             a+=1
-            if a==10:
-                print("...failed to initialise params on field")
-                finite=True
-            if self.runningL:
-                sys.stdout.write("\r"+str(self.params_i))
-                if finite: print("")
+            if a%1000==0:
+                raise ValueError("Couldn't initialise good parameters")
+            #if self.runningL:
+        #        sys.stdout.write("\r"+str(self.params_i[0,:]))
 
         params = self.params_i
 
@@ -369,7 +368,7 @@ class GaussianEM():
             start = time.time()
             bounds = None
             # Run scipy optimizer
-            if self.runningL: print("\nInitparam likelihood: %d" % self.lnprob(params))
+            if self.runningL: print("\nInitparam likelihood: %.2f" % float(self.lnprob(params)))
             paramsOP = self.optimize(params, method, bounds)
             # Check likelihood for parameters
             lnlikeOP = self.lnlike(paramsOP)
@@ -715,7 +714,7 @@ def initParams(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=True):
 
     return params_i, params_l, params_u
 
-def initParams_revamp(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=True, l_rng=[0.1,10.]):
+def initParams_revamp(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=True, l_rng=[0.1,50.]):
 
     '''
     initParams - Specify the initial parameters for the Gaussian mixture model as well as
@@ -1307,17 +1306,55 @@ def numericalIntegrate_precompute(function, x_2d, y_2d):
 
     return integral
 
-def bivGauss_analytical_approx(params, rngx, rngy):
+def bivGauss_analytical_approx2(params, rngx, rngy):
 
     dl1 = find_dls(rngx, rngy, params)
     dl2 = find_dls(rngx, rngy, params, rotate=np.pi/2)
-    dl = np.stack((dl1, dl2))
+
+    # Assuming indices are xmin, ymin, xmax, ymax
+    dl_asc1 = np.sort(dl1,axis=1)
+    dl_asc2 = np.sort(dl2,axis=1)
+    dlf1 = np.zeros((params.shape[0], 2))
+    dlf2 = np.zeros((params.shape[0], 2))
+
+    boundary_index_1a = np.argmin(np.abs(dl1), axis=1)
+    boundary_index_1b = boundary_index_1a - 2 # To get opposite boundary
+    boundary_index_2a = np.argmin(np.abs(dl2), axis=1)
+    boundary_index_2b = boundary_index_2a - 2 # To get opposite boundary
+
+    ncross1 = np.sum(dl1>0, axis=1)
+    ncross2 = np.sum(dl2>0, axis=1)
+    # Condition1 - Ellipse lies within boundaries
+    con = (ncross1==2)&(ncross2==2)
+    dlf1[con] = np.array([np.abs(dl1[con][np.arange(dlf1[con].shape[0]),boundary_index_1a[con]-1]),
+                          np.abs(dl1[con][np.arange(dlf1[con].shape[0]),boundary_index_1b[con]-1])]).T
+    dlf2[con] = np.array([np.abs(dl2[con][np.arange(dlf2[con].shape[0]),boundary_index_2a[con]-1]),
+                          np.abs(dl2[con][np.arange(dlf2[con].shape[0]),boundary_index_2b[con]-1])]).T
+    con = (ncross1==3)
+    dlf1[con] = np.array([np.zeros(np.sum(con)), np.abs(dl_asc1[con][:,3])]).T
+    con = (ncross2==3)
+    dlf2[con] = np.array([np.zeros(np.sum(con)), np.abs(dl_asc2[con][:,3])]).T
+    con = (ncross1==1)
+    dlf1[con] = np.array([np.zeros(np.sum(con)), np.abs(dl_asc1[con][:,0])]).T
+    con = (ncross2==1)
+    dlf2[con] = np.array([np.zeros(np.sum(con)), np.abs(dl_asc2[con][:,0])]).T
+    con = (ncross1==2)&((ncross2==0)|(ncross2==4))
+    dlf1[con] = np.array([np.abs(dl_asc1[con][:,0]), np.abs(dl_asc1[con][:,3])]).T
+    dlf2[con] = np.array([np.abs(dl2[con][np.arange(dlf2[con].shape[0]),boundary_index_2a[con]]),
+                          np.abs(dl2[con][np.arange(dlf2[con].shape[0]),boundary_index_2b[con]])]).T
+    con = ((ncross1==0)|(ncross1==4))&(ncross2==2)
+    dlf1[con] = np.array([np.abs(dl1[con][np.arange(dlf1[con].shape[0]),boundary_index_1a[con]]),
+                          np.abs(dl1[con][np.arange(dlf1[con].shape[0]),boundary_index_1b[con]])]).T
+    dlf2[con] = np.array([np.abs(dl_asc2[con][:,0]), np.abs(dl_asc2[con][:,3])]).T
+
+    dl = np.stack((dlf1, dlf2))
 
     erfs = spec.erf( dl / (np.sqrt(2) * np.repeat([params[:,2:4],], 2, axis=0)) ).transpose(1,2,0) / 2
 
-    comp_integral = np.zeros(erfs.shape[:2])
-    comp_integral[erfs[:,0,:]<0] = 0.5-erfs[:,1,:][erfs[:,0,:]<0]
-    comp_integral[erfs[:,0,:]>0] = np.sum(erfs, axis=1)[erfs[:,0,:]>0]
+    #comp_integral = np.zeros(erfs.shape[:2])
+    #comp_integral[erfs[:,0,:]<0] = 0.5-erfs[:,1,:][erfs[:,0,:]<0]
+    #comp_integral[erfs[:,0,:]>0] = np.sum(erfs, axis=1)[erfs[:,0,:]>0]
+    comp_integral = np.sum(erfs, axis=1)
     comp_integral = np.prod(comp_integral, axis=1)
     integral = np.sum(comp_integral*params[:,5])
 
@@ -1334,8 +1371,20 @@ def find_dls(rngx, rngy, params, rotate=0.):
 
     # shape n,2,2 - components, xy, minmax
     dl = (rngxy - mean)/angle
+    # at this point I know which boundaries belong to which coordinates
+    # Can I chose which boundary indices to use here then index them lower down keeping the con options???
+    # Get argmin of abs values, take index of argmin+2 as second boundary
     # shape n, 4 - components, xyminmax
-    dl = dl.reshape(dl.shape[0], -1)
+    dl = dl.transpose(0,2,1).reshape(dl.shape[0], -1)
+
+    """
+    #NOT sure if this works
+    boundary_index_1 = np.argmin(np.abs(dl), axis=1)
+    boundary_index_2 = boundary_index_1 - 2 # To get opposite boundary
+    # Get rid of dl.sort
+    dltest = dl.copy()
+    # Assuming indices are xmin, ymin, xmax, ymax
+
     dl.sort(axis=1)
 
     dlf = np.zeros((params.shape[0], 2))
@@ -1345,12 +1394,44 @@ def find_dls(rngx, rngy, params, rotate=0.):
     dlf[con] = np.array([np.zeros(np.sum(con))-1, dl[con][:,1]]).T
     con = np.sum(dl>0, axis=1)==2
     dlf[con] = np.array([-dl[con][:,1],  dl[con][:,2]]).T
+    dlf[con] = np.array([np.abs(dltest[con][np.arange(dlf[con].shape[0]),boundary_index_1[con]]),
+                        np.abs(dltest[con][np.arange(dlf[con].shape[0]),boundary_index_2[con]])]).T
     con = np.sum(dl>0, axis=1)==1
     dlf[con] = np.array([np.zeros(np.sum(con))-1, -dl[con][:,2]]).T
     con = np.sum(dl>0, axis=1)==0
-    dlf[con] = np.array([np.zeros(np.sum(con))-1, -dl[con][:,3]]).T
+    dlf[con] = np.array([np.zeros(np.sum(con))-1, -dl[con][:,3]]).T"""
 
-    return dlf
+    return dl
+
+def bivGauss_analytical_approx(params, rngx, rngy):
+
+    # shape 2,4 - xy, corners
+    corners = np.array(np.meshgrid(rngx, rngy)).reshape(2, 4)
+    # shape n,2,1 - components, xy, corners
+    angle1 = np.array([np.sin(params[:,4]), np.cos(params[:,4])]).T[:,:,np.newaxis]
+    angle2 = np.array([np.sin(params[:,4]+np.pi/2), np.cos(params[:,4]+np.pi/2)]).T[:,:,np.newaxis]
+    # shape n,2,1 - components, xy, minmax
+    mean = params[:,:2][:,:,np.newaxis]
+
+    # shape n,4 - components, corners
+    dl1 = np.sum( (corners - mean)*angle1 , axis=1)
+    dl2 = np.sum( (corners - mean)*angle2 , axis=1)
+    # shape 2,n,4 - axes, components, corners
+    dl = np.stack((dl1, dl2))
+    dl.sort(axis=2)
+    # shape 2,n,2 - axes, components, extreme corners
+    dl = dl[..., [0,-1]]
+
+    erfs = spec.erf( dl / (np.sqrt(2) * np.repeat([params[:,2:4],], 2, axis=0)) ) / 2
+
+    # Sum integral lower and upper bounds
+    comp_integral = np.abs(erfs[...,1]-erfs[...,0])
+    # Product the axes of the integrals
+    comp_integral = np.prod(comp_integral, axis=0)
+    # Sum weighted Gaussian components
+    integral = np.sum(comp_integral*params[:,5])
+
+    return integral
 
 def simpsonIntegrate(function, rngx, rngy):
 
