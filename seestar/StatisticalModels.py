@@ -68,6 +68,7 @@ class GaussianEM():
     def __init__(self, x=np.array(0), y=np.array(0), sig_xy=None,
                 nComponents=0, rngx=(0,1), rngy=(0,1), runscaling=True, runningL=True, s_min=0.1):
 
+        print 'Starting optimizer instance...'
         # Name of the model to used for reloading from dictionary
         self.modelname = self.__class__.__name__
 
