@@ -66,7 +66,7 @@ class GaussianEM():
     '''
 
     def __init__(self, x=np.array(0), y=np.array(0), sig_xy=None,
-                nComponents=0, rngx=(0,1), rngy=(0,1), runscaling=True, runningL=True):
+                nComponents=0, rngx=(0,1), rngy=(0,1), runscaling=True, runningL=True, s_min=0.1):
 
         # Name of the model to used for reloading from dictionary
         self.modelname = self.__class__.__name__
@@ -85,6 +85,9 @@ class GaussianEM():
         self.params_f = None
         # Shape of parameter set (number of components x parameters per component)
         self.param_shape = ()
+
+        # Boundary on minimum std
+        self.s_min=s_min
 
         # Coordinate covariance matrix
         if sig_xy is None:
@@ -328,16 +331,20 @@ class GaussianEM():
         while not finite:
             self.params_i, self.params_l, self.params_u = \
                 initParams_revamp(self.nComponents, self.rngx_s, self.rngy_s, self.priorDF,
-                                nstars=len(self.x_s), runscaling=self.runscaling)
+                                nstars=len(self.x_s), runscaling=self.runscaling, l_min=self.s_min)
             self.param_shape = self.params_i.shape
-            self.s_min = self.params_l[0,1] # same as sxx lower bound
             lnp = self.lnprob(self.params_i)
             finite = np.isfinite(lnp)
             a+=1
-            if a%1000==0:
+            if a%10==0:
                 raise ValueError("Couldn't initialise good parameters")
-            #if self.runningL:
-        #        sys.stdout.write("\r"+str(self.params_i[0,:]))
+            if self.runningL:
+                sys.stdout.write("\r"+str(self.params_i[0,:]))
+            if not finite:
+                print "Fail: ", self.params_i,\
+                        prior_bounds(self.params_i, self.params_l, self.params_u),\
+                        prior_multim(self.params_i),\
+                        prior_erfprecision(self.params_i, self.rngx_s, self.rngy_s)
 
         params = self.params_i
 
@@ -511,7 +518,7 @@ class GaussianEM():
 
         # Integral of the smooth function over the entire region
         contInteg = integrationRoutine(function, params, self.nComponents, self.rngx_s, self.rngy_s,
-                                        self.x_2d, self.y_2d, integration='analyticApprox')
+                                        self.x_2d, self.y_2d, integration='trapezium')
 
         lnL = contPoints - contInteg
         if self.runningL:
@@ -740,7 +747,7 @@ def initParams(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=True):
 
     return params_i, params_l, params_u
 
-def initParams_revamp(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=True, l_rng=[0.1,50.]):
+def initParams_revamp(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=True, l_min=0.1):
 
     '''
     initParams - Specify the initial parameters for the Gaussian mixture model as well as
@@ -771,15 +778,13 @@ def initParams_revamp(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=Tru
     # Initial guess parameters for a bivariate Gaussian
     # Randomly initialise mean between -1 and 1
     mux_i, muy_i = np.random.rand(2, nComponents)
-    if not runscaling: # Random means in range of system
-        mux_i = mux_i * (rngx[1]-rngx[0]) + rngx[0]
-        muy_i = muy_i * (rngy[1]-rngy[0]) + rngy[0]
+    mux_i = mux_i * (rngx[1]-rngx[0]) + rngx[0]
+    muy_i = muy_i * (rngy[1]-rngy[0]) + rngy[0]
 
     # Generate initial covariance matrix
-    l1_i, l2_i = np.sort(np.random.rand(2, nComponents), axis=0) * (l_rng[1]-l_rng[0]) + l_rng[0]
-    if not runscaling:
-        l1_i = l1_i * np.min(rngx[1]-rngx[0], rngy[1]-rngy[0])
-        l2_i = l2_i * np.min(rngx[1]-rngx[0], rngy[1]-rngy[0])
+    l1_i, l2_i = np.sort(np.random.rand(2, nComponents), axis=0)
+    l1_i = l1_i * np.min((rngx[1]-rngx[0], rngy[1]-rngy[0])) * 10 + l_min
+    l2_i = l2_i * np.min((rngx[1]-rngx[0], rngy[1]-rngy[0])) * 10 + l_min
 
     # Initialise thetas
     th_i = np.random.rand(nComponents) * np.pi
@@ -796,15 +801,11 @@ def initParams_revamp(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=Tru
 
     # Lower and upper bounds on parameters
     # Mean at edge of range
-    if runscaling:
-        mux_l, mux_u = -np.inf, np.inf
-        muy_l, muy_u = -np.inf, np.inf
-    else:
-        mux_l, mux_u = rngx
-        muy_l, muy_u = rngy
+    mux_l, mux_u = -np.inf, np.inf
+    muy_l, muy_u = -np.inf, np.inf
     # Zero standard deviation to inf
-    l1_l, l2_l = l_rng[0], l_rng[0]
-    l1_u, l2_u = l_rng[1], l_rng[1] #rngx[1]-rngx[0], rngy[1]-rngy[0]
+    l1_l, l2_l = l_min, l_min
+    l1_u, l2_u = np.inf, np.inf #l_rng[1], l_rng[1] #rngx[1]-rngx[0], rngy[1]-rngy[0]
     # Covariance must be in range -1., 1.
     th_l, th_u = 0, np.pi
 
@@ -812,6 +813,8 @@ def initParams_revamp(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=Tru
     params_i = np.vstack((mux_i, muy_i, l1_i, l2_i, th_i, w_i)).T
     params_l = np.repeat([[mux_l, muy_l, l1_l, l2_l, th_l, w_l],], nComponents, axis=0)
     params_u = np.repeat([[mux_u, muy_u, l1_u, l2_u, th_u, w_u],], nComponents, axis=0)
+
+    params_i = params_i[params_i[:,5].argsort()]
 
     return params_i, params_l, params_u
 
@@ -881,7 +884,7 @@ def prior_multim(params):
     # Removes degeneracy between eigenvalue and angle
     l_order = np.sum(params[:,2]>params[:,3])
     # Prior on order of components.
-    comp_order = np.sum( np.argsort(params[:,0]) != np.arange(params.shape[0]) )
+    comp_order = np.sum( np.argsort(params[:,5]) != np.arange(params.shape[0]) )
     prior = l_order+comp_order == 0
 
     return prior
