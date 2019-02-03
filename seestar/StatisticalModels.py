@@ -65,7 +65,8 @@ class GaussianEM():
                         integral calculated using cubature for which we know the uncertainty
     '''
 
-    def __init__(self, x=np.array(0), y=np.array(0), nComponents=0, rngx=(0,1), rngy=(0,1), runscaling=True, runningL=True):
+    def __init__(self, x=np.array(0), y=np.array(0), sig_xy=None,
+                nComponents=0, rngx=(0,1), rngy=(0,1), runscaling=True, runningL=True):
 
         # Name of the model to used for reloading from dictionary
         self.modelname = self.__class__.__name__
@@ -85,6 +86,12 @@ class GaussianEM():
         # Shape of parameter set (number of components x parameters per component)
         self.param_shape = ()
 
+        # Coordinate covariance matrix
+        if sig_xy is None:
+            z_ = np.zeros(len(x))
+            sig_xy = np.array([[z_, z_],[z_, z_]]).transpose(2,0,1)
+        self.sig_xy = sig_xy
+
         self.runscaling = runscaling
         # Not run when loading class from dictionary
         if runscaling:
@@ -103,6 +110,11 @@ class GaussianEM():
             # Scaled parameters
             self.x_s, self.y_s = feature_scaling(x, y, self.mux, self.muy, self.sx, self.sy)
             self.rngx_s, self.rngy_s = feature_scaling(np.array(rngx), np.array(rngy), self.mux, self.muy, self.sx, self.sy)
+            self.sig_xy_s = covariance_scaling(self.sig_xy, self.sx, self.sy)
+        else:
+            self.x_s, self.y_s = x, y
+            self.rngx_s, self.rngy_s = rngx, rngy
+            self.sig_xy_s = sig_xy
 
         # Function which calculates the actual distribution
         self.distribution = bivGaussMix_vect_revamp
@@ -375,9 +387,10 @@ class GaussianEM():
             if self.runningL: print("\n %s: lnprob=%.0f, time=%d" % (method, self.lnprob(paramsOP), time.time()-start))
             params=paramsOP
 
+        self.params_f_scaled = params.copy()
         if self.runscaling: params = self.unscaleParams(params)
         # Save evaluated parameters to internal values
-        self.params_f = params
+        self.params_f = params.copy()
 
         return params
 
@@ -485,11 +498,15 @@ class GaussianEM():
         '''
 
         # If the DF has already been calculated, directly optimize the SF
-        if self.priorDF: function = lambda a, b: self.photoDF(*(a,b)) * self.distribution(params, a, b)
-        else: function = lambda a, b: self.distribution(params, a, b)
+        if self.priorDF:
+            function = lambda a, b: self.photoDF(*(a,b)) * self.distribution(params, a, b)
+            model = self.photoDF( a, b ) * error_convolution(params, self.x_s, self.y_s, self.sig_xy_s)
+        else:
+            function = lambda a, b: self.distribution(params, a, b)
+            model = error_convolution(params, self.x_s, self.y_s, self.sig_xy_s)
 
         # Point component of poisson log likelihood: contPoints \sum(\lambda(x_i))
-        model = function(*(self.x_s, self.y_s))
+        #model = function(*(self.x_s, self.y_s))
         contPoints = np.sum( np.log(model) )
 
         # Integral of the smooth function over the entire region
@@ -532,6 +549,10 @@ class GaussianEM():
         prior = prior_multim(params)
         if not prior: return -np.inf
 
+        # Test parameters against boundary values
+        prior = prior_erfprecision(params, self.rngx_s, self.rngy_s)
+        if not prior: return -np.inf
+
         # Prior on spectro distribution that it must be less than the photometric distribution
         if self.priorDF:
             function = lambda a, b: self.distribution(params, a, b)
@@ -541,15 +562,20 @@ class GaussianEM():
         # All prior tests satiscied
         return 0.0
 
-    def scaleParams(self, params):
+    def scaleParams(self, params_in):
 
+        params = params_in.copy()
+        print(params, self.mux, self.muy)
+        print(params[:,[0,1]] -  [self.mux, self.muy]) / np.array([self.sx, self.sy])
         params[:,[0,1]] = (params[:,[0,1]] -  [self.mux, self.muy]) / np.array([self.sx, self.sy])
         params[:,[2,3]] *= 1/np.array([self.sx**2, self.sy**2])
+        print(params)
 
         return params
 
-    def unscaleParams(self, params):
+    def unscaleParams(self, params_in):
 
+        params = params_in.copy()
         params[:,[0,1]] = (params[:,[0,1]] * np.array([self.sx, self.sy])) +  [self.mux, self.muy]
         params[:,[2,3]] *= np.array([self.sx**2, self.sy**2])
 
@@ -860,6 +886,31 @@ def prior_multim(params):
 
     return prior
 
+def prior_erfprecision(params, rngx, rngy):
+
+    # shape 2,4 - xy, corners
+    corners = np.array(np.meshgrid(rngx, rngy)).reshape(2, 4)
+    # shape n,2,1 - components, xy, corners
+    angle1 = np.array([np.sin(params[:,4]), np.cos(params[:,4])]).T[:,:,np.newaxis]
+    angle2 = np.array([np.sin(params[:,4]+np.pi/2), np.cos(params[:,4]+np.pi/2)]).T[:,:,np.newaxis]
+    # shape n,2,1 - components, xy, minmax
+    mean = params[:,:2][:,:,np.newaxis]
+    # shape n,4 - components, corners
+    dl1 = np.sum( (corners - mean)*angle1 , axis=1)
+    dl2 = np.sum( (corners - mean)*angle2 , axis=1)
+    # shape 2,n,4 - axes, components, corners
+    dl = np.stack((dl1, dl2))
+    dl.sort(axis=2)
+    # shape 2,n,2 - axes, components, extreme corners
+    dl = dl[..., 0]
+
+    # shape 2,n,2 - axes, components, extreme corners
+    component_stds = params[:,2:4].T
+
+    separation = np.abs(dl) / (np.sqrt(2) * component_stds)
+
+    if np.sum(separation>20) > 0: return False
+    else: return True
 
 
 def SFprior(function, rngx, rngy, N=150):
@@ -1023,6 +1074,39 @@ def bivGaussMix_vect_revamp(params, x, y):
 
     return p.reshape(shape)
 
+def error_convolution(params, x, y, sig_xy):
+
+    shape = x.shape
+    X = np.vstack((x.ravel(), y.ravel())).T
+
+    # 1) Rotate S_component to x-y plane
+    mu = params[:,:2]
+    sigma = np.array([np.diag(a) for a in params[:,2:4]])
+    R = rotation(params[:,4])
+    weight= params[:,5]
+    sigma = np.matmul(R, np.matmul(sigma, R.transpose(0,2,1)))
+
+    # 2) Get Si + Sj for all stars_i, comonents_j
+    sigma = sigma[np.newaxis, ...]
+    sig_xy = sig_xy[:, np.newaxis, ...]
+    sig_product = sigma + sig_xy
+
+    # 3) Get mui - muj for all stars_i, comonents_j
+    mu = mu[np.newaxis, ...]
+    X = X[:, np.newaxis, ...]
+    mu_product = mu - X
+
+    # 4) Calculate Cij
+    sig_product_inv = np.linalg.inv(sig_product)
+    exponent = -np.sum(mu_product * np.einsum('ijlm, ijm -> ijl', sig_product_inv, mu_product), axis=2) / 2
+    norm = 1/np.sqrt( np.linalg.det(2*np.pi*sig_product) )
+    cij = norm*np.exp(exponent)
+
+    # 6) Dot product with weights
+    ci = np.sum(cij*params[:,5], axis=1)
+
+    return ci
+
 def bivGaussMix_iter(params, x, y):
 
     '''
@@ -1068,6 +1152,11 @@ def feature_scaling(x, y, mux, muy, sx, sy):
     scaley = (y-muy)/sy
 
     return scalex, scaley
+
+def covariance_scaling(sigxy, sx, sy):
+
+    scaling = np.outer(np.array([sx, sy]), np.array([sx, sy]))
+    return sigxy/scaling
 
 def rotation(th):
 
@@ -1413,19 +1502,31 @@ def bivGauss_analytical_approx(params, rngx, rngy):
     # shape n,2,1 - components, xy, minmax
     mean = params[:,:2][:,:,np.newaxis]
 
+    #print 'Corners: ', corners
     # shape n,4 - components, corners
     dl1 = np.sum( (corners - mean)*angle1 , axis=1)
     dl2 = np.sum( (corners - mean)*angle2 , axis=1)
     # shape 2,n,4 - axes, components, corners
     dl = np.stack((dl1, dl2))
+    #print 'Dl: ', dl
     dl.sort(axis=2)
     # shape 2,n,2 - axes, components, extreme corners
     dl = dl[..., [0,-1]]
+    #print 'Dl minmax: ', dl
 
-    erfs = spec.erf( dl / (np.sqrt(2) * np.repeat([params[:,2:4],], 2, axis=0)) ) / 2
+    # shape 2,n,2 - axes, components, extreme corners
+    component_stds = np.repeat([params[:,2:4],], 2, axis=0).transpose(2,1,0)
+
+    # Use erfc on absolute values to avoid high value precision errors
+    sign = dl/np.abs(dl)
+    erfs = spec.erfc( np.abs(dl) / (np.sqrt(2) * component_stds) )
+    erfs = erfs*sign
+    #print 'ratio: ', dl / (np.sqrt(2) * component_stds)
+    #print 'erfs: ', erfs
+    #print 'sigmas: ', np.repeat([params[:,2:4],], 2, axis=0).transpose(2,1,0)
 
     # Sum integral lower and upper bounds
-    comp_integral = np.abs(erfs[...,1]-erfs[...,0])
+    comp_integral = (np.abs(erfs[...,1]-erfs[...,0]) + np.abs(sign[...,0] - sign[...,1])) / 2
     # Product the axes of the integrals
     comp_integral = np.prod(comp_integral, axis=0)
     # Sum weighted Gaussian components
