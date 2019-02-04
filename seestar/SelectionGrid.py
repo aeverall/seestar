@@ -59,14 +59,9 @@ import matplotlib.gridspec as gridspec
 from matplotlib.colors import LogNorm
 from matplotlib.ticker import LogFormatter
 
-from seestar import ArrayMechanics as AM
-from seestar import StatisticalModels
-from seestar import FieldUnions
-from seestar import SFInstanceClasses
-from seestar import IsochroneScaling
-from seestar import surveyInfoPickler
-from seestar import AngleDisks
-from seestar import FieldAssignment
+#from seestar import
+sys.path.append('/home/andy/Documents/Research/SF/GitRepo/seestar/')
+import ArrayMechanics as AM, StatisticalModels, FieldUnions, SFInstanceClasses, IsochroneScaling, surveyInfoPickler, AngleDisks, FieldAssignment
 
 class SFGenerator():
 
@@ -508,7 +503,7 @@ class SFGenerator():
         start = time.time()
 
 
-        if self.ncores>0:
+        if self.ncores>1:
 
             # List of fields in pointings database
             field_list = self.pointings.fieldID.values.tolist()
@@ -561,7 +556,7 @@ class SFGenerator():
             for field in field_list:
 
                 fieldN+=1
-                sys.stdout.write("\rCurrent field in col-mag calculation: %s, %d/%d, Time: %dm, Left: %dm" % (str(field), fieldN, fieldL, int(tnow), int(tleft)))
+                sys.stdout.write("\rCurrent field in col-mag calculation: %s, %d/%d, Time: %.2fm, Left: %.2fm" % (str(field), fieldN, fieldL, int(tnow), int(tleft)))
                 sys.stdout.flush()
 
                 # Select preferred survey stars
@@ -573,7 +568,7 @@ class SFGenerator():
                 obsSF_dicts[field] = vars(obsSF_field)
 
                 tnow = (time.time() - start)/60.
-                tleft = tnow*(float(fieldL)/fieldN - 1)
+                tleft = tnow*(float(fieldL)/fieldN - 1.)
 
         return obsSF_dicts
 
@@ -1143,7 +1138,7 @@ def PoissonLikelihood(points,
         # Add in SFxDF<DF constraint for the spectrograph distribution
         if datatype == "spectro":
             model.photoDF, model.priorDF = (photoDF, True)
-        model.runningL = False
+        model.runningL = True
         model.optimizeParams()
         # Test integral if you want to see the value/error in the integral when calculated
         # model.testIntegral()

@@ -68,7 +68,9 @@ class GaussianEM():
     def __init__(self, x=np.array(0), y=np.array(0), sig_xy=None,
                 nComponents=0, rngx=(0,1), rngy=(0,1), runscaling=True, runningL=True, s_min=0.1):
 
-        print 'Starting optimizer instance...'
+        # Iteration number to update
+        self.iter_count = 0
+
         # Name of the model to used for reloading from dictionary
         self.modelname = self.__class__.__name__
 
@@ -328,7 +330,7 @@ class GaussianEM():
         # Set initial parameters
         finite = False
         a = 0
-        print('Initialising parameters...')
+
         while not finite:
             self.params_i, self.params_l, self.params_u = \
                 initParams_revamp(self.nComponents, self.rngx_s, self.rngy_s, self.priorDF,
@@ -337,15 +339,14 @@ class GaussianEM():
             lnp = self.lnprob(self.params_i)
             finite = np.isfinite(lnp)
             a+=1
-            if a%10==0:
+            if a%3==0:
                 raise ValueError("Couldn't initialise good parameters")
-            if self.runningL:
-                sys.stdout.write("\r"+str(self.params_i[0,:]))
             if not finite:
                 print "Fail: ", self.params_i,\
                         prior_bounds(self.params_i, self.params_l, self.params_u),\
                         prior_multim(self.params_i),\
-                        prior_erfprecision(self.params_i, self.rngx_s, self.rngy_s)
+                        prior_erfprecision(self.params_i, self.rngx_s, self.rngy_s), \
+                        len(self.x_s)
 
         params = self.params_i
 
@@ -424,6 +425,9 @@ class GaussianEM():
             result: dict
                 - Output of scipy.optimize
         '''
+
+        # Set count to 0
+        self.iter_count = 0
 
         # To clean up any warnings from optimize
         invalid = np.seterr()['invalid']
@@ -508,7 +512,7 @@ class GaussianEM():
         # If the DF has already been calculated, directly optimize the SF
         if self.priorDF:
             function = lambda a, b: self.photoDF(*(a,b)) * self.distribution(params, a, b)
-            model = self.photoDF( a, b ) * error_convolution(params, self.x_s, self.y_s, self.sig_xy_s)
+            model = self.photoDF( self.x_s, self.y_s ) * error_convolution(params, self.x_s, self.y_s, self.sig_xy_s)
         else:
             function = lambda a, b: self.distribution(params, a, b)
             model = error_convolution(params, self.x_s, self.y_s, self.sig_xy_s)
@@ -519,12 +523,15 @@ class GaussianEM():
 
         # Integral of the smooth function over the entire region
         contInteg = integrationRoutine(function, params, self.nComponents, self.rngx_s, self.rngy_s,
-                                        self.x_2d, self.y_2d, integration='trapezium')
+                                        self.x_2d, self.y_2d, integration='analyticApprox')
+        #print bivGauss_analytical_approx(params, self.rngx_s, self.rngy_s), self.rngx_s, self.rngy_s
 
         lnL = contPoints - contInteg
         if self.runningL:
-            sys.stdout.write("\rlogL: %.2f, sum log(f(xi)): %.2f, integral: %.2f            " % (lnL, contPoints, contInteg))
+            sys.stdout.write("\ritern: %d, logL: %.2f, sum log(f(xi)): %.2f, integral: %.2f                " \
+                            % (self.iter_count, lnL, contPoints, contInteg))
             sys.stdout.flush()
+            self.iter_count += 1
 
         return lnL
 
@@ -791,14 +798,10 @@ def initParams_revamp(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=Tru
     th_i = np.random.rand(nComponents) * np.pi
 
     # Weights sum to 1
-    if priorDF:
-        w_i = np.random.rand(nComponents)*.1/nComponents + .1 / nComponents
-        w_l = 0
-        w_u = np.inf
-    else:
-        w_i = np.random.rand(nComponents)*nstars / nComponents + nstars/ nComponents
-        w_l = 0
-        w_u = np.inf
+    w_i = np.random.rand(nComponents)/nComponents + .1 / nComponents
+    w_l = 0
+    w_u = np.inf
+    if not priorDF: w_i *= nstars
 
     # Lower and upper bounds on parameters
     # Mean at edge of range
@@ -815,7 +818,7 @@ def initParams_revamp(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=Tru
     params_l = np.repeat([[mux_l, muy_l, l1_l, l2_l, th_l, w_l],], nComponents, axis=0)
     params_u = np.repeat([[mux_u, muy_u, l1_u, l2_u, th_u, w_u],], nComponents, axis=0)
 
-    params_i = params_i[params_i[:,5].argsort()]
+    params_i = params_i[params_i[:,3].argsort()]
 
     return params_i, params_l, params_u
 
@@ -885,7 +888,7 @@ def prior_multim(params):
     # Removes degeneracy between eigenvalue and angle
     l_order = np.sum(params[:,2]>params[:,3])
     # Prior on order of components.
-    comp_order = np.sum( np.argsort(params[:,5]) != np.arange(params.shape[0]) )
+    comp_order = np.sum( np.argsort(params[:,3]) != np.arange(params.shape[0]) )
     prior = l_order+comp_order == 0
 
     return prior
@@ -1101,15 +1104,29 @@ def error_convolution(params, x, y, sig_xy):
     mu_product = mu - X
 
     # 4) Calculate Cij
-    sig_product_inv = np.linalg.inv(sig_product)
-    exponent = -np.sum(mu_product * np.einsum('ijlm, ijm -> ijl', sig_product_inv, mu_product), axis=2) / 2
-    norm = 1/np.sqrt( np.linalg.det(2*np.pi*sig_product) )
+    sig_product_inv, sig_product_det = inverse2x2(sig_product)
+    # np.einsum('ijlm, ijm -> ijl', sig_product_inv, mu_product)
+    exponent = -np.sum(mu_product * np.sum(sig_product_inv.transpose(2,0,1,3)*mu_product, axis=3).transpose(1,2,0), axis=2) / 2
+    norm = 1/( 2*np.pi*np.sqrt(sig_product_det) )
     cij = norm*np.exp(exponent)
 
     # 6) Dot product with weights
     ci = np.sum(cij*params[:,5], axis=1)
 
     return ci
+def inverse2x2(matrix):
+    # Instead of np.linalg - This is so much faster!!!
+    det = matrix[...,0,0]*matrix[...,1,1] - matrix[...,0,1]*matrix[...,1,0]
+    #inv = matrix.copy()
+    #inv[...,0,0] = matrix[...,1,1]
+    #inv[...,1,1] = matrix[...,0,0]
+    #inv[...,[0,1],[1,0]] *= -1
+    #inv *= 1/np.repeat(np.repeat(det[...,np.newaxis,np.newaxis], 2, axis=-1), 2, axis=-2)
+
+    inv = np.array([[matrix[...,1,1]/det, -matrix[...,0,1]/det],
+                    [-matrix[...,1,0]/det, matrix[...,0,0]/det]]).transpose(2,3,0,1)
+
+    return inv, det
 
 def bivGaussMix_iter(params, x, y):
 
@@ -1197,6 +1214,60 @@ def scipyStoch(function, params):
     params = result["x"]
 
     return params, result
+
+def emcee_opt(function, params, niter=2000, file_loc=''):
+
+    pshape =params.shape
+    foo = lambda pars: -function(pars.reshape(pshape))
+
+    nwalkers=int(params.shape[0]*2.5)
+    ndim=len(params.flatten())
+
+    p0 = np.array([initParams_revamp(params.shape[0], [-20,20],[-20,20],
+                    False,nstars=2000,runscaling=True,l_rng=[0.1, 1.])[0].flatten() for i in range(nwalkers)])
+
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, foo)
+    # Run emcee
+    _=sampler.run_mcmc(p0, niter)
+
+    sampler.chain
+
+    # Retrieve results
+    nburn = niter/2
+    burnt_values = sampler.chain[:,nburn:,:]
+    burnt_values = burnt_values.reshape(-1, burnt_values.shape[-1])
+
+    median = np.median(burnt_values, axis=0)
+
+    lp = sampler.lnprobability
+    index = np.unravel_index(np.argmax(lp), lp.shape)
+    median = sampler.chain[index[0], index[1], :]
+
+    if savefigs != '':
+        import corner
+
+        plt.figure( figsize=(10*params.shape[0], 60) )
+        axes = plt.subplots(params.shape[1], params.shape[0])
+        for i in xrange(median.shape[0]):
+            for j in xrange(median.shape[1]):
+                plt.sca(axes[i,j])
+                for k in range(nwalkers):
+                    plt.plot(np.arange(sampler.chain.shape[1]), sampler.chain[k,:,i], color="0.2", linewidth=0.1)
+                burnt = sampler.chain[...,i].flatten()
+                mean = np.mean(burnt)
+                median = np.median(burnt)
+                plt.plot([0,sampler.chain.shape[1]], [mean, mean], label='mean after burn in')
+                plt.plot([0,sampler.chain.shape[1]], [median, median], label='median after burn in')
+                plt.legend()
+                plt.title("Dimension {0:d}".format(i))
+                plt.savefig(file_loc, bbox_inches='tight')
+
+        plt.figure( figsize=(20, 20) )
+        fig = corner.corner(burnt_values, quantiles=[0.5], show_titles=True)
+        plt.savefig(file_loc, bbox_inches='tight')
+
+
+    return median, sampler
 
 
 """
@@ -1501,8 +1572,8 @@ def bivGauss_analytical_approx(params, rngx, rngy):
     # shape 2,4 - xy, corners
     corners = np.array(np.meshgrid(rngx, rngy)).reshape(2, 4)
     # shape n,2,1 - components, xy, corners
-    angle1 = np.array([np.sin(params[:,4]), np.cos(params[:,4])]).T[:,:,np.newaxis]
-    angle2 = np.array([np.sin(params[:,4]+np.pi/2), np.cos(params[:,4]+np.pi/2)]).T[:,:,np.newaxis]
+    angle1 = np.array([np.cos(params[:,4]), -np.sin(params[:,4])]).T[:,:,np.newaxis]
+    angle2 = np.array([np.sin(params[:,4]), np.cos(params[:,4])]).T[:,:,np.newaxis]
     # shape n,2,1 - components, xy, minmax
     mean = params[:,:2][:,:,np.newaxis]
 
@@ -1512,27 +1583,31 @@ def bivGauss_analytical_approx(params, rngx, rngy):
     dl2 = np.sum( (corners - mean)*angle2 , axis=1)
     # shape 2,n,4 - axes, components, corners
     dl = np.stack((dl1, dl2))
-    #print 'Dl: ', dl
+    #print 'Dl: ', dl[:,1,:]
     dl.sort(axis=2)
     # shape 2,n,2 - axes, components, extreme corners
     dl = dl[..., [0,-1]]
-    #print 'Dl minmax: ', dl
+    #print 'Dl minmax: ', dl[:,1,:]
 
     # shape 2,n,2 - axes, components, extreme corners
-    component_stds = np.repeat([params[:,2:4],], 2, axis=0).transpose(2,1,0)
-
+    component_vars = np.repeat([params[:,2:4],], 2, axis=0).transpose(2,1,0)
+    #print 'stds: ', component_vars[:,1,:]
     # Use erfc on absolute values to avoid high value precision errors
     sign = dl/np.abs(dl)
-    erfs = spec.erfc( np.abs(dl) / (np.sqrt(2) * component_stds) )
+    erfs = spec.erfc( np.abs(dl) / (np.sqrt(2)*np.sqrt(component_vars) ) )
+    #print 'erfs: ', erfs[:,1,:]
     erfs = erfs*sign
     #print 'ratio: ', dl / (np.sqrt(2) * component_stds)
     #print 'erfs: ', erfs
     #print 'sigmas: ', np.repeat([params[:,2:4],], 2, axis=0).transpose(2,1,0)
+    #print 'erfs: ', erfs[:,1,:]
 
     # Sum integral lower and upper bounds
     comp_integral = (np.abs(erfs[...,1]-erfs[...,0]) + np.abs(sign[...,0] - sign[...,1])) / 2
+    #print 'comp: ', comp_integral[:,1]
     # Product the axes of the integrals
     comp_integral = np.prod(comp_integral, axis=0)
+    #return comp_integral
     # Sum weighted Gaussian components
     integral = np.sum(comp_integral*params[:,5])
 
