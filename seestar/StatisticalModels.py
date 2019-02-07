@@ -133,6 +133,26 @@ class GaussianEM():
         y_coords = np.linspace(self.rngy_s[0], self.rngy_s[1], Ny_int)
         self.x_2d, self.y_2d = np.meshgrid(x_coords, y_coords)
 
+        if self.priorDF:
+            # Calculate Gaussian distributions from product of scaled DF and scaled star positions
+            self.params_df = self.scaleParams(self.photoDF.params_f)
+
+            norm = error_convolution(self.params_df, self.x_s, self.y_s, self.sig_xy_s)
+            norm *= self.params_df[:,5]
+
+            sigma_df = np.array([np.diag(a) for a in self.params_df[:,2:4]])
+            R = rotation(params_df[:,4])
+            sigma_df = np.matmul(R, np.matmul(sigma_df, R.transpose(0,2,1)))
+
+            mu_df = self.params_f[:,:2]
+            mu_xy_s = np.vstack((self.x_s, self.y_s)).T
+
+            mu_df_spec, sigma_df_spec = gmm_product(mu_df, mu_xy_s, sigma_df, sig_xy_s)
+
+            self.norm_df_spec = norm
+            self.sigma_df_spec = sigma_df_spec
+            self.mu_df_spec = mu_df_spec
+
     def __call__(self, x, y, components=None):
 
         '''
@@ -511,9 +531,11 @@ class GaussianEM():
 
         # If the DF has already been calculated, directly optimize the SF
         if self.priorDF:
-            full_params = GMM_product(self.scale_params(self.photoDF.params_f), params)
-            function = lambda a, b: self.photoDF(*(a,b)) * self.distribution(params, a, b)
-            model = self.photoDF( self.x, self.y ) * error_convolution(params, self.x_s, self.y_s, self.sig_xy_s)
+            function = lambda a, b: self.distribution(self.params_df, a, b) \
+                                    * self.distribution(params, a, b)
+            model = self.norm_df_spec*error_convolution(params, self.mu_df_spec[:,0], self.mu_df_spec[:,1], self.sig_df_spec)
+            params = gmm_product_p(params, self.params_df)
+
         else:
             function = lambda a, b: self.distribution(params, a, b)
             model = error_convolution(params, self.x_s, self.y_s, self.sig_xy_s)
@@ -822,16 +844,17 @@ def initParams_revamp(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=Tru
     th_i = np.random.rand(nComponents) * np.pi
 
     # Weights sum to 1
-    w_i = np.random.rand(nComponents)*2/nComponents# + .1 / nComponents
-    w_l = 0
-    w_u = np.inf
-    if not priorDF: w_i *= nstars
+    w_l = 1./(2.5*nComponents) # 5 arbitrarily chosen
+    w_i = np.random.rand(nComponents)*(2./nComponents - w_l) + w_l
+    w_u = 10. # Arbitrarily chosen
+    if not priorDF:
+        w_l *= nstars
+        w_i *= nstars
+        w_u *= nstars
 
     # Lower and upper bounds on parameters
     # Mean at edge of range
-    mux_l, mux_u = -np.inf, np.inf
     mux_l, mux_u = rngx[0], rngx[1]
-    muy_l, muy_u = -np.inf, np.inf
     muy_l, muy_u = rngy[0], rngy[1]
     # Zero standard deviation to inf
     l1_l, l2_l = l_min, l_min
@@ -1150,11 +1173,54 @@ def inverse2x2(matrix):
     #inv[...,1,1] = matrix[...,0,0]
     #inv[...,[0,1],[1,0]] *= -1
     #inv *= 1/np.repeat(np.repeat(det[...,np.newaxis,np.newaxis], 2, axis=-1), 2, axis=-2)
-
     inv = np.array([[matrix[...,1,1]/det, -matrix[...,0,1]/det],
                     [-matrix[...,1,0]/det, matrix[...,0,0]/det]]).transpose(2,3,0,1)
 
     return inv, det
+def gmm_product(mu1, mu2, sig1, sig2):
+
+    sig1 = sig1[np.newaxis, ...]
+    mu1 = mu1[np.newaxis, ...]
+    sig2 = sig2[:, np.newaxis, ...]
+    m2 = m2[:, np.newaxis, ...]
+
+    sig1_i = inverse2x2(sig1)[0]
+    sig2_i = inverse2x2(sig2)[0]
+
+    sig3 = inverse2x2(sig_1_i + sig_2_i)[0]
+    mu3 = np.einsum('nmij, nmj -> nmi', np.matmul(sig3, sig1_i), mu1) + \
+        np.einsum('nmij, nmj -> nmi', np.matmul(sig3, sig2_i), mu2)
+
+    return mu3, sig3
+def gmm_product_p(params1, params2):
+
+    sig1 = np.array([np.diag(a) for a in params1[:,2:4]])
+    R = rotation(params1[:,4])
+    sig1 = np.matmul(R, np.matmul(sig1, R.transpose(0,2,1)))
+
+    sig2 = np.array([np.diag(a) for a in params1[:,2:4]])
+    R = rotation(params1[:,4])
+    sig2 = np.matmul(R, np.matmul(sig2, R.transpose(0,2,1)))
+
+    mu1 = params1[:,:2]
+    mu2 = params2[:,:2]
+
+    mu3, sig3 = gmm_product(mu1, mu2, sig1, sig2)
+
+    sig_norm_i, sig_norm_det = inverse2x2(sig1+sig2)
+    mu_norm = mu1-mu2
+    exponent = -np.sum(mu_norm * np.sum(sig_norm_i.transpose(2,0,1,3)*mu_norm, axis=3).transpose(1,2,0), axis=2) / 2
+    norm = 1/( 2*np.pi*np.sqrt(sig_norm_det) )
+    cij = norm*np.exp(exponent)
+
+    w3 = params1[:,[5]]*params2[:,[5]]*cij
+
+    eigvals, eigvecs = np.linalg.eig(sigma_product)
+    th3 = np.arctan2(eigvecs[:,0,1], eigvecs[:,0,0])[:,np.newaxis]
+
+    params3 = np.concatenate((mu3t, eigvals, th3, w3), axis=1)
+
+    return params3
 
 def bivGaussMix_iter(params, x, y):
 
