@@ -356,6 +356,10 @@ class GaussianEM():
                 initParams_revamp(self.nComponents, self.rngx_s, self.rngy_s, self.priorDF,
                                 nstars=len(self.x_s), runscaling=self.runscaling, l_min=self.s_min)
             self.param_shape = self.params_i.shape
+            self.params_i = kmeans(np.vstack((self.x_s, self.y_s)).T, self.nComponents)
+            self.params_i = self.params_i[self.params_i[:,0].argsort()]
+            self.params_i[self.params_i<self.params_l] = self.params_l[self.params_i<self.params_l]*2
+            print(self.params_i)
             lnp = self.lnprob(self.params_i)
             finite = np.isfinite(lnp)
             a+=1
@@ -1363,6 +1367,32 @@ def emcee_opt(function, params, niter=2000, file_loc=''):
 
     return median, sampler
 
+def kmeans(sample, nComponents, n_iter=10, max_iter=100):
+
+    params = np.zeros((nComponents, 6))
+    from sklearn.cluster import KMeans
+
+    kmc = KMeans(nComponents, n_init=n_iter, max_iter=max_iter)
+    kmc.fit(sample)
+
+    means = kmc.cluster_centers_
+
+    s0 = sample[kmc.labels_==0]
+    for i in xrange(nComponents):
+        sample_i = sample[kmc.labels_==i]
+        delta = sample_i - means[i]
+        sigma = np.matmul(delta.T, delta)/delta.shape[0]
+
+        eigvals, eigvecs = np.linalg.eig(sigma)
+        theta = np.arctan2(eigvecs[0,1], eigvecs[0,0])
+        eigvals.sort()
+        if theta<0: theta+=np.pi
+
+        weight = sample_i.shape[0]
+
+        params[i,:] = np.array([means[i,0], means[i,1], eigvals[0], eigvals[1], theta, weight])
+
+    return params
 
 """
 INTEGRATION ROUTINES
