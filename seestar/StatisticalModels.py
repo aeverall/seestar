@@ -102,8 +102,8 @@ class GaussianEM():
         # Not run when loading class from dictionary
         if runscaling:
             # Real space parameters
-            self.x = x
-            self.y = y
+            self.x = x.copy()
+            self.y = y.copy()
             self.rngx, self.rngy = rngx, rngy
             # Statistics for feature scaling
             if len(x)>1:
@@ -128,7 +128,7 @@ class GaussianEM():
         # Print out likelihood values as calculated
         self.runningL = runningL
 
-        Nx_int, Ny_int = (100, 100)
+        Nx_int, Ny_int = (250,250)
         x_coords = np.linspace(self.rngx_s[0], self.rngx_s[1], Nx_int)
         y_coords = np.linspace(self.rngy_s[0], self.rngy_s[1], Ny_int)
         self.x_2d, self.y_2d = np.meshgrid(x_coords, y_coords)
@@ -444,7 +444,7 @@ class GaussianEM():
             optimizer = method
         kwargs = {'method':method, 'bounds':bounds}
         # result is the set of theta parameters which optimize the likelihood given x, y, yerr
-        params, self.output = optimizer(self.nll, params)
+        params, self.output = optimizer(self.nll, params)#, pl = self.params_l[0,:], pu = self.params_u[0,:])
         params = params.reshape(self.param_shape)
         # Potential to use scikit optimize
         #bounds = list(zip(self.params_l.ravel(), self.params_u.ravel()))
@@ -511,11 +511,13 @@ class GaussianEM():
 
         # If the DF has already been calculated, directly optimize the SF
         if self.priorDF:
+            full_params = GMM_product(self.scale_params(self.photoDF.params_f), params)
             function = lambda a, b: self.photoDF(*(a,b)) * self.distribution(params, a, b)
-            model = self.photoDF( self.x_s, self.y_s ) * error_convolution(params, self.x_s, self.y_s, self.sig_xy_s)
+            model = self.photoDF( self.x, self.y ) * error_convolution(params, self.x_s, self.y_s, self.sig_xy_s)
         else:
             function = lambda a, b: self.distribution(params, a, b)
             model = error_convolution(params, self.x_s, self.y_s, self.sig_xy_s)
+            #model = self.distribution(params, self.x_s, self.y_s)
 
         # Point component of poisson log likelihood: contPoints \sum(\lambda(x_i))
         #model = function(*(self.x_s, self.y_s))
@@ -580,11 +582,20 @@ class GaussianEM():
     def scaleParams(self, params_in):
 
         params = params_in.copy()
-        print(params, self.mux, self.muy)
-        print(params[:,[0,1]] -  [self.mux, self.muy]) / np.array([self.sx, self.sy])
         params[:,[0,1]] = (params[:,[0,1]] -  [self.mux, self.muy]) / np.array([self.sx, self.sy])
-        params[:,[2,3]] *= 1/np.array([self.sx**2, self.sy**2])
-        print(params)
+
+        sigma = np.array([np.diag(a) for a in params[:,2:4]])
+        R = rotation(params[:,4])
+        sigma = np.matmul(R, np.matmul(sigma, R.transpose(0,2,1)))
+
+        sigma[:,[0,1],[0,1]] *= 1/np.array([self.sx**2, self.sy**2])
+        sigma[:,[0,1],[1,0]] *= 1/(self.sx*self.sy)
+
+        eigvals, eigvecs = np.linalg.eig(sigma)
+        #np.argmin(eigvecs, axis=1)
+        th = np.arctan2(eigvecs[:,0,1], eigvecs[:,0,0])
+        params[:,[2,3]] = np.sort(eigvals, axis=1)
+        params[:,4] = th
 
         return params
 
@@ -592,7 +603,20 @@ class GaussianEM():
 
         params = params_in.copy()
         params[:,[0,1]] = (params[:,[0,1]] * np.array([self.sx, self.sy])) +  [self.mux, self.muy]
-        params[:,[2,3]] *= np.array([self.sx**2, self.sy**2])
+        #params[:,[2,3]] *= np.array([self.sx**2, self.sy**2])
+
+        sigma = np.array([np.diag(a) for a in params[:,2:4]])
+        R = rotation(params[:,4])
+        sigma = np.matmul(R, np.matmul(sigma, R.transpose(0,2,1)))
+
+        sigma[:,[0,1],[0,1]] *= np.array([self.sx**2, self.sy**2])
+        sigma[:,[0,1],[1,0]] *= self.sx*self.sy
+
+        eigvals, eigvecs = np.linalg.eig(sigma)
+        #np.argmin(eigvecs, axis=1)
+        th = np.arctan2(eigvecs[:,0,1], eigvecs[:,0,0])
+        params[:,[2,3]] = np.sort(eigvals, axis=1)
+        params[:,4] = th
 
         return params
 
@@ -791,14 +815,14 @@ def initParams_revamp(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=Tru
 
     # Generate initial covariance matrix
     l1_i, l2_i = np.sort(np.random.rand(2, nComponents), axis=0)
-    l1_i = l1_i * np.min((rngx[1]-rngx[0], rngy[1]-rngy[0])) * 10 + l_min
-    l2_i = l2_i * np.min((rngx[1]-rngx[0], rngy[1]-rngy[0])) * 10 + l_min
+    l1_i = l1_i * np.min((rngx[1]-rngx[0], rngy[1]-rngy[0])) * 5 + l_min
+    l2_i = l2_i * np.min((rngx[1]-rngx[0], rngy[1]-rngy[0])) * 5 + l_min
 
     # Initialise thetas
     th_i = np.random.rand(nComponents) * np.pi
 
     # Weights sum to 1
-    w_i = np.random.rand(nComponents)/nComponents + .1 / nComponents
+    w_i = np.random.rand(nComponents)*2/nComponents# + .1 / nComponents
     w_l = 0
     w_u = np.inf
     if not priorDF: w_i *= nstars
@@ -806,11 +830,14 @@ def initParams_revamp(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=Tru
     # Lower and upper bounds on parameters
     # Mean at edge of range
     mux_l, mux_u = -np.inf, np.inf
+    mux_l, mux_u = rngx[0], rngx[1]
     muy_l, muy_u = -np.inf, np.inf
+    muy_l, muy_u = rngy[0], rngy[1]
     # Zero standard deviation to inf
     l1_l, l2_l = l_min, l_min
-    l1_u, l2_u = np.inf, np.inf #l_rng[1], l_rng[1] #rngx[1]-rngx[0], rngy[1]-rngy[0]
-    # Covariance must be in range -1., 1.
+    l1_u, l2_u = np.min((rngx[1]-rngx[0], rngy[1]-rngy[0]))*30, np.max((rngx[1]-rngx[0], rngy[1]-rngy[0]))*30
+    #, np.inf, np.inf #l_rng[1], l_rng[1] #
+
     th_l, th_u = 0, np.pi
 
 
@@ -818,7 +845,7 @@ def initParams_revamp(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=Tru
     params_l = np.repeat([[mux_l, muy_l, l1_l, l2_l, th_l, w_l],], nComponents, axis=0)
     params_u = np.repeat([[mux_u, muy_u, l1_u, l2_u, th_u, w_u],], nComponents, axis=0)
 
-    params_i = params_i[params_i[:,3].argsort()]
+    params_i = params_i[params_i[:,0].argsort()]
 
     return params_i, params_l, params_u
 
@@ -888,7 +915,8 @@ def prior_multim(params):
     # Removes degeneracy between eigenvalue and angle
     l_order = np.sum(params[:,2]>params[:,3])
     # Prior on order of components.
-    comp_order = np.sum( np.argsort(params[:,3]) != np.arange(params.shape[0]) )
+    comp_order = np.sum( np.argsort(params[:,0]) != np.arange(params.shape[0]) )
+    #comp_order=0
     prior = l_order+comp_order == 0
 
     return prior
@@ -1577,33 +1605,33 @@ def bivGauss_analytical_approx(params, rngx, rngy):
     # shape n,2,1 - components, xy, minmax
     mean = params[:,:2][:,:,np.newaxis]
 
+    #print 'Delta', corners-mean
+
     #print 'Corners: ', corners
     # shape n,4 - components, corners
     dl1 = np.sum( (corners - mean)*angle1 , axis=1)
     dl2 = np.sum( (corners - mean)*angle2 , axis=1)
     # shape 2,n,4 - axes, components, corners
     dl = np.stack((dl1, dl2))
-    #print 'Dl: ', dl[:,1,:]
+    #print 'Dl: ', dl[:,0,:]
     dl.sort(axis=2)
     # shape 2,n,2 - axes, components, extreme corners
     dl = dl[..., [0,-1]]
-    #print 'Dl minmax: ', dl[:,1,:]
+    #print 'Dl minmax: ', dl
 
     # shape 2,n,2 - axes, components, extreme corners
     component_vars = np.repeat([params[:,2:4],], 2, axis=0).transpose(2,1,0)
-    #print 'stds: ', component_vars[:,1,:]
+    #print 'vars: ', component_vars
     # Use erfc on absolute values to avoid high value precision errors
-    sign = dl/np.abs(dl)
-    erfs = spec.erfc( np.abs(dl) / (np.sqrt(2)*np.sqrt(component_vars) ) )
-    #print 'erfs: ', erfs[:,1,:]
-    erfs = erfs*sign
+    erfs = spec.erfc( dl / (np.sqrt(2)*np.sqrt(component_vars) ) )
+    #print 'erfs: ', erfs
     #print 'ratio: ', dl / (np.sqrt(2) * component_stds)
     #print 'erfs: ', erfs
     #print 'sigmas: ', np.repeat([params[:,2:4],], 2, axis=0).transpose(2,1,0)
     #print 'erfs: ', erfs[:,1,:]
 
     # Sum integral lower and upper bounds
-    comp_integral = (np.abs(erfs[...,1]-erfs[...,0]) + np.abs(sign[...,0] - sign[...,1])) / 2
+    comp_integral = np.abs(erfs[...,1]-erfs[...,0]) / 2
     #print 'comp: ', comp_integral[:,1]
     # Product the axes of the integrals
     comp_integral = np.prod(comp_integral, axis=0)
