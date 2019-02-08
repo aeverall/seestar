@@ -66,7 +66,8 @@ class GaussianEM():
     '''
 
     def __init__(self, x=np.array(0), y=np.array(0), sig_xy=None,
-                nComponents=0, rngx=(0,1), rngy=(0,1), runscaling=True, runningL=True, s_min=0.1):
+                nComponents=0, rngx=(0,1), rngy=(0,1), runscaling=True, runningL=True, s_min=0.1,
+                photoDF=None, priorDF=False):
 
         # Iteration number to update
         self.iter_count = 0
@@ -75,8 +76,8 @@ class GaussianEM():
         self.modelname = self.__class__.__name__
 
         # Distribution from photometric survey for calculation of SF
-        self.photoDF = None
-        self.priorDF = False
+        self.photoDF = photoDF
+        self.priorDF = priorDF
 
         # Number of components of distribution
         self.nComponents = nComponents
@@ -136,7 +137,9 @@ class GaussianEM():
         if self.priorDF:
             # Calculate Gaussian distributions from product of scaled DF and scaled star positions
             self.params_df = self.scaleParams(self.photoDF.params_f)
+            self.ndf = len(self.photoDF.x)
 
+            """
             norm = error_convolution(self.params_df, self.x_s, self.y_s, self.sig_xy_s)
             norm *= self.params_df[:,5]
 
@@ -151,7 +154,8 @@ class GaussianEM():
 
             self.norm_df_spec = norm
             self.sigma_df_spec = sigma_df_spec
-            self.mu_df_spec = mu_df_spec
+            self.mu_df_spec = mu_df_spec"""
+        else: self.ndf = None
 
     def __call__(self, x, y, components=None):
 
@@ -354,12 +358,16 @@ class GaussianEM():
         while not finite:
             self.params_i, self.params_l, self.params_u = \
                 initParams_revamp(self.nComponents, self.rngx_s, self.rngy_s, self.priorDF,
-                                nstars=len(self.x_s), runscaling=self.runscaling, l_min=self.s_min)
+                                nstars=len(self.x_s), ndf=self.ndf, runscaling=self.runscaling, l_min=self.s_min)
             self.param_shape = self.params_i.shape
-            self.params_i = kmeans(np.vstack((self.x_s, self.y_s)).T, self.nComponents)
+            if not self.priorDF: params_km = kmeans(np.vstack((self.x_s, self.y_s)).T, self.nComponents)
+            elif self.priorDF:
+                weights = 1/self.distribution(self.params_df, self.x_s, self.y_s)
+                params_km = kmeans(np.vstack((self.x_s, self.y_s)).T, self.nComponents, weights=weights, ndf=self.ndf)
+            self.params_i[:,[0,1,5]] = params_km[:,[0,1,5]]
             self.params_i = self.params_i[self.params_i[:,0].argsort()]
-            self.params_i[self.params_i<self.params_l] = self.params_l[self.params_i<self.params_l]*2
-            print(self.params_i)
+            self.params_i[self.params_i<self.params_l] = self.params_l[self.params_i<self.params_l]*1.01
+            print 'params_i', self.params_i
             lnp = self.lnprob(self.params_i)
             finite = np.isfinite(lnp)
             a+=1
@@ -537,9 +545,10 @@ class GaussianEM():
         if self.priorDF:
             function = lambda a, b: self.distribution(self.params_df, a, b) \
                                     * self.distribution(params, a, b)
-            model = self.norm_df_spec*error_convolution(params, self.mu_df_spec[:,0], self.mu_df_spec[:,1], self.sig_df_spec)
+            #model = self.norm_df_spec*error_convolution(params, self.mu_df_spec[:,0], self.mu_df_spec[:,1], self.sig_df_spec)
             params = gmm_product_p(params, self.params_df)
-
+            params = params.reshape(-1, params.shape[-1])
+            model = error_convolution(params, self.x_s, self.y_s, self.sig_xy_s)
         else:
             function = lambda a, b: self.distribution(params, a, b)
             model = error_convolution(params, self.x_s, self.y_s, self.sig_xy_s)
@@ -629,7 +638,6 @@ class GaussianEM():
 
         params = params_in.copy()
         params[:,[0,1]] = (params[:,[0,1]] * np.array([self.sx, self.sy])) +  [self.mux, self.muy]
-        #params[:,[2,3]] *= np.array([self.sx**2, self.sy**2])
 
         sigma = np.array([np.diag(a) for a in params[:,2:4]])
         R = rotation(params[:,4])
@@ -639,9 +647,14 @@ class GaussianEM():
         sigma[:,[0,1],[1,0]] *= self.sx*self.sy
 
         eigvals, eigvecs = np.linalg.eig(sigma)
-        #np.argmin(eigvecs, axis=1)
+
+        i = eigvals.argsort(axis=1)
+        j = np.repeat([np.arange(eigvals.shape[0]),], eigvals.shape[1], axis=0).T
+        eigvecs = eigvecs[j, i, :]
+        eigvals = eigvals[j, i]
+
+        params[:,[2,3]] = eigvals #np.sort(eigvals, axis=1)
         th = np.arctan2(eigvecs[:,0,1], eigvecs[:,0,0])
-        params[:,[2,3]] = np.sort(eigvals, axis=1)
         params[:,4] = th
 
         return params
@@ -805,7 +818,7 @@ def initParams(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=True):
 
     return params_i, params_l, params_u
 
-def initParams_revamp(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=True, l_min=0.1):
+def initParams_revamp(nComponents, rngx, rngy, priorDF, nstars=1, ndf=None, runscaling=True, l_min=0.1):
 
     '''
     initParams - Specify the initial parameters for the Gaussian mixture model as well as
@@ -833,12 +846,16 @@ def initParams_revamp(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=Tru
             - upper bounds on the values of GMM parameters
     '''
 
+
     # Initial guess parameters for a bivariate Gaussian
     # Randomly initialise mean between -1 and 1
     mux_i, muy_i = np.random.rand(2, nComponents)
     mux_i = mux_i * (rngx[1]-rngx[0]) + rngx[0]
     muy_i = muy_i * (rngy[1]-rngy[0]) + rngy[0]
 
+    # l_min to allow erf calculation:
+    half_diag = np.sqrt((rngx[1]-rngx[0])**2 + (rngy[1]-rngy[0])**2)/2
+    l_min = max(half_diag*np.sqrt(2)/24, np.min((rngx[1]-rngx[0], rngy[1]-rngy[0]))/10)
     # Generate initial covariance matrix
     l1_i, l2_i = np.sort(np.random.rand(2, nComponents), axis=0)
     l1_i = l1_i * np.min((rngx[1]-rngx[0], rngy[1]-rngy[0])) * 5 + l_min
@@ -851,6 +868,9 @@ def initParams_revamp(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=Tru
     w_l = 1./(2.5*nComponents) # 5 arbitrarily chosen
     w_i = np.random.rand(nComponents)*(2./nComponents - w_l) + w_l
     w_u = 10. # Arbitrarily chosen
+    if priorDF:
+        w_l *= float(nstars)/ndf
+        w_i *= float(nstars)/ndf
     if not priorDF:
         w_l *= nstars
         w_i *= nstars
@@ -945,6 +965,7 @@ def prior_multim(params):
     comp_order = np.sum( np.argsort(params[:,0]) != np.arange(params.shape[0]) )
     #comp_order=0
     prior = l_order+comp_order == 0
+    #print 'order: ', l_order, comp_order
 
     return prior
 
@@ -971,7 +992,7 @@ def prior_erfprecision(params, rngx, rngy):
 
     separation = np.abs(dl) / (np.sqrt(2) * component_stds)
 
-    if np.sum(separation>20) > 0: return False
+    if np.sum(separation>25) > 0: return False
     else: return True
 
 
@@ -1120,9 +1141,13 @@ def bivGaussMix_vect_revamp(params, x, y):
     X = np.moveaxis(np.repeat([X,], mu.shape[-2], axis=0), 0, -2) - mu
 
     # X^T * Sigma
-    X_cov = np.einsum('mnj, njk -> mnk', X, inv_cov)
+    X_ext = X[...,np.newaxis]
+    inv_cov = inv_cov[np.newaxis,...]
+    X_cov = X_ext*inv_cov
+    X_cov = X_cov[...,0,:]+X_cov[...,1,:]
     # X * Sigma * X
-    X_cov_X = np.einsum('mnk, mnk -> mn', X_cov, X)
+    X_cov_X = X_cov*X
+    X_cov_X = X_cov_X[:,:,0]+X_cov_X[:,:,1]
     # Exponential
     e = np.exp(-X_cov_X/2)
 
@@ -1132,10 +1157,9 @@ def bivGaussMix_vect_revamp(params, x, y):
 
     p = np.sum(weight*norm*e, axis=-1)
 
-    if np.sum(np.isnan(p))>0: print(params)
+    #if np.sum(np.isnan(p))>0: print(params)
 
     return p.reshape(shape)
-
 def error_convolution(params, x, y, sig_xy):
 
     shape = x.shape
@@ -1183,17 +1207,21 @@ def inverse2x2(matrix):
     return inv, det
 def gmm_product(mu1, mu2, sig1, sig2):
 
-    sig1 = sig1[np.newaxis, ...]
-    mu1 = mu1[np.newaxis, ...]
-    sig2 = sig2[:, np.newaxis, ...]
-    m2 = m2[:, np.newaxis, ...]
-
     sig1_i = inverse2x2(sig1)[0]
     sig2_i = inverse2x2(sig2)[0]
+    sig3 = inverse2x2(sig1_i + sig2_i)[0]
 
-    sig3 = inverse2x2(sig_1_i + sig_2_i)[0]
-    mu3 = np.einsum('nmij, nmj -> nmi', np.matmul(sig3, sig1_i), mu1) + \
-        np.einsum('nmij, nmj -> nmi', np.matmul(sig3, sig2_i), mu2)
+    mu1 = np.repeat(mu1, mu2.shape[0], axis=0)[...,np.newaxis]
+    mu2 = np.repeat(mu2, mu1.shape[1], axis=1)[...,np.newaxis]
+    mu1 = np.repeat(mu1, 2, axis=3)
+    mu2 = np.repeat(mu2, 2, axis=3)
+
+    #mu3 = np.einsum('nmij, nmj -> nmi', np.matmul(sig3, sig1_i), mu1) + \
+        #        np.einsum('nmij, nmj -> nmi', np.matmul(sig3, sig2_i), mu2)
+
+    mu3 = np.matmul(np.matmul(sig3, sig1_i), mu1, out=np.zeros(sig3.shape)) + \
+        np.matmul(np.matmul(sig3, sig2_i), mu2, out=np.zeros(sig3.shape))
+    mu3 = mu3[...,0]
 
     return mu3, sig3
 def gmm_product_p(params1, params2):
@@ -1202,13 +1230,17 @@ def gmm_product_p(params1, params2):
     R = rotation(params1[:,4])
     sig1 = np.matmul(R, np.matmul(sig1, R.transpose(0,2,1)))
 
-    sig2 = np.array([np.diag(a) for a in params1[:,2:4]])
-    R = rotation(params1[:,4])
+    sig2 = np.array([np.diag(a) for a in params2[:,2:4]])
+    R = rotation(params2[:,4])
     sig2 = np.matmul(R, np.matmul(sig2, R.transpose(0,2,1)))
 
     mu1 = params1[:,:2]
     mu2 = params2[:,:2]
 
+    sig1 = sig1[np.newaxis, ...]
+    sig2 = sig2[:, np.newaxis, ...]
+    mu1 = mu1[np.newaxis, ...]
+    mu2 = mu2[:, np.newaxis, ...]
     mu3, sig3 = gmm_product(mu1, mu2, sig1, sig2)
 
     sig_norm_i, sig_norm_det = inverse2x2(sig1+sig2)
@@ -1217,12 +1249,15 @@ def gmm_product_p(params1, params2):
     norm = 1/( 2*np.pi*np.sqrt(sig_norm_det) )
     cij = norm*np.exp(exponent)
 
-    w3 = params1[:,[5]]*params2[:,[5]]*cij
+    w1 = params1[:,[5]][np.newaxis, ...]
+    w2 = params2[:,[5]][:, np.newaxis, ...]
+    cij = cij[..., np.newaxis]
+    w3 = w1*w2*cij
 
-    eigvals, eigvecs = np.linalg.eig(sigma_product)
-    th3 = np.arctan2(eigvecs[:,0,1], eigvecs[:,0,0])[:,np.newaxis]
+    eigvals, eigvecs = np.linalg.eig(sig3)
+    th3 = np.arctan2(eigvecs[...,0,1], eigvecs[...,0,0])[...,np.newaxis]
 
-    params3 = np.concatenate((mu3t, eigvals, th3, w3), axis=1)
+    params3 = np.concatenate((mu3, eigvals, th3, w3), axis=2)
 
     return params3
 
@@ -1367,13 +1402,16 @@ def emcee_opt(function, params, niter=2000, file_loc=''):
 
     return median, sampler
 
-def kmeans(sample, nComponents, n_iter=10, max_iter=100):
+def kmeans(sample, nComponents, n_iter=10, max_iter=100, weights=None, ndf=None):
+
+    weighted_kde = not weights is None
+    if weights is None: weights=np.ones(len(sample))
 
     params = np.zeros((nComponents, 6))
     from sklearn.cluster import KMeans
 
     kmc = KMeans(nComponents, n_init=n_iter, max_iter=max_iter)
-    kmc.fit(sample)
+    kmc.fit(sample, sample_weight=weights)
 
     means = kmc.cluster_centers_
 
@@ -1384,13 +1422,17 @@ def kmeans(sample, nComponents, n_iter=10, max_iter=100):
         sigma = np.matmul(delta.T, delta)/delta.shape[0]
 
         eigvals, eigvecs = np.linalg.eig(sigma)
+        eigvecs = eigvecs[np.argsort(eigvals),:]
+        eigvals = np.sort(eigvals)
         theta = np.arctan2(eigvecs[0,1], eigvecs[0,0])
-        eigvals.sort()
         if theta<0: theta+=np.pi
 
-        weight = sample_i.shape[0]
+        if not weighted_kde: w = sample_i.shape[0]
+        else:
+            w = np.sum(weights[kmc.labels_==i])/np.sum(weights)
+            w *= float(sample.shape[0])/ndf
 
-        params[i,:] = np.array([means[i,0], means[i,1], eigvals[0], eigvals[1], theta, weight])
+        params[i,:] = np.array([means[i,0], means[i,1], eigvals[0], eigvals[1], theta, w])
 
     return params
 
@@ -1440,6 +1482,7 @@ def integrationRoutine(function, param_set, nComponents, rngx, rngy, x_2d, y_2d,
     elif integration == "cubature":
         contInteg, err = cubature(func2d, 2, 1, (rngx[0], rngy[0]), (rngx[1], rngy[1]))
         contInteg = float(contInteg)
+    else: raise ValueError('No integration routine "%s"' % integration)
 
     return contInteg
 
