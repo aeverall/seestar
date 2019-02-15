@@ -21,6 +21,7 @@ import scipy.interpolate as interp
 import scipy.integrate as integrate
 import scipy.optimize as op
 import scipy.special as spec
+import emcee
 #from skopt import gp_minimize
 import sys, os, time
 from mpmath import *
@@ -334,7 +335,7 @@ class GaussianEM():
 
         return params
 
-    def optimizeParams(self, method="Powell"):
+    def optimizeParams(self, method="Powell", init="random"):
 
         '''
         optimizeParams - Initialise and optimize parameters of Gaussian mixture model.
@@ -354,21 +355,32 @@ class GaussianEM():
         # Set initial parameters
         finite = False
         a = 0
+        print 'init, ', init
 
         while not finite:
-            self.params_i, self.params_l, self.params_u = \
-                initParams_revamp(self.nComponents, self.rngx_s, self.rngy_s, self.priorDF,
-                                nstars=len(self.x_s), ndf=self.ndf, runscaling=self.runscaling, l_min=self.s_min)
-            self.param_shape = self.params_i.shape
-            if not self.priorDF: params_km = kmeans(np.vstack((self.x_s, self.y_s)).T, self.nComponents)
-            elif self.priorDF:
-                weights = 1/self.distribution(self.params_df, self.x_s, self.y_s)
-                params_km = kmeans(np.vstack((self.x_s, self.y_s)).T, self.nComponents, weights=weights, ndf=self.ndf)
-            self.params_i[:,[0,1,5]] = params_km[:,[0,1,5]]
-            self.params_i = self.params_i[self.params_i[:,0].argsort()]
-            self.params_i[self.params_i<self.params_l] = self.params_l[self.params_i<self.params_l]*1.01
-            print 'params_i', self.params_i
-            lnp = self.lnprob(self.params_i)
+            if not init=="reset":
+                self.params_i, self.params_l, self.params_u = \
+                    initParams_revamp(self.nComponents, self.rngx_s, self.rngy_s, self.priorDF,
+                                    nstars=len(self.x_s), ndf=self.ndf, runscaling=self.runscaling, l_min=self.s_min)
+            if init=="kmeans":
+                # K-Means clustering of initialisation
+                if not self.priorDF: params_km = kmeans(np.vstack((self.x_s, self.y_s)).T, self.nComponents)
+                elif self.priorDF:
+                    weights = 1/self.distribution(self.params_df, self.x_s, self.y_s)
+                    params_km = kmeans(np.vstack((self.x_s, self.y_s)).T, self.nComponents, weights=weights, ndf=self.ndf)
+                self.params_i[:,[0,1,5]] = params_km[:,[0,1,5]]
+                self.params_i[self.params_i<self.params_l] = self.params_l[self.params_i<self.params_l]*1.01
+                self.params_i = self.params_i[self.params_i[:,0].argsort()]
+
+            if init=='reset':
+                # Using current final parameters to initialise parameters
+                params = self.params_f_scaled
+            else:
+                params = self.params_i.copy()
+
+            print 'initial parameters', params
+            self.param_shape = params.shape
+            lnp = self.lnprob(params)
             finite = np.isfinite(lnp)
             a+=1
             if a%3==0:
@@ -379,8 +391,6 @@ class GaussianEM():
                         prior_multim(self.params_i),\
                         prior_erfprecision(self.params_i, self.rngx_s, self.rngy_s), \
                         len(self.x_s)
-
-        params = self.params_i
 
         # Test runs different versions of the optimizer to find the best.
         test=False
@@ -428,10 +438,11 @@ class GaussianEM():
             if self.runningL: print("\n %s: lnprob=%.0f, time=%d" % (method, self.lnprob(paramsOP), time.time()-start))
             params=paramsOP
 
-        self.params_f_scaled = params.copy()
-        if self.runscaling: params = self.unscaleParams(params)
-        # Save evaluated parameters to internal values
-        self.params_f = params.copy()
+        if not method=='emceeBall':
+            self.params_f_scaled = params.copy()
+            if self.runscaling: params = self.unscaleParams(params)
+            # Save evaluated parameters to internal values
+            self.params_f = params.copy()
 
         return params
 
@@ -471,11 +482,16 @@ class GaussianEM():
             if method=='Stoch': optimizer = scipyStoch
             elif method=='Powell': optimizer = scipyOpt
             elif method=='Anneal': optimizer = scipyAnneal
+            elif method=='emceeBall': optimizer = lambda a, b: emcee_ball(a, b, params_l=self.params_l, params_u=self.params_u)
             else: raise ValueError('Name of method not recognised.')
         else:
             optimizer = method
         kwargs = {'method':method, 'bounds':bounds}
         # result is the set of theta parameters which optimize the likelihood given x, y, yerr
+        test = self.nll(params)
+        print ''
+        print 'Init  lnl: ', test
+        print ''
         params, self.output = optimizer(self.nll, params)#, pl = self.params_l[0,:], pu = self.params_u[0,:])
         params = params.reshape(self.param_shape)
         # Potential to use scikit optimize
@@ -855,17 +871,21 @@ def initParams_revamp(nComponents, rngx, rngy, priorDF, nstars=1, ndf=None, runs
 
     # l_min to allow erf calculation:
     half_diag = np.sqrt((rngx[1]-rngx[0])**2 + (rngy[1]-rngy[0])**2)/2
-    l_min = max(half_diag*np.sqrt(2)/24, np.min((rngx[1]-rngx[0], rngy[1]-rngy[0]))/10)
+    #l_min = min(half_diag*np.sqrt(2)/24, np.min((rngx[1]-rngx[0], rngy[1]-rngy[0]))/10)
+    #l_min = 0.01
+    if priorDF: l_min = np.sqrt((rngx[1]-rngx[0])*(rngy[1]-rngy[0])/nstars)
+    if not priorDF: l_min = np.sqrt((rngx[1]-rngx[0])*(rngy[1]-rngy[0])/nstars)/10
+    #l_min = half_diag/4
     # Generate initial covariance matrix
     l1_i, l2_i = np.sort(np.random.rand(2, nComponents), axis=0)
-    l1_i = l1_i * np.min((rngx[1]-rngx[0], rngy[1]-rngy[0])) * 5 + l_min
-    l2_i = l2_i * np.min((rngx[1]-rngx[0], rngy[1]-rngy[0])) * 5 + l_min
+    l1_i = l1_i * half_diag + l_min
+    l2_i = l2_i * half_diag + l_min
 
     # Initialise thetas
     th_i = np.random.rand(nComponents) * np.pi
 
     # Weights sum to 1
-    w_l = 1./(2.5*nComponents) # 5 arbitrarily chosen
+    w_l = 1./(5*nComponents) # 5 arbitrarily chosen
     w_i = np.random.rand(nComponents)*(2./nComponents - w_l) + w_l
     w_u = 10. # Arbitrarily chosen
     if priorDF:
@@ -1399,6 +1419,52 @@ def emcee_opt(function, params, niter=2000, file_loc=''):
         fig = corner.corner(burnt_values, quantiles=[0.5], show_titles=True)
         plt.savefig(file_loc, bbox_inches='tight')
 
+
+    return median, sampler
+
+def emcee_ball(function, params, params_l=None, params_u=None):
+
+    pshape =params.shape
+    foo = lambda pars: -function(pars.reshape(pshape))
+
+    niter=100
+    ndim=len(params.flatten())
+    nwalkers=ndim*2
+
+    p0 = np.repeat([params,], nwalkers, axis=0)
+    p0 = np.random.normal(loc=p0, scale=np.abs(p0/10000))
+    p0[0,:] = params
+
+    # Reflect out of bounds parameters back into the prior boundaries
+    # Lower bound
+    pl = np.repeat([params_l,], nwalkers, axis=0)
+    lb = p0 < pl
+    p0[lb] = pl[lb] + pl[lb] - p0[lb]
+    # Upper bound
+    pu = np.repeat([params_u,], nwalkers, axis=0)
+    ub = p0 > pu
+    p0[ub] = pu[ub] + pu[ub] - p0[ub]
+    # Order eigenvalues
+    p0[:,:,2:4] = np.sort(p0[:,:,2:4], axis=2)
+    sort_i = p0[:,:,0].argsort(axis=1)
+    sort_j = np.repeat([np.arange(p0.shape[0]),], p0.shape[1], axis=0).T
+    p0 = p0[sort_j, sort_i, :]
+
+    p0 = p0.reshape(nwalkers, -1)
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, foo)
+    # Run emcee
+    _=sampler.run_mcmc(p0, niter)
+
+    # Retrieve results
+    nburn = niter/2
+    burnt_values = sampler.chain[:,nburn:,:]
+    burnt_values = burnt_values.reshape(-1, burnt_values.shape[-1])
+
+    median = np.median(burnt_values, axis=0)
+
+    lp = sampler.lnprobability
+    index = np.unravel_index(np.argmax(lp), lp.shape)
+    median = sampler.chain[index[0], index[1], :]
 
     return median, sampler
 

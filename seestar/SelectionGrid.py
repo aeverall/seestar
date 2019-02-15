@@ -1133,13 +1133,22 @@ def PoissonLikelihood(points,
         nComponents = modelinfo[1]
 
         # Generate the model
-        model = StatisticalModels.GaussianEM(x=x, y=y, nComponents=nComponents, rngx=mag_range, rngy=col_range)
-        #model = StatisticalModels.GaussianMM(x, y, nComponents, mag_range, col_range)
+        if datatype=='photo':
+            model = StatisticalModels.GaussianEM(x=x, y=y, nComponents=nComponents,
+                                                rngx=mag_range, rngy=col_range, runscaling=True)
+            model.runningL = True
+            result = model.optimizeParams(method='Powell', init='kmeans')
+            result_emcee = model.optimizeParams(method='emceeBall', init='reset')
         # Add in SFxDF<DF constraint for the spectrograph distribution
-        if datatype == "spectro":
-            model.photoDF, model.priorDF = (photoDF, True)
-        model.runningL = True
-        model.optimizeParams()
+        elif datatype == "spectro":
+            model = StatisticalModels.GaussianEM(x=x, y=y, nComponents=nComponents,
+                                                rngx=mag_range, rngy=col_range, runscaling=True,
+                                                priorDF=True, photoDF=photoDF)
+            model.runningL = True
+            result = model.optimizeParams(method='Powell', init='kmeans')
+            result_emcee = model.optimizeParams(method='emceeBall', init='reset')
+            #model.photoDF, model.priorDF = (photoDF, True)
+        else: raise ValueError('Datatype not understood: %s' % datatype)
         # Test integral if you want to see the value/error in the integral when calculated
         # model.testIntegral()
 

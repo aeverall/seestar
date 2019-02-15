@@ -1,5 +1,5 @@
 '''
-FieldUnions - Package of functions used to calculate the union of overlapping fields given the 
+FieldUnions - Package of functions used to calculate the union of overlapping fields given the
             coordinates of a star which has been randomly generated.
 
 
@@ -17,7 +17,7 @@ Functions
                     on the point.
 
     fieldUnion - The field union on a point of overlapping fields with selection function
-                 for each field already calculated                                     
+                 for each field already calculated
 
     fieldCombos - Generate list of combinations of the overlapping fields
                   which will be used to calculate the intersections.
@@ -34,7 +34,7 @@ import itertools, functools
 import numpy as np
 import pandas as pd
 import sys, gc
-from builtins import map # map now behaves as python3 
+from builtins import map # map now behaves as python3
 
 from seestar import ArrayMechanics
 from seestar import FieldAssignment
@@ -69,7 +69,7 @@ class FieldUnion():
 
         # Extend all components to the right length
         arr=np.array([xi+[0]*(length-len(xi)) for xi in lst])
-        
+
         # Convert to list of vectors
         listofarr=[arr[:,i] for i in range(arr.shape[1])]
 
@@ -94,7 +94,7 @@ class FieldUnion():
         combos = []
         for i in range(len(field_info)):
             combos.extend(list(itertools.combinations(field_info, i+1)))
-            
+
         return combos
 
     def fieldIntersection(self, listofarr):
@@ -126,7 +126,7 @@ class FieldUnion():
         return product*sign
 
 
-def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcalc, 
+def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcalc,
                     IDtype = str, Nsample = 10000, test=False, progress=True):
 
     '''
@@ -157,7 +157,7 @@ def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcal
     kwargs
     ------
         IDtype: object
-            - Type of python object used for field IDs 
+            - Type of python object used for field IDs
 
         Nsample: int
             - Number of stars to be assigned per iterations
@@ -193,13 +193,13 @@ def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcal
         # Dataframe of field probabilities
         dfprob = pd.DataFrame()
         for field in pointings.fieldID:
-        	
+
             # Condition: Boolean series - field is in the points list
             condition = np.array(dfi.points.map(lambda points: field in points))
             # Create array for probability values
             array = np.zeros(len(dfi)) - 1
             # Calculate probabilities
-            if test: 
+            if test:
                 prob, col, mag = SFcalc(field, dfi[condition])
                 col_arr = np.zeros(len(dfi)) - 1
                 mag_arr = np.zeros(len(dfi)) - 1
