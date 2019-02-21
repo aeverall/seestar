@@ -353,6 +353,8 @@ class SFGenerator():
         options.update(kwargs)
         obsSF_path = options['obsSF_path']
 
+        print obsSF_path
+
         # Once Colour Magnitude selection functions have been created
         # Unpickle colour-magnitude interpolants
         print("Unpickling colour-magnitude interpolant dictionaries...")
@@ -362,6 +364,8 @@ class SFGenerator():
 
         # Initialise dictionary
         self.obsSF = SFInstanceClasses.obsSF_dicttoclass(obsSF_dicts)
+
+        return obsSF_dicts
 
     def gen_intSF(self, **kwargs):
 
@@ -1138,7 +1142,7 @@ def PoissonLikelihood(points,
                                                 rngx=mag_range, rngy=col_range, runscaling=True)
             model.runningL = True
             result = model.optimizeParams(method='Powell', init='kmeans')
-            result_emcee = model.optimizeParams(method='emceeBall', init='reset')
+            #result_emcee = model.optimizeParams(method='emceeBall', init='reset')
         # Add in SFxDF<DF constraint for the spectrograph distribution
         elif datatype == "spectro":
             model = StatisticalModels.GaussianEM(x=x, y=y, nComponents=nComponents,
@@ -1146,7 +1150,7 @@ def PoissonLikelihood(points,
                                                 priorDF=True, photoDF=photoDF)
             model.runningL = True
             result = model.optimizeParams(method='Powell', init='kmeans')
-            result_emcee = model.optimizeParams(method='emceeBall', init='reset')
+            #result_emcee = model.optimizeParams(method='emceeBall', init='reset')
             #model.photoDF, model.priorDF = (photoDF, True)
         else: raise ValueError('Datatype not understood: %s' % datatype)
         # Test integral if you want to see the value/error in the integral when calculated

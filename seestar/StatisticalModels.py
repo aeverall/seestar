@@ -66,7 +66,7 @@ class GaussianEM():
                         integral calculated using cubature for which we know the uncertainty
     '''
 
-    def __init__(self, x=np.array(0), y=np.array(0), sig_xy=None,
+    def __init__(self, x=np.zeros(0), y=np.zeros(0), sig_xy=None,
                 nComponents=0, rngx=(0,1), rngy=(0,1), runscaling=True, runningL=True, s_min=0.1,
                 photoDF=None, priorDF=False):
 
@@ -137,7 +137,9 @@ class GaussianEM():
 
         if self.priorDF:
             # Calculate Gaussian distributions from product of scaled DF and scaled star positions
-            self.params_df = self.scaleParams(self.photoDF.params_f)
+            self.params_df = self.scaleParams(self.photoDF.params_f, dfparams=True)
+            function = lambda a, b: self.distribution(self.params_df, a, b)
+            print 'DF integral = ', numericalIntegrate_precompute(function, self.x_2d, self.y_2d)
             self.ndf = len(self.photoDF.x)
 
             """
@@ -158,7 +160,7 @@ class GaussianEM():
             self.mu_df_spec = mu_df_spec"""
         else: self.ndf = None
 
-    def __call__(self, x, y, components=None):
+    def __call__(self, x, y, components=None, params=None):
 
         '''
         __call__ - Returns the value of the smooth GMM distribution at the points x, y
@@ -172,11 +174,17 @@ class GaussianEM():
             components=None:
                 - List of components to check for distribution values
 
+            params=None:
+                - The parameters on which the model will be evaluatedself.
+                - If None, params_f class attribute will be used
+
         Returns
         -------
             GMMval: float or np.array of floats
                 - The value of the GMM at coordinates x, y
         '''
+        #
+        if params is None: params=self.params_f.copy()
 
         # Scale x and y to correct region - Currently done to params_f - line 371  - but could change here instead
         #x, y = feature_scaling(x, y, self.mux, self.muy, self.sx, self.sy)
@@ -185,7 +193,7 @@ class GaussianEM():
 
         # Value of coordinates x, y in the Gaussian mixture model
         if components is None: components = np.arange(self.nComponents)
-        GMMval = self.distribution(self.params_f[components, :], x, y)
+        GMMval = self.distribution(params[components, :], x, y)
 
         if (type(GMMval) == np.array)|(type(GMMval) == np.ndarray)|(type(GMMval) == pd.Series):
             # Not-nan input values
@@ -559,8 +567,10 @@ class GaussianEM():
 
         # If the DF has already been calculated, directly optimize the SF
         if self.priorDF:
-            function = lambda a, b: self.distribution(self.params_df, a, b) \
-                                    * self.distribution(params, a, b)
+            # Create copies to prevent overwrite problems
+            params1, params2 = params.copy(), self.params_df.copy()
+            function = lambda a, b: self.distribution(params1, a, b) \
+                                    * self.distribution(params2, a, b)
             #model = self.norm_df_spec*error_convolution(params, self.mu_df_spec[:,0], self.mu_df_spec[:,1], self.sig_df_spec)
             params = gmm_product_p(params, self.params_df)
             params = params.reshape(-1, params.shape[-1])
@@ -576,7 +586,7 @@ class GaussianEM():
 
         # Integral of the smooth function over the entire region
         contInteg = integrationRoutine(function, params, self.nComponents, self.rngx_s, self.rngy_s,
-                                        self.x_2d, self.y_2d, integration='analyticApprox')
+                                        self.x_2d, self.y_2d, integration='trapezium')
         #print bivGauss_analytical_approx(params, self.rngx_s, self.rngy_s), self.rngx_s, self.rngy_s
 
         lnL = contPoints - contInteg
@@ -624,13 +634,13 @@ class GaussianEM():
         # Prior on spectro distribution that it must be less than the photometric distribution
         if self.priorDF:
             function = lambda a, b: self.distribution(params, a, b)
-            prior = prior & SFprior(function, *(self.rngx_s, self.rngy_s))
+            prior = prior & SFprior_revamp(function, self.x_2d, self.y_2d)
             if not prior: return -np.inf
 
         # All prior tests satiscied
         return 0.0
 
-    def scaleParams(self, params_in):
+    def scaleParams(self, params_in, dfparams=False):
 
         params = params_in.copy()
         params[:,[0,1]] = (params[:,[0,1]] -  [self.mux, self.muy]) / np.array([self.sx, self.sy])
@@ -643,14 +653,22 @@ class GaussianEM():
         sigma[:,[0,1],[1,0]] *= 1/(self.sx*self.sy)
 
         eigvals, eigvecs = np.linalg.eig(sigma)
-        #np.argmin(eigvecs, axis=1)
+        # Line eigvecs up with eigvals
+        i = eigvals.argsort(axis=1)
+        j = np.repeat([np.arange(eigvals.shape[0]),], eigvals.shape[1], axis=0).T
+        eigvecs = eigvecs[j, i, :]
+        eigvals = eigvals[j, i]
+
+        params[:,[2,3]] = eigvals #np.sort(eigvals, axis=1)
         th = np.arctan2(eigvecs[:,0,1], eigvecs[:,0,0])
-        params[:,[2,3]] = np.sort(eigvals, axis=1)
         params[:,4] = th
+
+        if self.priorDF & (not dfparams):
+            params[:,5] /= (self.sx*self.sy)
 
         return params
 
-    def unscaleParams(self, params_in):
+    def unscaleParams(self, params_in, dfparams=False):
 
         params = params_in.copy()
         params[:,[0,1]] = (params[:,[0,1]] * np.array([self.sx, self.sy])) +  [self.mux, self.muy]
@@ -672,6 +690,9 @@ class GaussianEM():
         params[:,[2,3]] = eigvals #np.sort(eigvals, axis=1)
         th = np.arctan2(eigvecs[:,0,1], eigvecs[:,0,0])
         params[:,4] = th
+
+        if self.priorDF & (not dfparams):
+            params[:,5] *= (self.sx*self.sy)
 
         return params
 
@@ -1040,6 +1061,31 @@ def SFprior(function, rngx, rngy, N=150):
     x_coords = np.linspace(rngx[0], rngx[1], N)
     y_coords = np.linspace(rngy[0], rngy[1], N)
     xx, yy = np.meshgrid(x_coords, y_coords)
+    f_max = np.max( function(*(xx, yy)) )
+    prior = not f_max>1
+
+    return prior
+
+def SFprior_revamp(function, xx, yy):
+
+    '''
+    SFprior - The selection function has to be between 0 and 1 everywhere.
+        - informative prior
+
+    Parameters
+    ----------
+        function - function
+            - The selection function interpolant over the region, R.
+
+        xx, yy:
+
+    Returns
+    -------
+        prior - bool
+            - True if all points on GMM are less than 1.
+            - Otherwise False
+    '''
+
     f_max = np.max( function(*(xx, yy)) )
     prior = not f_max>1
 
@@ -1422,17 +1468,17 @@ def emcee_opt(function, params, niter=2000, file_loc=''):
 
     return median, sampler
 
-def emcee_ball(function, params, params_l=None, params_u=None):
+def emcee_ball(function, params, params_l=None, params_u=None, niter=1000):
+    print 'emcee with %d iterations...' % niter
 
     pshape =params.shape
     foo = lambda pars: -function(pars.reshape(pshape))
 
-    niter=100
     ndim=len(params.flatten())
     nwalkers=ndim*2
 
     p0 = np.repeat([params,], nwalkers, axis=0)
-    p0 = np.random.normal(loc=p0, scale=np.abs(p0/10000))
+    p0 = np.random.normal(loc=p0, scale=np.abs(p0/500))
     p0[0,:] = params
 
     # Reflect out of bounds parameters back into the prior boundaries
@@ -1446,9 +1492,10 @@ def emcee_ball(function, params, params_l=None, params_u=None):
     p0[ub] = pu[ub] + pu[ub] - p0[ub]
     # Order eigenvalues
     p0[:,:,2:4] = np.sort(p0[:,:,2:4], axis=2)
-    sort_i = p0[:,:,0].argsort(axis=1)
-    sort_j = np.repeat([np.arange(p0.shape[0]),], p0.shape[1], axis=0).T
-    p0 = p0[sort_j, sort_i, :]
+    p0[:,:,0] = np.sort(p0[:,:,0], axis=1)
+    #sort_i = p0[:,:,0].argsort(axis=1)
+    #sort_j = np.repeat([np.arange(p0.shape[0]),], p0.shape[1], axis=0).T
+    #p0 = p0[sort_j, sort_i, :]
 
     p0 = p0.reshape(nwalkers, -1)
     sampler = emcee.EnsembleSampler(nwalkers, ndim, foo)

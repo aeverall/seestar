@@ -21,9 +21,11 @@ Requirements
 ------------
 
 '''
-
+import sys
 import numpy as np
-from seestar import StatisticalModels
+#from seestar import StatisticalModels
+sys.path.append('/home/andy/Documents/Research/SF/GitRepo/seestar/')
+import StatisticalModels
 
 def obsSF_dicttoclass(obsSF_dicts):
 
@@ -60,6 +62,7 @@ def obsSF_dicttoclass(obsSF_dicts):
         # Reassign model class instance to obsSF class
         obsSF_field.DF_model = DF_model
         obsSF_field.SF_model = SF_model
+        obsSF_field.SF_model.photoDF = DF_model
 
         # Add class instance to dictionary
         obsSF_classes[field] = obsSF_field
@@ -85,10 +88,11 @@ def obsSF_classtodict(obsSF_classes):
     for field in obsSF_classes: # Load classes from dictionaries
 
         # Get dictionary of attributes from class
-        obsSF_field = vars(obsSF_classes)
+        obsSF_field = vars(obsSF_classes[field])
         # Get dictionary of attributes from classes within obsSF_classes
-        obsSF_field['DF_model'] = vars(obsSF_classes.DF_model)
-        obsSF_field['SF_model'] = vars(obsSF_classes.SF_model)
+        obsSF_field['DF_model'] = vars(obsSF_classes[field].DF_model)
+        obsSF_field['SF_model'] = vars(obsSF_classes[field].SF_model)
+        obsSF_field['SF_model']['photoDF'] = vars(obsSF_field['SF_model']['photoDF'])
 
         # Add class instance to dictionary
         obsSF_dicts[field] = obsSF_field
