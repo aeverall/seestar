@@ -463,7 +463,7 @@ pickleFile = '{directory}/{label}/{label}_fileinfo.pickle'\n
             filepath = os.path.join(photo_file)
             try:
                 # Load in dataframe
-                df = pd.read_csv(filepath, nrows=3)
+                df = pd.read_csv(filepath, nrows=3, compression='gzip')
                 df_in = True
             except ValueError:
                 # Raise error if dataframe cannot be loaded in.

@@ -48,8 +48,10 @@ from matplotlib import pyplot as plt
 import matplotlib
 matplotlib.rcParams.update({'font.size': 40})
 
-from seestar import ArrayMechanics
-from seestar import surveyInfoPickler
+
+#from seestar import ArrayMechanics, surveyInfoPickler
+sys.path.append('/home/andy/Documents/Research/SF/GitRepo/seestar/')
+import ArrayMechanics, surveyInfoPickler
 
 class FieldAssignment():
 
@@ -102,7 +104,7 @@ class FieldAssignment():
             # Total number of stars in database
             if starTotal is None: self.total = countStars(photometric_files, ncores=ncores)
             else: self.total = starTotal
-            
+
             # Setup pointings dataframe containing unique field positions
             pointings_path = self.fileinfo.field_path
             pointings = pd.read_csv(pointings_path)
@@ -145,19 +147,19 @@ class FieldAssignment():
 
             fileinfo - class instance of surveyInformation
         '''
-        
+
         print('Clearing field files...')
-        
+
         # Take headers from source files (photometric catalogue)
-        headers = pd.read_csv(self.photometric_files[0], nrows = 1)[:0]
-        
+        headers = pd.read_csv(self.photometric_files[0], nrows = 1, compression='gzip')[:0]
+
         # Write all field files with the appropriate headers
         for field in self.pointings[self.fileinfo.field_coords[0]]:
             headers.to_csv(os.path.join(self.fileinfo.photo_path, str(field))+'.csv',
                           index=False, mode = 'w')
-            
+
         print('...done\n')
-        
+
 
     def RunAssignmentAPTPM(self, N_import=100000, N_iterate=1000):
 
@@ -173,7 +175,7 @@ class FieldAssignment():
                 - Numebr of stars which can be iterated in the method at once without using a lot of memory
 
         '''
-            
+
         # Time in order to track progress
         start = time.time()
         # For analysing the progress
@@ -194,20 +196,22 @@ class FieldAssignment():
 
         # Iterate over full directory files
         for filename in self.photometric_files:
-            
-            for df_allsky in pd.read_csv(filename, chunksize=N_import, low_memory=False):
-            
+
+            for df_allsky in pd.read_csv(filename, chunksize=N_import, low_memory=False, compression='gzip'):
+
                 starsanalysed += len(df_allsky)
                 fname = filename.split('/')[-1]
-                    
+
                 # Column header labels in pointings
                 phi, theta, halfangle = self.fileinfo.field_coords[1:4]
-                    
+
+                df_allsky[self.fileinfo.field_coords[1:3]] *= np.pi/180
+
                 df_allsky = ArrayMechanics.\
                             AnglePointsToPointingsMatrix(df_allsky, self.pointings, phi, theta, halfangle,
-                                                        IDtype = self.IDtype, Nsample = N_iterate, 
+                                                        IDtype = self.IDtype, Nsample = N_iterate,
                                                         progress=True, outString=outString)
-                
+
                 field_i=0
                 for field in self.pointings[self.fileinfo.field_coords[0]]:
                     field_i += 1
@@ -224,7 +228,7 @@ class FieldAssignment():
                     total += len(df)
 
                     df.drop('points', inplace=True, axis=1)
-                    
+
                     df.to_csv(open_files[field], index=False, header=False)
 
                 # Updates of progress continuously output
@@ -262,7 +266,7 @@ Dictionary of stars per field in fileinfo.photo_field_starcount." % total)
                 - Numebr of stars which can be iterated in the method at once without using a lot of memory
 
         '''
-            
+
         # Time in order to track progress
         start = time.time()
         # For analysing the progress
@@ -307,14 +311,14 @@ Dictionary of stars per field in fileinfo.photo_field_starcount." % total)
 
         # Iterate over full directory files
         for filename in self.photometric_files:
-            
-            for df in pd.read_csv(filename, chunksize=N_import/self.ncores, low_memory=False):
+
+            for df in pd.read_csv(filename, chunksize=N_import/self.ncores, low_memory=False, compression='gzip'):
 
                 starsanalysed += len(df)
                 fname = filename.split('/')[-1]
 
                 # Setup function for parallel computation
-                kwargs = {'df':df, 'fileinfo':self.fileinfo, 'IDtype':self.IDtype, 'N_iterate':N_iterate, 
+                kwargs = {'df':df, 'fileinfo':self.fileinfo, 'IDtype':self.IDtype, 'N_iterate':N_iterate,
                             'outString':outString, 'starcount':starcount}
                 func = assignmentParallel(**kwargs)
 
@@ -370,12 +374,12 @@ class assignmentParallel():
 
         # Column header labels in pointings
         phi, theta, halfangle = self.fileinfo.field_coords[1:4]
-            
+
         self.df = ArrayMechanics.\
                     AnglePointsToPointingsMatrix(self.df, pointings, phi, theta, halfangle,
-                                                IDtype = self.IDtype, Nsample = self.N_iterate, 
+                                                IDtype = self.IDtype, Nsample = self.N_iterate,
                                                 progress=True, outString=self.outString)
-        
+
         count=0
         field_i=0
         for field in pointings[self.fileinfo.field_coords[0]]:
@@ -393,7 +397,7 @@ class assignmentParallel():
             count += len(df)
 
             df.drop('points', inplace=True, axis=1)
-            
+
             df.to_csv(open_files[field], index=False, header=False)
 
         return self.starcount, count
@@ -421,7 +425,7 @@ def importLimit(files, proportion=0.1, memory=None):
     '''
 
     filename = files[0]
-    df = pd.read_csv(filename, nrows=1000)
+    df = pd.read_csv(filename, nrows=1000, compression='gzip')
 
     mem_thousand = sys.getsizeof(df)
     if memory is None: mem = psutil.virtual_memory().available
@@ -429,7 +433,7 @@ def importLimit(files, proportion=0.1, memory=None):
 
     ratio = mem/mem_thousand
     import_max = 1000 * ratio * proportion
-    
+
     return int(import_max)
 
 def iterLimit(Npoint, proportion=0.1, memory=None, ncores=1):
@@ -460,7 +464,7 @@ def iterLimit(Npoint, proportion=0.1, memory=None, ncores=1):
         mem=( float(memory)*(float(1024)**3) )/float(ncores)
 
     iter_max = (mem * proportion)/(50 * Npoint)
-    
+
     return int(iter_max)
 
 def countStars(files, ncores=1):
@@ -505,11 +509,11 @@ def countFile(filen):
     if extension=='.gz':
         with gzip.open(filen) as f:
             for _ in f:
-                count += 1         
+                count += 1
     else:
         with open(filen) as f:
             for _ in f:
-                count += 1         
+                count += 1
 
     return count
 
@@ -538,7 +542,7 @@ class HealpixAssignment():
         fieldinfo_file - Generate field info file with all fields (pixels) listed with colour and magnitude limits.
 
         spectroPixels - Adds fieldID column to spectroscopic catalogue
-        
+
         photoPixelFiles - Assign photometric catalogue stars to pixel field files
 
     Demo
@@ -554,7 +558,7 @@ class HealpixAssignment():
         assign()
     '''
 
-    def __init__(self, fileinfo_path, photometric_files, 
+    def __init__(self, fileinfo_path, photometric_files,
                     npixel=12, memory=None, ncores=1, starTotal=None):
 
         # surveyInformation instance
@@ -644,7 +648,7 @@ class HealpixAssignment():
                     # If a non-assigned object input is used
                     print("Return float or None.")
                     mag_l, mag_u, col_l, col_u = np.nan, np.nan, np.nan, np.nan
-                    
+
                 if ((mag_l<mag_u) | (mag_l==None) | (mag_u==None)) & \
                     ((col_l<col_u) | (col_l==None) | (col_u==None)):
                     # If upper>lower limits or either upper or lower are None then we can continue.
@@ -713,7 +717,7 @@ class HealpixAssignment():
         self.fileinfo.save()
 
         # Save csv file
-        df.to_csv(self.fileinfo.spectro_path, index=False)  
+        df.to_csv(self.fileinfo.spectro_path, index=False)
 
     def ClearFiles(self):
 
@@ -726,18 +730,18 @@ class HealpixAssignment():
 
             fileinfo - class instance of surveyInformation
         '''
-        
+
         print('Clearing field files...', end="")
-        
+
         # Take headers from source files (photometric catalogue)
-        headers = pd.read_csv(self.photometric_files[0], nrows = 1, usecols=self.fileinfo.photo_coords)[:0]
+        headers = pd.read_csv(self.photometric_files[0], nrows = 1, usecols=self.fileinfo.photo_coords, compression='gzip')[:0]
         headers = headers[self.fileinfo.photo_coords]
-        
+
         # Write all field files with the appropriate headers
         for field in self.fields:
             headers.to_csv(os.path.join(self.fileinfo.photo_path, str(field))+'.csv',
                                     index=False, mode = 'w')
-            
+
         print('...done\n')
 
     def photoPixelFiles(self):
@@ -792,7 +796,7 @@ class HealpixAssignment():
         # Iterate through photometric files
         for filename in self.photometric_files:
             # Run through data in N_import sized chunks
-            for df in pd.read_csv(filename, chunksize=self.N_import, low_memory=False, usecols=self.fileinfo.photo_coords):
+            for df in pd.read_csv(filename, chunksize=self.N_import, low_memory=False, usecols=self.fileinfo.photo_coords, compression='gzip'):
                 # Clean df of bad datatypes and null values
                 df = cleanData(df, self.fileinfo)
                 # Get columns in right order to agree with headers
@@ -911,7 +915,7 @@ class HealpixAssignment():
         # Iterate through photometric files
         for filename in self.photometric_files:
             # Run through data in N_import sized chunks
-            for df in pd.read_csv(filename, chunksize=self.N_import, low_memory=False, usecols=self.fileinfo.photo_coords):
+            for df in pd.read_csv(filename, chunksize=self.N_import, low_memory=False, usecols=self.fileinfo.photo_coords, compression='gzip'):
                 # Clean df of bad datatypes and null values
                 df = cleanData(df, self.fileinfo)
                 # Get columns in right order to agree with headers
@@ -1020,7 +1024,7 @@ def labelStars(theta, phi, rng_th, rng_phi, nside):
 
         rng_phi: tuple of floats
             - Range of values of phi (e.g. (0, 2pi))
-    
+
         nside: int
             - Parameter of HEALPix (npixel = 12*nside**2)
 
@@ -1104,7 +1108,7 @@ def numberPixels(npixel):
 
 
 def cleanData(df, fileinfo):
-    
+
     '''
     WORK IN PROGRESS
 

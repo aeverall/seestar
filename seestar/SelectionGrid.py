@@ -532,12 +532,12 @@ class SFGenerator():
             iter_inst = multiprocessObsSF(self.spectro_df, self.photo_path, self.photo_tag,
                                         self.photo_coords, self.pointings, cm_limits=self.cm_limits,
                                         spectro_model=self.spectro_model, photo_model=self.photo_model,
-                                        tstart=start, fieldN=len(field_list))
+                                        tstart=start, fieldL=len(field_list))
             # Create processor pools for multiprocessing
 
             pool = multiprocessing.Pool( self.ncores )
             # Run class obsMultiFunction.__call___ as external function for each field
-            results = pool.map(iter_inst, field_iter)
+            results = pool.map(iter_inst, field_iter, chunksize=1)
 
             # Locations for storage of solutions
             obsSF_dicts = {}
@@ -560,7 +560,7 @@ class SFGenerator():
             for field in field_list:
 
                 fieldN+=1
-                sys.stdout.write("\rCurrent field in col-mag calculation: %s, %d/%d, Time: %.2fm, Left: %.2fm" % (str(field), fieldN, fieldL, int(tnow), int(tleft)))
+                sys.stdout.write("\rFinished col-mag calculation: %s, %d/%d, Time: %.2fm, Left: %.2fm" % (str(field), fieldN, fieldL, int(tnow), int(tleft)))
                 sys.stdout.flush()
 
                 # Select preferred survey stars
@@ -865,7 +865,7 @@ class multiprocessObsSF():
 
     def __init__(self, spectro_df, photo_path, photo_tag, photo_coords,
                     pointings, cm_limits=None, spectro_model=None, photo_model=None,
-                    tstart=0, fieldN=0):
+                    tstart=0, fieldL=0):
 
         # Dataframe of spectroscopic catalogue
         self.spectro_df = spectro_df
@@ -887,7 +887,7 @@ class multiprocessObsSF():
         # Start time for observable SF calculation
         self.tstart=tstart
         # Number of fields to iterate
-        self.fieldN=fieldN
+        self.fieldL=fieldL
 
     def __call__(self, field_iter):
 
@@ -904,7 +904,8 @@ class multiprocessObsSF():
                 - Values returned from iterateField
         '''
 
-        field, fieldL, spectro_points = field_iter
+        field, fieldN, spectro_points = field_iter
+        fieldL = self.fieldL
 
         ans = iterateField(spectro_points, self.photo_path, field, self.photo_tag,
                             self.photo_coords, self.pointings.loc[field], cm_limits=self.cm_limits,
@@ -912,10 +913,10 @@ class multiprocessObsSF():
 
         # Time taken to get to this point
         tnow = (time.time() - self.tstart)/60.
-        tleft = tnow*(1 - float(fieldL)/self.fieldN)
+        tleft = tnow*(float(fieldL)/fieldN - 1.)
         # output progress to stdout
-        sys.stdout.write("\rCurrent field in col-mag calculation: %s, %d/%d, Time: %dm, Left: %dm" \
-                        % (str(field), fieldL, self.fieldN, int(tnow), int(tleft)))
+        sys.stdout.write("\rcol-mag calculation finished for field: %s, %d/%d, Time: %dm, Left: %dm" \
+                        % (str(field), fieldN, fieldL, int(tnow), int(tleft)))
         sys.stdout.flush()
 
         return ans

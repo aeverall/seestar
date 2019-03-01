@@ -94,6 +94,9 @@ class GaussianEM():
         # Boundary on minimum std
         self.s_min=s_min
 
+        # Method used for integration
+        self.integration='trapezium'
+
         # Coordinate covariance matrix
         if sig_xy is None:
             z_ = np.zeros(len(x))
@@ -139,7 +142,8 @@ class GaussianEM():
             # Calculate Gaussian distributions from product of scaled DF and scaled star positions
             self.params_df = self.scaleParams(self.photoDF.params_f, dfparams=True)
             function = lambda a, b: self.distribution(self.params_df, a, b)
-            print 'DF integral = ', numericalIntegrate_precompute(function, self.x_2d, self.y_2d)
+            #if self.runningL:
+            #    print 'DF integral = ', numericalIntegrate_precompute(function, self.x_2d, self.y_2d)
             self.ndf = len(self.photoDF.x)
 
             """
@@ -363,7 +367,7 @@ class GaussianEM():
         # Set initial parameters
         finite = False
         a = 0
-        print 'init, ', init
+        if self.runningL: print 'init, ', init
 
         while not finite:
             if not init=="reset":
@@ -386,7 +390,7 @@ class GaussianEM():
             else:
                 params = self.params_i.copy()
 
-            print 'initial parameters', params
+            if self.runningL: print 'initial parameters', params
             self.param_shape = params.shape
             lnp = self.lnprob(params)
             finite = np.isfinite(lnp)
@@ -497,9 +501,7 @@ class GaussianEM():
         kwargs = {'method':method, 'bounds':bounds}
         # result is the set of theta parameters which optimize the likelihood given x, y, yerr
         test = self.nll(params)
-        print ''
-        print 'Init  lnl: ', test
-        print ''
+        if self.runningL: print r'\nInit  lnl: ', test, r'\n'
         params, self.output = optimizer(self.nll, params)#, pl = self.params_l[0,:], pu = self.params_u[0,:])
         params = params.reshape(self.param_shape)
         # Potential to use scikit optimize
@@ -586,7 +588,7 @@ class GaussianEM():
 
         # Integral of the smooth function over the entire region
         contInteg = integrationRoutine(function, params, self.nComponents, self.rngx_s, self.rngy_s,
-                                        self.x_2d, self.y_2d, integration='trapezium')
+                                        self.x_2d, self.y_2d, integration=self.integration)
         #print bivGauss_analytical_approx(params, self.rngx_s, self.rngy_s), self.rngx_s, self.rngy_s
 
         lnL = contPoints - contInteg
@@ -628,8 +630,9 @@ class GaussianEM():
         if not prior: return -np.inf
 
         # Test parameters against boundary values
-        prior = prior_erfprecision(params, self.rngx_s, self.rngy_s)
-        if not prior: return -np.inf
+        if self.integration=='analyticApprox':
+            prior = prior_erfprecision(params, self.rngx_s, self.rngy_s)
+            if not prior: return -np.inf
 
         # Prior on spectro distribution that it must be less than the photometric distribution
         if self.priorDF:
@@ -1468,7 +1471,7 @@ def emcee_opt(function, params, niter=2000, file_loc=''):
 
     return median, sampler
 
-def emcee_ball(function, params, params_l=None, params_u=None, niter=1000):
+def emcee_ball(function, params, params_l=None, params_u=None, niter=2000):
     print 'emcee with %d iterations...' % niter
 
     pshape =params.shape
