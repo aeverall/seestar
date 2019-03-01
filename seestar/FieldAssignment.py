@@ -49,9 +49,9 @@ import matplotlib
 matplotlib.rcParams.update({'font.size': 40})
 
 
-#from seestar import ArrayMechanics, surveyInfoPickler
-sys.path.append('/home/andy/Documents/Research/SF/GitRepo/seestar/')
-import ArrayMechanics, surveyInfoPickler
+from seestar import ArrayMechanics, surveyInfoPickler
+#sys.path.append('/home/andy/Documents/Research/SF/GitRepo/seestar/')
+#import ArrayMechanics, surveyInfoPickler
 
 class FieldAssignment():
 

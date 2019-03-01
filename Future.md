@@ -15,8 +15,7 @@ If there are any improvements not listed here which you would like to see, pleas
 - SEGUE
 - RAVE
 
-- Gaia data release 2 Radial Velocity Sample (RVS) 
-	- requires HEALPix build first.
+- Gaia data release 2 Radial Velocity Sample (RVS)
 
 
 ## Photometric crossmatch
@@ -32,6 +31,6 @@ If there are any improvements not listed here which you would like to see, pleas
 
 ## Code improvements:
 
-- All sky survey selection function using HEALPix.
 - Dust attenuation calculation.
-	- Requires Milkyway dust map
+- MultiModal optimizer
+- Bayesian evidence testing (e.g. with [MultiNest](https://ui.adsabs.harvard.edu/#abs/2013arXiv1306.2144F/abstract))

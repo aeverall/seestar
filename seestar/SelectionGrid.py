@@ -59,9 +59,9 @@ import matplotlib.gridspec as gridspec
 from matplotlib.colors import LogNorm
 from matplotlib.ticker import LogFormatter
 
-#from seestar import
-sys.path.append('/home/andy/Documents/Research/SF/GitRepo/seestar/')
-import ArrayMechanics as AM, StatisticalModels, FieldUnions, SFInstanceClasses, IsochroneScaling, surveyInfoPickler, AngleDisks, FieldAssignment
+from seestar import ArrayMechanics as AM, StatisticalModels, FieldUnions, SFInstanceClasses, IsochroneScaling, surveyInfoPickler, AngleDisks, FieldAssignment
+#sys.path.append('/home/andy/Documents/Research/SF/GitRepo/seestar/')
+#import ArrayMechanics as AM, StatisticalModels, FieldUnions, SFInstanceClasses, IsochroneScaling, surveyInfoPickler, AngleDisks, FieldAssignment
 
 class SFGenerator():
 

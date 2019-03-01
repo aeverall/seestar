@@ -1,8 +1,10 @@
 # seestar
 
+
 **seestar** is a Python package for creating and using selection functions for spectroscopic stellar surveys.
 
-The full theory and design of the selection function can be found in Everall & Das (in prep.). Please cite this paper when using the repository.
+The full theory and design of the selection function can be found in [Everall & Das 2019](https://arxiv.org/abs/1902.10485). Please cite this paper when using the repository.
+*Data and an example notebook for reproducing the Galaxia example in the paper will be uploaded very soon!*
 
 The purpose of **seestar** is to provide an *easy-to-use*, *fast processing* and *mathematically consistent* method for calculating selection functions for spectroscopic stellar surveys. We hope that this will consolidate the many different methods currently used to calculate selection functions. We also provide precalculated selection functions for popular spectroscopic surveys.
 
