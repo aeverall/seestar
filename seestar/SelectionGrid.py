@@ -1141,7 +1141,7 @@ def PoissonLikelihood(points,
         if datatype=='photo':
             model = StatisticalModels.GaussianEM(x=x, y=y, nComponents=nComponents,
                                                 rngx=mag_range, rngy=col_range, runscaling=True)
-            model.runningL = True
+            model.runningL = False
             result = model.optimizeParams(method='Powell', init='kmeans')
             #result_emcee = model.optimizeParams(method='emceeBall', init='reset')
         # Add in SFxDF<DF constraint for the spectrograph distribution
@@ -1149,7 +1149,7 @@ def PoissonLikelihood(points,
             model = StatisticalModels.GaussianEM(x=x, y=y, nComponents=nComponents,
                                                 rngx=mag_range, rngy=col_range, runscaling=True,
                                                 priorDF=True, photoDF=photoDF)
-            model.runningL = True
+            model.runningL = False
             result = model.optimizeParams(method='Powell', init='kmeans')
             #result_emcee = model.optimizeParams(method='emceeBall', init='reset')
             #model.photoDF, model.priorDF = (photoDF, True)
