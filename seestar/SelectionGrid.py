@@ -45,9 +45,9 @@ import matplotlib.gridspec as gridspec
 from matplotlib.colors import LogNorm
 from matplotlib.ticker import LogFormatter
 
-from seestar import ArrayMechanics as AM, StatisticalModels, FieldUnions, SFInstanceClasses, FieldAssignment
-#sys.path.append('/home/andy/Documents/Research/SF/GitRepo/seestar/')
-#import ArrayMechanics as AM, StatisticalModels, FieldUnions, SFInstanceClasses, FieldAssignment
+#from seestar import ArrayMechanics as AM, StatisticalModels, FieldUnions, SFInstanceClasses, FieldAssignment
+sys.path.append('/home/andy/Documents/Research/SF/GitRepo/seestar/')
+import ArrayMechanics as AM, StatisticalModels, FieldUnions, SFInstanceClasses, FieldAssignment
 
 class SFGenerator():
 
@@ -88,11 +88,14 @@ class SFGenerator():
 
     def __init__(self, get_spectro, get_photo, pointings,
                     spectro_model=('GMM',3), photo_model=('GMM',3),
-                    ncores=0, memory=1, **kwargs):
+                    ncores=0, memory=1, style='multiobj', **kwargs):
 
         # Get data
         self.get_spectro = get_spectro
         self.get_photo = get_photo
+
+        # Spectrograph type/style (multiobj e.g. APOGEE, allsky e.g. Gaia RV)
+        self.style=style
 
         # Model
         print("The spectro model description is:"+str(spectro_model))
@@ -108,13 +111,14 @@ class SFGenerator():
         self.memory=memory
 
         field_coords = ['fieldID','phi','theta','halfangle','Magmin', 'Magmax', 'Colmin', 'Colmax']
-        pointings = pd.DataFrame(pointings,columns=field_coords)
+        #pointings = pd.DataFrame(np.array(pointings),columns=field_coords)
         pointings = pointings.set_index('fieldID', drop=False)
         pointings = pointings.drop_duplicates(subset = 'fieldID')
         self.pointings = pointings
         self.field_coords = field_coords
 
-        self.fieldlabel_type = pointings['fieldID'].dtypes
+        #self.fieldlabel_type = pointings['fieldID'].dtypes
+        self.fieldlabel_type = type(pointings.fieldID.iloc[0])
 
         self.cm_limits = None
 
@@ -141,6 +145,8 @@ class SFGenerator():
                     - 'inion', 'field_info', 'points'
         '''
 
+        catalogue = catalogue[coords+angle_coords]
+
         if method=='observable':
             SFcalc = lambda field, df: np.array( self.obsSF[field]((df[coords[0]], df[coords[1]])) )
         elif method=='IMFint':
@@ -152,7 +158,7 @@ class SFGenerator():
         # Labels for angles in pointings (reset in ImportData)
         point_coords = ['phi','theta']
 
-        if self.fileinfo.style == 'mf':
+        if self.style == 'multiobj':
             # Drop column which will be readded if this has been calculated before.
             if 'SFprob' in list(catalogue): catalogue = catalogue.drop('SFprob', axis=1)
             print('Calculating all SF values...')
@@ -160,13 +166,14 @@ class SFGenerator():
                                                     angle_coords, point_coords, 'halfangle',
                                                     SFcalc, IDtype=self.fieldlabel_type)
             print('...done')
+            #print catalogue.SFprob
 
             # The SF probabilities are used to calculate the field union.
             print('Calculating union contribution...')
             FUInstance = FieldUnions.FieldUnion()
             catalogue['union'] = FUInstance(catalogue.SFprob)
             print('...done')
-        elif self.fileinfo.style == 'as':
+        elif self.style == 'allsky':
             npixel = len(self.pointings)
             nside = hp.npix2nside( npixel )
             # Assign stars to fields then calculate selection functions
@@ -629,7 +636,7 @@ def iterateField(get_spectro, get_photo, field, fieldpointing,
 
     '''
 
-    spectro_points = get_photo(field)
+    spectro_points = get_spectro(field)
     spectro_points = pd.DataFrame(np.array(spectro_points), columns=['appMag', 'Colour'])
 
     photo_points = get_photo(field)

@@ -128,7 +128,7 @@ class GaussianEM():
             self.sig_xy_s = sig_xy
 
         # Function which calculates the actual distribution
-        self.distribution = bivGaussMix_vect_revamp
+        self.distribution = bivGaussMix_vect
 
         # Print out likelihood values as calculated
         self.runningL = runningL
@@ -146,22 +146,7 @@ class GaussianEM():
             #    print 'DF integral = ', numericalIntegrate_precompute(function, self.x_2d, self.y_2d)
             self.ndf = len(self.photoDF.x)
 
-            """
-            norm = error_convolution(self.params_df, self.x_s, self.y_s, self.sig_xy_s)
-            norm *= self.params_df[:,5]
 
-            sigma_df = np.array([np.diag(a) for a in self.params_df[:,2:4]])
-            R = rotation(params_df[:,4])
-            sigma_df = np.matmul(R, np.matmul(sigma_df, R.transpose(0,2,1)))
-
-            mu_df = self.params_f[:,:2]
-            mu_xy_s = np.vstack((self.x_s, self.y_s)).T
-
-            mu_df_spec, sigma_df_spec = gmm_product(mu_df, mu_xy_s, sigma_df, sig_xy_s)
-
-            self.norm_df_spec = norm
-            self.sigma_df_spec = sigma_df_spec
-            self.mu_df_spec = mu_df_spec"""
         else: self.ndf = None
 
     def __call__(self, x, y, components=None, params=None):
@@ -216,137 +201,6 @@ class GaussianEM():
 
         return GMMval
 
-    def EM(self, params, prior=False):
-
-        '''
-        EM - Expectation maximisation algorithm for Gaussian mixture model
-            - Currently only gives correct result for photometric DF
-            - Can't weight calculation of mu, sigma, w for a prior distribution (needed for SF)
-
-        Parameters
-        ----------
-            params: array of floats - nx6 - where n is the number of components of the mixture
-                - Initial/current parameters of Gaussian mixture model
-
-        **kwargs
-        --------
-            prior=False: boolean
-                - Is there a prior distribution to use (Such as the photoDF)
-                - Don't actually know how to impose a prior yet
-
-        Returns
-        -------
-            params: array of floats - nx6 - where n is the number of components of the mixture
-                - New estimate of parameters of Gaussian mixture
-        '''
-
-        improvement = 100
-        it = 0
-        lnlike_old = self.lnlike(params)
-        # Whilst improving by greater than 0.1%
-        while improvement > 0.001:
-            it+=1
-            response = self.Expectation(params)
-            params = self.Maximisation(response, prior=prior)
-
-            lnlike_new = self.lnlike(params)
-            if 'lnlike_old' in locals():
-                improvement = 100 * (lnlike_new - lnlike_old)/np.abs(lnlike_old)
-
-            sys.stdout.write('\rold: %d, new: %d, improvement: %d' % (lnlike_old, lnlike_new, improvement))
-
-            lnlike_old = lnlike_new
-
-        print("\nIterations: %d" % it)
-        return params
-
-    def Expectation(self, params):
-
-        '''
-        Expectation - Expectation step of Expectation maximisation algorithm
-            - Calculates the assosciation of each point with each component of the mixture (response)
-
-        Parameters
-        ----------
-            params: array of floats - nx6 - where n is the number of components of the mixture
-                - Initial/current parameters of Gaussian mixture model
-
-        Inherited
-        ---------
-            x_s, y_s: array of float
-                - Feature scaled x and y coordinates of points
-
-        Returns
-        -------
-            response: array of floats - nxm
-                - Assosciation of each point with each component of the mixture
-                - n is the number of components
-                - m is the number of points
-        '''
-
-        response = np.empty((params.shape[0],) + self.x_s.shape)
-        for i in range(params.shape[0]):
-            component = bivariateGauss(params[i,:], self.x_s, self.y_s)
-            full = bivGaussMix(params, self.x_s, self.y_s)
-
-            response[i,:] = component/full
-
-        return response
-
-    def Maximisation(self, response, prior=False):
-
-        '''
-        Maximisation - Maximisation step of Expectation maximisation algorithm
-            - Calculates the parameters of mixture components using the points weighted by
-            their assosciations with each component.
-
-        Parameters
-        ----------
-            response: array of floats - nxm
-                - Assosciation of each point with each component of the mixture
-                - n is the number of components
-                - m is the number of points
-
-        kwargs
-        ------
-            prior: bool
-                - Whether to use a prior distribution function when calculating parameters
-                - Not yet sure how this is done
-
-        Inherited
-        ---------
-            x_s, y_s: array of float
-                - Feature scaled x and y coordinates of points
-
-        Returns
-        -------
-            params: array of floats - nx6 - where n is the number of components of the mixture
-                - Improved estimate for parameters of Gaussian mixture model
-
-        '''
-
-        shape = self.x_s.shape
-        X = np.vstack((self.x_s.ravel(), self.y_s.ravel())).T
-
-        params = np.empty(self.params_i.shape)
-        for i in range(response.shape[0]):
-
-            MU = np.dot(response[i,:], X) / np.sum(response[i,:])
-
-            diff = X-MU
-            XX = np.array([np.outer(elem, elem) for elem in diff])
-            # Weight matrices by response
-            XX = (response[i,:]*XX.T).T
-            sigma = np.sum(XX, axis=0) / np.sum(response[i,:])
-            determinant = np.linalg.det(sigma)
-
-            weight = np.sum(response[i,:])
-            if prior: weight /= len(self.x_s.ravel())
-
-            params[i,:] = np.array((MU[0], sigma[0,0], MU[1], sigma[1,1], weight, sigma[1,0]))
-
-        return params
-
     def optimizeParams(self, method="Powell", init="random"):
 
         '''
@@ -372,7 +226,7 @@ class GaussianEM():
         while not finite:
             if not init=="reset":
                 self.params_i, self.params_l, self.params_u = \
-                    initParams_revamp(self.nComponents, self.rngx_s, self.rngy_s, self.priorDF,
+                    initParams(self.nComponents, self.rngx_s, self.rngy_s, self.priorDF,
                                     nstars=len(self.x_s), ndf=self.ndf, runscaling=self.runscaling, l_min=self.s_min)
             if init=="kmeans":
                 # K-Means clustering of initialisation
@@ -404,51 +258,15 @@ class GaussianEM():
                         prior_erfprecision(self.params_i, self.rngx_s, self.rngy_s), \
                         len(self.x_s)
 
-        # Test runs different versions of the optimizer to find the best.
-        test=False
-        if test:
-            start = time.time()
-            bounds = list(zip(self.params_l.ravel(), self.params_u.ravel()))
-            # Run scipy optimizer
-            resultSLSQP = self.optimize(params, "SLSQP", bounds)
-            paramsSLSQP = resultSLSQP["x"].reshape(self.param_shape)
-            # Check likelihood for parameters
-            lnlikeSLSQP = self.lnlike(paramsSLSQP)
-            print("\n %s: lnprob=%d, time=%d" % ("SLSQP", self.lnprob(paramsSLSQP), time.time()-start))
-
-            start = time.time()
-            bounds=None
-            # Run expectation max
-            paramsEM = self.EM(params, prior=self.priorDF)
-            # Run scipy optimize
-            resultEM = self.optimize(paramsEM, method, bounds)
-            paramsEM = resultEM["x"].reshape(self.param_shape)
-            # Check likelihood for parameters
-            lnlikeEM = self.lnlike(paramsEM)
-            print("\n EM + %s: lnprob=%d, time=%d" % (method, self.lnprob(paramsEM), time.time()-start))
-
-            start = time.time()
-            bounds=None
-            # Run scipy optimizer
-            resultOP = self.optimize(params, method, bounds)
-            paramsOP = resultOP["x"].reshape(self.param_shape)
-            # Check likelihood for parameters
-            lnlikeOP = self.lnlike(paramsOP)
-            print("\n %s: lnprob=%d, time=%d" % (method, self.lnprob(paramsOP), time.time()-start))
-
-            if lnlikeOP>lnlikeEM: result = resultOP
-            else: result = resultEM
-
-        else:
-            start = time.time()
-            bounds = None
-            # Run scipy optimizer
-            if self.runningL: print("\nInitparam likelihood: %.2f" % float(self.lnprob(params)))
-            paramsOP = self.optimize(params, method, bounds)
-            # Check likelihood for parameters
-            lnlikeOP = self.lnlike(paramsOP)
-            if self.runningL: print("\n %s: lnprob=%.0f, time=%d" % (method, self.lnprob(paramsOP), time.time()-start))
-            params=paramsOP
+        start = time.time()
+        bounds = None
+        # Run scipy optimizer
+        if self.runningL: print("\nInitparam likelihood: %.2f" % float(self.lnprob(params)))
+        paramsOP = self.optimize(params, method, bounds)
+        # Check likelihood for parameters
+        lnlikeOP = self.lnlike(paramsOP)
+        if self.runningL: print("\n %s: lnprob=%.0f, time=%d" % (method, self.lnprob(paramsOP), time.time()-start))
+        params=paramsOP
 
         if not method=='emceeBall':
             self.params_f_scaled = params.copy()
@@ -637,7 +455,7 @@ class GaussianEM():
         # Prior on spectro distribution that it must be less than the photometric distribution
         if self.priorDF:
             function = lambda a, b: self.distribution(params, a, b)
-            prior = prior & SFprior_revamp(function, self.x_2d, self.y_2d)
+            prior = prior & SFprior(function, self.x_2d, self.y_2d)
             if not prior: return -np.inf
 
         # All prior tests satiscied
@@ -742,6 +560,8 @@ class GaussianEM():
     def stats(self):
 
         '''
+        This needs updating!!
+
         stats - Prints out the statistics of the model fitting.
 
         Such as parameters, likelihoods, integration calculations
@@ -788,77 +608,7 @@ class GaussianEM():
         print("Integration: Used {:.3f}, Half spacing {:.3f}".format(calc_val, calc_val2))
 
 
-def initParams(nComponents, rngx, rngy, priorDF, nstars=1, runscaling=True):
-
-    '''
-    initParams - Specify the initial parameters for the Gaussian mixture model as well as
-                the lower and upper bounds on parameters (used as prior values in the optimization)
-
-    Parameters
-    ----------
-        nComponents: int
-            - Number of components of the Gaussian Mixture model
-
-        rngx, rngy: tuple of float
-            - Range of region in x and y axis
-
-        priorDF: bool
-            - Is there a prior distribution function?
-            - True if calculating for selection function
-
-    Returns
-    -------
-        params_i - array of floats
-            - initial parameters for the Gaussian mixture model
-        params_l - array of floats
-            - lower bounds on the values of GMM parameters
-        params_u - array of floats
-            - upper bounds on the values of GMM parameters
-    '''
-
-    # Initial guess parameters for a bivariate Gaussian
-    # Randomly initialise mean between -1 and 1
-    mux_i, muy_i = np.random.rand(2, nComponents)
-    if not runscaling: # Random means in range of system
-        mux_i = mux_i * (rngx[1]-rngx[0]) + rngx[0]
-        muy_i = muy_i * (rngy[1]-rngy[0]) + rngy[0]
-
-    # Generate initial covariance matrix
-    N_gen = 10
-    X = np.random.rand(nComponents, 2, N_gen) / np.sqrt(N_gen)
-    if not runscaling: # Standard deviations scaled to system
-        X[:,0,:] *= np.sqrt(rngx[1]-rngx[0])
-        X[:,1,:] *= np.sqrt(rngy[1]-rngy[0])
-    sigma = np.matmul(X, X.transpose(0, 2, 1), np.zeros((nComponents, 2, 2)))
-
-    # Weights sum to 1
-    if priorDF: w_i = np.zeros(nComponents) + .1 / nComponents
-    else: w_i = np.zeros(nComponents) + nstars/ nComponents
-
-    # Lower and upper bounds on parameters
-    # Mean at edge of range
-    if runscaling:
-        mux_l, mux_u = -np.inf, np.inf
-        muy_l, muy_u = -np.inf, np.inf
-    else:
-        mux_l, mux_u = rngx
-        muy_l, muy_u = rngy
-    # Zero standard deviation to inf
-    sxx_l, syy_l = 0, 0
-    sxx_u, syy_u = np.inf, np.inf #rngx[1]-rngx[0], rngy[1]-rngy[0]
-    # Covariance must be in range -1., 1.
-    sxy_l, sxy_u = -np.inf, np.inf
-    # Zero weight
-    w_l = 0.
-    w_u = np.inf
-
-    params_i = np.vstack((mux_i, sigma[:,0,0], muy_i, sigma[:,1,1], w_i, sigma[:,0,1])).T
-    params_l = np.repeat([[mux_l, sxx_l, muy_l, syy_l, w_l, sxy_l],], nComponents, axis=0)
-    params_u = np.repeat([[mux_u, sxx_u, muy_u, syy_u, w_u, sxy_u],], nComponents, axis=0)
-
-    return params_i, params_l, params_u
-
-def initParams_revamp(nComponents, rngx, rngy, priorDF, nstars=1, ndf=None, runscaling=True, l_min=0.1):
+def initParams(nComponents, rngx, rngy, priorDF, nstars=1, ndf=None, runscaling=True, l_min=0.1):
 
     '''
     initParams - Specify the initial parameters for the Gaussian mixture model as well as
@@ -1039,37 +789,7 @@ def prior_erfprecision(params, rngx, rngy):
     if np.sum(separation>25) > 0: return False
     else: return True
 
-
-def SFprior(function, rngx, rngy, N=150):
-
-    '''
-    SFprior - The selection function has to be between 0 and 1 everywhere.
-        - informative prior
-
-    Parameters
-    ----------
-        function - function
-            - The selection function interpolant over the region, R.
-
-        rngx, rngy: tuple of float
-            - Range of region in x and y axis
-
-    Returns
-    -------
-        prior - bool
-            - True if all points on GMM are less than 1.
-            - Otherwise False
-    '''
-
-    x_coords = np.linspace(rngx[0], rngx[1], N)
-    y_coords = np.linspace(rngy[0], rngy[1], N)
-    xx, yy = np.meshgrid(x_coords, y_coords)
-    f_max = np.max( function(*(xx, yy)) )
-    prior = not f_max>1
-
-    return prior
-
-def SFprior_revamp(function, xx, yy):
+def SFprior(function, xx, yy):
 
     '''
     SFprior - The selection function has to be between 0 and 1 everywhere.
@@ -1094,94 +814,11 @@ def SFprior_revamp(function, xx, yy):
 
     return prior
 
-def bivariateGauss(params, x, y):
-
-    '''
-    bivariateGauss - Calculation of bivariate Gaussian distribution.
-
-    Parameters
-    ----------
-        params - arr of float - length 6
-            - Parameters of the bivariate gaussian
-        x, y - arr of float
-            - x and y coordinates of points being tested
-    Returns
-    -------
-        p - arr of float
-            - bivariate Gaussian value for each point in x, y
-    '''
-
-    shape = x.shape
-    X = np.vstack((x.ravel(), y.ravel())).T
-
-    mu = np.array((params[0], params[2]))
-    sigma = np.array([[params[1], params[5]], [params[5], params[3]]])
-    weight= params[4]
-
-    # Inverse covariance
-    inv_cov = np.linalg.inv(sigma)
-    # Separation of X from mean
-    X = X-mu
-    # X^T * Sigma
-    X_cov = np.dot(X, inv_cov)
-    # X * Sigma * X
-    X_cov_X = np.sum(X_cov*X, axis=1)
-    # Exponential
-    e = np.exp(-X_cov_X/2)
-
-    # Normalisation term
-    det_cov = np.linalg.det(sigma)
-    norm = 1/np.sqrt( ((2*np.pi)**2) * det_cov)
-
-    p = weight*norm*e
-    return p.reshape(shape)
 
 def bivGaussMix_vect(params, x, y):
 
     '''
-    bivariateGauss - Calculation of bivariate Gaussian distribution.
-
-    Parameters
-    ----------
-        params - arr of float - length 6
-            - Parameters of the bivariate gaussian
-        x, y - arr of float
-            - x and y coordinates of points being tested
-    Returns
-    -------
-        p - arr of float
-            - bivariate Gaussian value for each point in x, y
-    '''
-
-    shape = x.shape
-    X = np.vstack((x.ravel(), y.ravel())).T
-
-    mu = np.array((params[:,0], params[:,2]))
-    sigma = np.array([[params[:,1], params[:,5]], [params[:,5], params[:,3]]])
-    weight= params[:,4]
-
-    # Inverse covariance
-    inv_cov = np.linalg.inv(sigma.transpose(2,0,1)).transpose(1,2,0)
-    # Separation of X from mean
-    X = np.moveaxis(np.repeat([X,], mu.shape[-1], axis=0), 0, -1) - mu
-    # X^T * Sigma
-    X_cov = np.einsum('mjn, jkn -> mkn', X, inv_cov)
-    # X * Sigma * X
-    X_cov_X = np.einsum('mkn, mkn -> mn', X_cov, X)
-    # Exponential
-    e = np.exp(-X_cov_X/2)
-
-    # Normalisation term
-    det_cov = np.linalg.det(sigma.transpose(2,0,1))
-    norm = 1/np.sqrt( ((2*np.pi)**2) * det_cov)
-
-    p = np.sum(weight*norm*e, axis=-1)
-    return p.reshape(shape)
-
-def bivGaussMix_vect_revamp(params, x, y):
-
-    '''
-    bivariateGauss - Calculation of bivariate Gaussian distribution.
+    bivGaussMix_vect - Calculation of bivariate Gaussian distribution.
 
     Parameters
     ----------
@@ -1330,27 +967,6 @@ def gmm_product_p(params1, params2):
 
     return params3
 
-def bivGaussMix_iter(params, x, y):
-
-    '''
-    bivariateGauss - Calculation of bivariate Gaussian mixture distribution.
-
-    Parameters
-    ----------
-        params - arr of float - nx6
-            - Parameters of the bivariate gaussian
-        x, y - arr of float
-            - x and y coordinates of points being tested
-    Returns
-    -------
-        p - arr of float
-            - bivariate Gaussian mixture value for each point in x, y
-    '''
-
-    p = np.sum(np.array([bivariateGauss(params[i,:], x, y) for i in range(params.shape[0])]), axis=0)
-
-    return p
-
 def feature_scaling(x, y, mux, muy, sx, sy):
 
     '''
@@ -1425,7 +1041,7 @@ def emcee_opt(function, params, niter=2000, file_loc=''):
     nwalkers=int(params.shape[0]*2.5)
     ndim=len(params.flatten())
 
-    p0 = np.array([initParams_revamp(params.shape[0], [-20,20],[-20,20],
+    p0 = np.array([initParams(params.shape[0], [-20,20],[-20,20],
                     False,nstars=2000,runscaling=True,l_rng=[0.1, 1.])[0].flatten() for i in range(nwalkers)])
 
     sampler = emcee.EnsembleSampler(nwalkers, ndim, foo)
