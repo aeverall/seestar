@@ -4,7 +4,7 @@
 **seestar** is a Python package for creating and using selection functions for spectroscopic stellar surveys.
 
 The full theory and design of the selection function can be found in [Everall & Das 2019](https://arxiv.org/abs/1902.10485). Please cite this paper when using the repository.
-*[Data]() and an [example notebook](https://github.com/aeverall/seestar/tree/master/examples) for reproducing the Galaxia example are available. The example notebook is in the Github repositoy [examples/]() folder*
+*[Data](https://drive.google.com/open?id=1S2KSHDRDVnTQSPxKEWT701ZVyNz1TxWV) and an [example notebook](https://github.com/aeverall/seestar/blob/master/examples/Galaxia_selection.ipynb) for reproducing the Galaxia example are available. The example notebook is in the Github repositoy [examples/](https://github.com/aeverall/seestar/blob/master/examples/) folder. You will also need isochrone data from [here](https://drive.google.com/open?id=13n6QbEFpJW609TKaroHTShfdF9sUzULW).*
 
 The purpose of **seestar** is to provide an *easy-to-use*, *fast processing* and *mathematically consistent* method for calculating selection functions for spectroscopic stellar surveys. We hope that this will consolidate the many different methods currently used to calculate selection functions. We also provide precalculated selection functions for popular spectroscopic surveys.
 
@@ -17,7 +17,8 @@ In the remainder of this README file, we will explain how to install and run **s
 # Contents:
 1. [Install package](#install)
 2. [Calculate selection functions](#SF)
-3. [Isochrone Calculator](#isochrones)
+3. [Combine selection functions](#combine)
+4. [Isochrone Calculator](#isochrones)
 
 
 ***
@@ -152,9 +153,17 @@ dataframe.union # The column of selection function probabilities
 ```
 
 ***
+## Combine selection functions <a name="combine"></a>
+
+We provide an [example notebook](https://github.com/aeverall/seestar/blob/master/examples/Combine%20Surveys.ipynb) for demonstrating how you can get selection function values for merged datasets.
+
+The calculation is trivial, just a union of probabilities (p1+p2-p1.p2).
+
+
+***
 ## Isochrone calculator <a name="isochrones"></a>
 
-Downloaded isochrone data files from [here](https://drive.google.com/drive/folders/1YOZyHzdMP5-wgDVv-SlDXEVGcWagGG3-?usp=sharing).
+Downloaded isochrone data files from [here](https://drive.google.com/open?id=13n6QbEFpJW609TKaroHTShfdF9sUzULW).
 
 Data for the isochrones is provided in two formats:
 
