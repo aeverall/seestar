@@ -1,6 +1,7 @@
 SFdata/
 Presentation/
 
+examples/.ipynb_checkpoints/
 seestar/examples/.ipynb_checkpoints/
 seestar/examples/.ipynb_checkpoints/Testredesign-checkpoint.ipynb
 
@@ -11,6 +12,8 @@ seestar/PlotCoordinates.py
 seestar/Optimizers.py
 seestar/surveyInfoPickler.py
 *.pyc
+
+.gitignore.save
 
 SFgithub.sublime-workspace
 

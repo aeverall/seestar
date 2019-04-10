@@ -80,7 +80,9 @@ sys.path.append("../FitGalMods/")
 from matplotlib import pyplot as plt
 import matplotlib
 
-from seestar import AngleDisks
+#from seestar import AngleDisks
+sys.path.append('/home/andy/Documents/Research/SF/GitRepo/seestar/')
+import AngleDisks
 
 
 def BoundaryToCentre(bin_bounds):

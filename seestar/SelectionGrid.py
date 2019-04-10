@@ -311,6 +311,23 @@ class SFGenerator():
             with open(obsSF_path, 'wb') as handle:
                 pickle.dump(obsSF_dicts, handle, protocol=2)
 
+    def combine(self, SF_inst):
+        # Function currently being developed.
+        # The process has more subtleties than I'd initially thought.
+
+        SF_combined = SFGenerator(self.get_spectro, self.get_photo, self.pointings)
+
+        # 1) Concatenate pointings from SF_inst with SF_combined.pointings
+        # Add half_angle = inf entry for all-sky surveys
+
+        # 2) Concatenate SF_inst.obsSF dictionary with self.obsSF
+
+        # 3) __call__ needs to be capable of calling different colours and magnitudes
+        # e.g. APOGEE might need H,J-Ks whilst RVS needs Grp, Gbp-Grp
+
+        # 4) Need to convert all field IDs to strings and append with a survey identifier.`
+        
+        return SF_combined
 
     def iterateAllFields(self):
 
