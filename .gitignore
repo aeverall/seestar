@@ -1,6 +1,9 @@
 SFdata/
 Presentation/
 
+tests/
+.cache/
+
 examples/.ipynb_checkpoints/
 seestar/examples/.ipynb_checkpoints/
 seestar/examples/.ipynb_checkpoints/Testredesign-checkpoint.ipynb

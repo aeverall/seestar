@@ -1,5 +1,0 @@
-'''
-Code testing for surveyInfoPickler
-
-
-'''
