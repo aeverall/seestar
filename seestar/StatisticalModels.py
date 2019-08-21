@@ -1593,6 +1593,529 @@ def singleGaussianSample(mu, sigma, N = 1000):
 
 
 
+"""
+BayesianGaussianMixture and TNC methods
+"""
+class BGM_TNC():
+
+    '''
+    GaussianEM - Class for calculating bivariate Gaussian mixture model which best fits
+                 the given poisson point process data.
+
+    Parameters
+    ----------
+        x, y - np.array of floats
+            - x and y coordinates for the points generated via poisson point process from
+            the smooth model
+
+        nComponents - int
+            - Number of Gaussian components of the mixture model
+
+        rngx, rngy - tuple of floats
+            - Upper and lower bounds on x and y of the survey
+
+    Functions
+    ---------
+        __call__ - Returns the value of the smooth GMM distribution at the points x, y
+        optimizeParams - Vary the parameters of the distribution using the given method to optimize the
+                        poisson likelihood of the distribution
+        optimize
+        lnprob - ln of the posterior probability of the distribution given the parameters.
+               - posterior probability function is proportional to the prior times the likelihood
+               - lnpost = lnprior + lnlike
+        lnprior - The test of the parameters of the Gaussian Mixture Model against the specified prior values
+    '''
+
+    def __init__(self, x=np.zeros(0), y=np.zeros(0), sig_xy=None,
+                rngx=(0,1), rngy=(0,1), runscaling=True, runningL=True,
+                photoDF=None, priorDF=False):
+
+        # Iteration number to update
+        self.iter_count = 0
+
+        # Name of the model to used for reloading from dictionary
+        self.modelname = self.__class__.__name__
+
+        # Distribution from photometric survey for calculation of SF
+        self.photoDF = photoDF
+        self.priorDF = priorDF
+
+        # Starting values for parameters
+        self.params_i = None
+        # Final optimal values for parameters
+        self.params_f = None
+        # Shape of parameter set (number of components x parameters per component)
+        self.param_shape = ()
+
+        # Boundary on minimum std
+        self.s_min=s_min
+
+        # Coordinate covariance matrix
+        if sig_xy is None:
+            z_ = np.zeros(len(x))
+            sig_xy = np.array([[z_, z_],[z_, z_]]).transpose(2,0,1)
+        self.sig_xy = sig_xy
+
+        self.runscaling = runscaling
+        # Not run when loading class from dictionary
+        if runscaling:
+            # Real space parameters
+            self.x = x.copy()
+            self.y = y.copy()
+            self.rngx, self.rngy = rngx, rngy
+            # Statistics for feature scaling
+            if len(x)>1:
+                self.mux, self.sx = np.mean(x), np.std(x)
+                self.muy, self.sy = np.mean(y), np.std(y)
+            else:
+                # SD=0 if only one point which causes problems!
+                self.mux, self.sx = np.mean(x), (rngx[1]-rngx[0])/4
+                self.muy, self.sy = np.mean(y), (rngy[1]-rngy[0])/4
+            # Scaled parameters
+            self.x_s, self.y_s = feature_scaling(x, y, self.mux, self.muy, self.sx, self.sy)
+            self.rngx_s, self.rngy_s = feature_scaling(np.array(rngx), np.array(rngy), self.mux, self.muy, self.sx, self.sy)
+            self.sig_xy_s = covariance_scaling(self.sig_xy, self.sx, self.sy)
+        else:
+            # Real space parameters
+            self.x = x.copy()
+            self.y = y.copy()
+            self.rngx, self.rngy = rngx, rngy
+            self.x_s, self.y_s = x, y
+            self.rngx_s, self.rngy_s = rngx, rngy
+            self.sig_xy_s = sig_xy
+
+        # Function which calculates the actual distribution
+        self.distribution = bivGaussMix_vect
+
+        # Print out likelihood values as calculated
+        self.runningL = runningL
+
+        if self.priorDF:
+            # Calculate Gaussian distributions from product of scaled DF and scaled star positions
+            if self.runscaling: self.params_df = self.scaleParams(self.photoDF.params_f, dfparams=True)
+            else: self.params_df = self.photoDF.params_f
+            function = lambda a, b: self.distribution(self.params_df, a, b)
+            #if self.runningL:
+            #    print 'DF integral = ', numericalIntegrate_precompute(function, self.x_2d, self.y_2d)
+            self.ndf = len(self.photoDF.x)
+        else: self.ndf = None
+
+    def __call__(self, x, y, components=None, params=None):
+
+        '''
+        __call__ - Returns the value of the smooth GMM distribution at the points x, y
+
+        Parameters
+        ----------
+            x, y - float or np.array of floats
+                - x and y coordinates of points at which to take the value of the GMM
+                - From input - x is magnitude, y is colour
+
+            components=None:
+                - List of components to check for distribution values
+
+            params=None:
+                - The parameters on which the model will be evaluatedself.
+                - If None, params_f class attribute will be used
+
+        Returns
+        -------
+            GMMval: float or np.array of floats
+                - The value of the GMM at coordinates x, y
+        '''
+        #
+        if params is None: params=self.params_f.copy()
+
+        # Scale x and y to correct region - Currently done to params_f - line 371  - but could change here instead
+        #x, y = feature_scaling(x, y, self.mux, self.muy, self.sx, self.sy)
+        #rngx, rngy = feature_scaling(np.array(self.rngx), np.array(self.rngy), self.mux, self.muy, self.sx, self.sy)
+        rngx, rngy = np.array(self.rngx), np.array(self.rngy)
+
+        # Value of coordinates x, y in the Gaussian mixture model
+        if components is None: components = np.arange(self.nComponents)
+        GMMval = self.distribution(params[components, :], x, y)
+
+        if (type(GMMval) == np.array)|(type(GMMval) == np.ndarray)|(type(GMMval) == pd.Series):
+            # Not-nan input values
+            notnan = (~np.isnan(x))&(~np.isnan(y))
+            # Any values outside range - 0
+            constraint = (x[notnan]>=rngx[0])&(x[notnan]<=rngx[1])&(y[notnan]>=rngy[0])&(y[notnan]<=rngy[1])
+            GMMval[~notnan] = np.nan
+            GMMval[notnan][~constraint] = 0.
+        elif (type(GMMval) == float) | (type(GMMval) == np.float64):
+            if (np.isnan(x))|(np.isnan(y)): GMMval = np.nan
+            else:
+                constraint = (x>=rngx[0])&(x<=rngx[1])&(y>=rngy[0])&(y<=rngy[1])
+                if not constraint:
+                    GMMval = 0.
+        else: raise TypeError('The type of the input variables is '+str(type(GMMval)))
+
+        return GMMval
+
+    def optimizeParams(self):
+
+        '''
+        optimizeParams - Initialise and optimize parameters of Gaussian mixture model.
+
+        **kwargs
+        --------
+
+        Returns
+        -------
+
+        '''
+
+        if not self.priorDF:
+            params = optimize(None, 'BGM')
+        if self.priorDF:
+            # Generate NIW prior parameters
+            priorParams = NIW_prior_params(Xobs)
+            # Run optimize
+            params = optimize(priorParams, 'TNC')
+
+        return params
+
+    def optimize(self, params, method):
+
+        '''
+        optimize - Run scipy.optimize.minimize to determine the optimal parameters for the distribution
+
+        Parameters
+        ----------
+            params: array of float
+                - Initial parameters of the distribution
+
+            method: str
+                - Method to be used by optimizer, e.g. "Powell"
+
+            bounds: list of tup of float or None
+                - Boundaries of optimizing region
+                - Only for optimization methods which take bounds
+
+        Returns
+        -------
+            result: dict
+                - Output of scipy.optimize
+        '''
+
+        X = np.vstack((self.x_s, self.y_s)).T
+
+        # To clean up any warnings from optimize
+        invalid = np.seterr()['invalid']
+        divide = np.seterr()['divide']
+        over = np.seterr()['over']
+        np.seterr(invalid='ignore', divide='ignore', over='ignore')
+
+        if method=='TNC':
+            raw_params = TNC_sf(X, priorParams, self.params_df)
+            params = transform_sfparams_logit(raw_params)
+        elif method=='BGM':
+            params = BGMM_df(X)
+
+        params = params.reshape(self.param_shape)
+
+        # To clean up any warnings from optimize
+        np.seterr(invalid=invalid, divide=divide, over=over)
+        if self.runningL: print("")
+
+        return params
+
+    def scaleParams(self, params_in, dfparams=False):
+
+        # This isn't quite right, the likelihood doesn't turn out the same!
+
+        params = params_in.copy()
+        params[:,[0,1]] = (params[:,[0,1]] -  [self.mux, self.muy]) / np.array([self.sx, self.sy])
+
+        params[:,[2,3]] *= 1/np.array([self.sx**2, self.sy**2])
+
+        #if self.priorDF & (not dfparams):
+        #    params[:,5] /= (self.sx*self.sy)
+
+        return params
+
+    def unscaleParams(self, params_in, dfparams=False):
+
+        params = params_in.copy()
+        params[:,[0,1]] = (params[:,[0,1]] * np.array([self.sx, self.sy])) +  [self.mux, self.muy]
+
+        params[:,[2,3]] *= np.array([self.sx**2, self.sy**2])
+
+        #if self.priorDF & (not dfparams):
+        #    params[:,5] *= (self.sx*self.sy)
+
+        return params
+
+# General functions
+def quick_invdet(S):
+    det = S[:,0,0]*S[:,1,1] - S[:,0,1]**2
+    Sinv = S.copy()*0
+    Sinv[:,0,0] = S[:,1,1]
+    Sinv[:,1,1] = S[:,0,0]
+    Sinv[:,0,1] = -S[:,0,1]
+    Sinv[:,1,0] = -S[:,1,0]
+    Sinv *= 1/det[:,np.newaxis,np.newaxis]
+
+    return Sinv, det
+def Gaussian_i(delta, Sinv, Sdet):
+    # delta is [nStar, nComponent, 2]
+    # Sinv is [nComponent, 2, 2]
+    # Sdet is [nComponent]
+
+    sum_axis = len(delta.shape)-1
+    exponent = -0.5*np.sum(delta * \
+                    np.sum(Sinv[np.newaxis,...]*delta[...,np.newaxis], axis=sum_axis), axis=sum_axis)
+    norm = 1/(2*np.pi*np.sqrt(Sdet))
+
+    # Return shape is (Nstar, Ncomponent)
+    return norm[np.newaxis] * np.exp(exponent)
+def Gaussian_int(delta, Sinv, Sdet):
+    # delta is [nComponent, 2]
+    # Sinv is [nComponent, 2, 2]
+    # Sdet is [nComponent]
+
+    sum_axis = len(delta.shape)-1
+    exponent = -0.5*np.sum(delta * \
+                    np.sum(Sinv*delta[...,np.newaxis], axis=sum_axis), axis=sum_axis)
+    norm = 1/(2*np.pi*np.sqrt(Sdet))
+
+    # Return shape is (Ncomponent)
+    return norm * np.exp(exponent)
+
+# Manipulating parameters
+def NIW_prior_params(Xsf):
+
+    mu0 = np.mean(Xsf, axis=0)
+    Psi0 = np.mean((Xsf-mu0)[...,np.newaxis] * (Xsf-mu0)[...,np.newaxis,:], axis=0)
+    l0 = 10.
+    nu0 = 1.
+    priorParams = [mu0, l0, Psi0, nu0]
+
+    return priorParams
+def get_params(gmm_inst, Nstar, n_components):
+
+    params = np.zeros((n_components,6))
+    params[:,:2] = gmm_inst.means_
+    params[:,2:4] = gmm_inst.covariances_[:,[0,1],[0,1]]
+    params[:,4] = gmm_inst.covariances_[:,0,1]/np.sqrt(gmm_inst.covariances_[:,0,0]*gmm_inst.covariances_[:,1,1])
+    params[:,5] = gmm_inst.weights_*Nstar
+
+    return params
+def get_sfparams_logit(gmm_inst, n_components):
+
+    params = np.zeros((n_components,6))
+    params[:,:2] = gmm_inst.means_
+    params[:,2:4] = gmm_inst.covariances_[:,[0,1],[0,1]]
+    corr = gmm_inst.covariances_[:,0,1]/np.sqrt(gmm_inst.covariances_[:,0,0]*gmm_inst.covariances_[:,1,1])
+    params[:,4] = (corr+1)/2.
+    params[:,4] = np.log(params[:,4]/(1-params[:,4]))
+
+    w = gmm_inst.weights_
+    Sdet = quick_invdet(gmm_inst.covariances_)[1]
+    w /= (2*np.pi*np.sqrt(Sdet))
+    w[w>1] = 0.9
+    params[:,5] = np.log(w/(1-w))
+    # Logit on correlation
+
+    return params
+def transform_sfparams_logit(params):
+
+    raw_params = params.copy().reshape(-1,6)
+
+    raw_params[:,2:4] = np.abs(raw_params[:,2:4])
+
+    e_alpha = np.exp(-raw_params[...,4])
+    p = 0.999/(1+e_alpha)
+    corr = np.sqrt(raw_params[...,2]*raw_params[...,3])*(2*p - 1)
+    S_sf = np.moveaxis(np.array([[raw_params[...,2], corr], [corr, raw_params[...,3]]]), -1, 0)
+    Sinv_sf, Sdet_sf = quick_invdet(S_sf)
+    raw_params[...,4] = (2*p - 1)
+
+    # Logit correction of raw_params[:,5] - [-inf, inf] --> [0, rt(det(2.pi.S))]
+    e_alpha_pi = np.exp(-raw_params[...,5])
+    p_pi = 1./(1+e_alpha_pi)
+    pi = 2*np.pi*np.sqrt(Sdet_sf) * p_pi
+    raw_params[:,5] = pi
+
+    return raw_params
+
+# Likelihood, Prior and Posterior functions
+def calc_nlnP_grad_pilogit_NIW(params, Xsf, NIWprior, df_params, stdout=False):
+
+    # Parameters - transform to means, covariances and weights
+    params = np.reshape(params, (-1,6))
+    # means
+    params[:,2:4] = np.abs(params[:,2:4])
+    df_idx = np.repeat(np.arange(df_params.shape[0]), params.shape[0])
+    sf_idx = np.tile(np.arange(params.shape[0]), df_params.shape[0])
+    # covariances
+    e_alpha = np.exp(-params[...,4])
+    p = 0.999/(1+e_alpha)
+    corr = np.sqrt(params[...,2]*params[...,3])*(2*p - 1)
+    S_sf = np.moveaxis(np.array([[params[...,2], corr], [corr, params[...,3]]]), -1, 0)
+    Sinv_sf, Sdet_sf = quick_invdet(S_sf)
+    delta_sf = Xsf[:,np.newaxis,:]-params[:,:2][np.newaxis,:,:]
+    Sinv_sf_delta = np.sum(Sinv_sf[np.newaxis,...]*delta_sf[...,np.newaxis], axis=2)
+    #weights
+    # Logit correction of params[:,5] - [-inf, inf] --> [0, rt(det(2.pi.S))]
+    e_alpha_pi = np.exp(-params[...,5])
+    p_pi = 1./(1+e_alpha_pi)
+    pi = 2*np.pi*np.sqrt(Sdet_sf) * p_pi
+
+
+    # Likelihood
+    corr = np.sqrt(df_params[...,2]*df_params[...,3])*df_params[...,4]
+    S_df = np.moveaxis(np.array([[df_params[...,2], corr], [corr, df_params[...,3]]]), -1, 0)
+
+    Sinv_sum, Sdet_sum = quick_invdet(S_sf[sf_idx]+S_df[df_idx])
+    Sinv_sum_delta = np.sum(Sinv_sum*(df_params[:,:2][df_idx] - params[:,:2][sf_idx])[...,np.newaxis], axis=1)
+
+    # Star iteration term
+    # (Nstar x Ncomponent_sf)
+    m_ij = Gaussian_i(delta_sf, Sinv_sf, Sdet_sf)
+    m_i = np.sum(pi*m_ij, axis=1)
+
+    # Integral Term
+    delta_mumu = params[:,:2][sf_idx] - df_params[:,:2][df_idx]
+    I_jl = Gaussian_int(delta_mumu, Sinv_sum, Sdet_sum)  * pi[sf_idx] * df_params[:,5][df_idx]
+    I = np.sum(I_jl)
+
+    # Prior
+    m0, l0, Psi0, nu0 = NIWprior
+    delta_mumu0 = params[:,:2]-m0[np.newaxis,:]
+    Prior0 = (-(nu0+4.)/2.) * np.log(Sdet_sf)
+    Priormu = (-l0/2.) * np.sum(delta_mumu0 * np.sum(Sinv_sf * delta_mumu0[...,np.newaxis], axis=1), axis=1)
+    PriorS = (-1/2.) * np.trace(np.matmul(Psi0[np.newaxis,...], Sinv_sf), axis1=-2, axis2=-1)
+    Prior = np.sum(Prior0 + Priormu + PriorS)
+    # Calculation for later
+    Sinv_delta_mumu0 = np.sum(Sinv_sf * delta_mumu0[...,np.newaxis], axis=1)
+
+    # Gradients
+
+    # Pi
+    A = np.sum(m_ij/m_i[:,np.newaxis], axis=0) # i-term
+    B = np.sum((I_jl/pi[sf_idx]).reshape(df_params.shape[0], params.shape[0]), axis=0) # int-term
+    C = 1/pi # prior-term
+    gradPi = A - B
+
+    # mu
+    A = (pi[np.newaxis,:]*(m_ij/m_i[:,np.newaxis]))[...,np.newaxis]*\
+        Sinv_sf_delta
+    A = np.sum(A, axis=0) # i-term (nComponent x 2)
+    B = (I_jl)[:,np.newaxis] * \
+        Sinv_sum_delta
+    B = np.sum(B.reshape(df_params.shape[0], params.shape[0], 2), axis=0) # int-term
+    C = -l0 * np.sum(Sinv_sf * delta_mumu0[...,np.newaxis], axis=1) # NIW prior
+    gradmu = A - B + C
+
+    #sigma
+    diff = -0.5*(Sinv_sf[np.newaxis] - Sinv_sf_delta[...,np.newaxis]*Sinv_sf_delta[...,np.newaxis,:])
+    A = (pi*(m_ij/m_i[:,np.newaxis]))[...,np.newaxis,np.newaxis] * diff
+    A = np.sum(A, axis=0) # i-term (nComponent x 2 x 2)
+    diff = -0.5*(Sinv_sum - Sinv_sum_delta[...,np.newaxis]*Sinv_sum_delta[...,np.newaxis,:])
+    B = (I_jl)[:,np.newaxis,np.newaxis] * diff
+    B = np.sum(B.reshape(df_params.shape[0], params.shape[0], 2, 2), axis=0) # int-term (nComponent x 2 x 2)
+    C = -((nu0+4)/2.)*Sinv_sf - (l0/2.)*Sinv_delta_mumu0[...,np.newaxis]*Sinv_delta_mumu0[...,np.newaxis,:]\
+        + (1./2.) * np.matmul(Sinv_sf, np.matmul(Psi0[np.newaxis,...], Sinv_sf))
+    gradS = A - B + C
+
+    grad = np.zeros((params.shape[0],6))
+    grad[:,:2] = gradmu
+    grad[:,2] = gradS[:,0,0]
+    grad[:,3] = gradS[:,1,1]
+    grad[:,4] = 2*gradS[:,0,1]*np.sqrt(params[:,2]*params[:,3])*2*p**2*e_alpha
+    grad[:,5] = gradPi * 2*np.pi*np.sqrt(Sdet_sf) * p_pi**2 * e_alpha_pi
+
+    return  - ( np.sum(np.log(m_i)) - np.sum(I) + Prior), -grad.flatten()
+def lnlike(Xdf, params):
+
+    function = lambda a, b: sm.bivGaussMix_vect(params, a, b)
+    model = sm.bivGaussMix_vect(params, Xdf[:,0], Xdf[:,1])
+
+    contPoints = np.sum( np.log(model) )
+
+    # Integral of the smooth function over the entire region
+    contInteg = np.sum(params[:,5])
+    #print bivGauss_analytical_approx(params, self.rngx_s, self.rngy_s), self.rngx_s, self.rngy_s
+
+    lnL = contPoints - contInteg
+
+    return lnL
+def BIC(n, k, lnL):
+    return k*np.log(n) - 2*lnL
+
+# Optimization methods
+def TNC_sf(Xsf, priorParams, df_params, max_components=15, stdout=False):
+
+    bic_vals = np.zeros(max_components) + np.inf
+    sf_params_n = {}
+    for i in range(1, max_components):
+
+        n_component=i
+
+        # Simple GMM
+        gmm = mixture.BayesianGaussianMixture(n_component, n_init=1,
+                                              init_params='kmeans', tol=1e-5, max_iter=1000)
+        gmm.fit(Xsf)
+        params_bgm_pilogit = get_sfparams_logit(gmm, n_component)
+
+
+        opt = scipy.optimize.minimize(calc_nlnP_grad_pilogit_NIW,  params_bgm_pilogit,
+                                      args=(Xsf, priorParams, df_params), method='TNC',
+                                      jac=True, options={'maxiter':500}, tol=1e-5)
+        nlnp = calc_nlnP_grad_pilogit_NIW(opt.x, Xsf, priorParams, df_params)[0]
+
+        bic_val = BIC(Xsf.shape[0], i*6, -nlnp)
+        bic_vals[i] = bic_val
+        if stdout:
+            print(opt.success, opt.message)
+            print(i, "...", bic_val, "...", nlnp)
+
+        sf_params_n[i] = opt.x.reshape(-1,6)
+
+        #if i>1:
+        #    if (bic_vals[i]>bic_vals[i-1]) and (bic_vals[i-1]>bic_vals[i-2]):
+        #        break
+
+    if stdout:
+        print('Best components: ', np.argmin(bic_vals))
+
+    return sf_params_n[np.argmin(bic_vals)]
+def BGMM_df(Xdf, max_components=20, stdout=False):
+
+    max_components=20
+    bic_vals = np.zeros(max_components+1) + np.inf
+    df_params_n = {}
+
+    for i in range(1, max_components+1):
+
+        # Simple GMM
+        gmm = mixture.BayesianGaussianMixture(n_components=i, n_init=2,
+                                              init_params='kmeans', tol=1e-5, max_iter=1000)
+        gmm.fit(Xdf)
+
+        params = get_params(gmm, Xdf.shape[0], i)
+        bic_val = BIC(Xdf.shape[0], i*6, lnlike(Xdf, params))
+        bic_vals[i] = bic_val
+        if stdout:
+            print(i, "...", bic_val)
+
+        df_params_n[i] = params
+
+        if i>1:
+            if (bic_vals[i]>bic_vals[i-1]) and (bic_vals[i-1]>bic_vals[i-2]):
+                break
+
+    if stdout:
+        print('Best components: ', np.argmin(bic_vals))
+
+    return df_params_n[np.argmin(bic_vals)]
+
+
+
+
+
+
 
 # Used when Process == "Number"
 class FlatRegion:
