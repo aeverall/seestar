@@ -26,6 +26,8 @@ import emcee
 import sys, os, time
 from mpmath import *
 
+from sklearn import mixture
+
 # Import cubature for integrating over regions
 #from cubature import cubature
 
@@ -1608,8 +1610,6 @@ class BGM_TNC():
             - x and y coordinates for the points generated via poisson point process from
             the smooth model
 
-        nComponents - int
-            - Number of Gaussian components of the mixture model
 
         rngx, rngy - tuple of floats
             - Upper and lower bounds on x and y of the survey
@@ -1646,9 +1646,6 @@ class BGM_TNC():
         self.params_f = None
         # Shape of parameter set (number of components x parameters per component)
         self.param_shape = ()
-
-        # Boundary on minimum std
-        self.s_min=s_min
 
         # Coordinate covariance matrix
         if sig_xy is None:
@@ -1689,6 +1686,8 @@ class BGM_TNC():
 
         # Print out likelihood values as calculated
         self.runningL = runningL
+
+        if runningL: print('N stars = ', len(self.x))
 
         if self.priorDF:
             # Calculate Gaussian distributions from product of scaled DF and scaled star positions
@@ -1732,7 +1731,7 @@ class BGM_TNC():
         rngx, rngy = np.array(self.rngx), np.array(self.rngy)
 
         # Value of coordinates x, y in the Gaussian mixture model
-        if components is None: components = np.arange(self.nComponents)
+        if components is None: components = np.arange(self.params_f.shape[0])
         GMMval = self.distribution(params[components, :], x, y)
 
         if (type(GMMval) == np.array)|(type(GMMval) == np.ndarray)|(type(GMMval) == pd.Series):
@@ -1766,16 +1765,21 @@ class BGM_TNC():
         '''
 
         if not self.priorDF:
-            params = optimize(None, 'BGM')
+            params = self.optimize(None, 'BGM')
         if self.priorDF:
             # Generate NIW prior parameters
-            priorParams = NIW_prior_params(Xobs)
+            priorParams = NIW_prior_params(self.x_s, self.y_s)
             # Run optimize
-            params = optimize(priorParams, 'TNC')
+            params = self.optimize(priorParams, 'TNC')
+
+        self.params_f_scaled = params.copy()
+        if self.runscaling: params = self.unscaleParams(params)
+        # Save evaluated parameters to internal values
+        self.params_f = params.copy()
 
         return params
 
-    def optimize(self, params, method):
+    def optimize(self, priorParams, method):
 
         '''
         optimize - Run scipy.optimize.minimize to determine the optimal parameters for the distribution
@@ -1807,16 +1811,20 @@ class BGM_TNC():
         np.seterr(invalid='ignore', divide='ignore', over='ignore')
 
         if method=='TNC':
-            raw_params = TNC_sf(X, priorParams, self.params_df)
+            raw_params = TNC_sf(X, priorParams, self.params_df, stdout=self.runningL)
             params = transform_sfparams_logit(raw_params)
         elif method=='BGM':
-            params = BGMM_df(X)
+            print('Running BGM')
+            params = BGMM_df(X, stdout=self.runningL)
+        else:
+            raise ValueError('What is the method???')
 
-        params = params.reshape(self.param_shape)
 
         # To clean up any warnings from optimize
         np.seterr(invalid=invalid, divide=divide, over=over)
-        if self.runningL: print("")
+        if self.runningL:
+            print('Param shape: ', params.shape)
+            print("")
 
         return params
 
@@ -1845,6 +1853,7 @@ class BGM_TNC():
         #    params[:,5] *= (self.sx*self.sy)
 
         return params
+
 
 # General functions
 def quick_invdet(S):
@@ -1883,11 +1892,12 @@ def Gaussian_int(delta, Sinv, Sdet):
     return norm * np.exp(exponent)
 
 # Manipulating parameters
-def NIW_prior_params(Xsf):
+def NIW_prior_params(x, y):
 
+    Xsf = np.vstack((x,y)).T
     mu0 = np.mean(Xsf, axis=0)
     Psi0 = np.mean((Xsf-mu0)[...,np.newaxis] * (Xsf-mu0)[...,np.newaxis,:], axis=0)
-    l0 = 10.
+    l0 = 1.
     nu0 = 1.
     priorParams = [mu0, l0, Psi0, nu0]
 
@@ -2029,8 +2039,8 @@ def calc_nlnP_grad_pilogit_NIW(params, Xsf, NIWprior, df_params, stdout=False):
     return  - ( np.sum(np.log(m_i)) - np.sum(I) + Prior), -grad.flatten()
 def lnlike(Xdf, params):
 
-    function = lambda a, b: sm.bivGaussMix_vect(params, a, b)
-    model = sm.bivGaussMix_vect(params, Xdf[:,0], Xdf[:,1])
+    function = lambda a, b: bivGaussMix_vect(params, a, b)
+    model = bivGaussMix_vect(params, Xdf[:,0], Xdf[:,1])
 
     contPoints = np.sum( np.log(model) )
 
@@ -2048,6 +2058,7 @@ def BIC(n, k, lnL):
 def TNC_sf(Xsf, priorParams, df_params, max_components=15, stdout=False):
 
     bic_vals = np.zeros(max_components) + np.inf
+    post_vals = np.zeros(max_components) - np.inf
     sf_params_n = {}
     for i in range(1, max_components):
 
@@ -2060,13 +2071,14 @@ def TNC_sf(Xsf, priorParams, df_params, max_components=15, stdout=False):
         params_bgm_pilogit = get_sfparams_logit(gmm, n_component)
 
 
-        opt = scipy.optimize.minimize(calc_nlnP_grad_pilogit_NIW,  params_bgm_pilogit,
+        opt = op.minimize(calc_nlnP_grad_pilogit_NIW,  params_bgm_pilogit,
                                       args=(Xsf, priorParams, df_params), method='TNC',
                                       jac=True, options={'maxiter':500}, tol=1e-5)
         nlnp = calc_nlnP_grad_pilogit_NIW(opt.x, Xsf, priorParams, df_params)[0]
 
         bic_val = BIC(Xsf.shape[0], i*6, -nlnp)
         bic_vals[i] = bic_val
+        post_vals[i] = -nlnp
         if stdout:
             print(opt.success, opt.message)
             print(i, "...", bic_val, "...", nlnp)
@@ -2078,9 +2090,10 @@ def TNC_sf(Xsf, priorParams, df_params, max_components=15, stdout=False):
         #        break
 
     if stdout:
-        print('Best components: ', np.argmin(bic_vals))
+        print('Best components: ', np.argmax(post_vals))
 
-    return sf_params_n[np.argmin(bic_vals)]
+    return sf_params_n[np.argmax(post_vals)]
+    #return sf_params_n[np.argmin(bic_vals)]
 def BGMM_df(Xdf, max_components=20, stdout=False):
 
     max_components=20
@@ -2090,7 +2103,7 @@ def BGMM_df(Xdf, max_components=20, stdout=False):
     for i in range(1, max_components+1):
 
         # Simple GMM
-        gmm = mixture.BayesianGaussianMixture(n_components=i, n_init=2,
+        gmm = mixture.BayesianGaussianMixture(n_components=i, n_init=3,
                                               init_params='kmeans', tol=1e-5, max_iter=1000)
         gmm.fit(Xdf)
 

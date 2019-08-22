@@ -404,9 +404,9 @@ class SFGenerator():
                 sys.stdout.flush()
 
                 # Select preferred survey stars
-                spectro_points = self.get_spectro(field)
+                #spectro_points = self.get_spectro(field)
 
-                obsSF_field, field = iterateField(spectro_points, self.get_photo, field, self.pointings.loc[field],
+                obsSF_field, field = iterateField(self.get_spectro, self.get_photo, field, self.pointings.loc[field],
                                                 cm_limits=self.cm_limits, spectro_model=self.spectro_model, photo_model=self.photo_model)
                 obsSF_dicts[field] = vars(obsSF_field)
 
