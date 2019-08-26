@@ -662,27 +662,41 @@ def iterateField(get_spectro, get_photo, field, fieldpointing,
     # Only create an interpolant if there are any points in the region
     if len(spectro_points)>0:
 
+        prior_sfBounds = np.zeros((2,2))
+
         # Use given limits to determine boundaries of dataset
         # apparent mag upper bound
         if fieldpointing.Magmin == "NoLimit":
             if cm_limits is None: mag_min = np.min(spectro_points.appMag) - 1
             else: mag_min = cm_limits[0]
-        else: mag_min = fieldpointing.Magmin
+            prior_sfBounds[0,0] = np.min(photo_points.appMag)
+        else:
+            mag_min = fieldpointing.Magmin - 1
+            prior_sfBounds[0,0] = mag_min
         # apparent mag lower bound
         if fieldpointing.Magmax == "NoLimit":
             if cm_limits is None: mag_max = np.max(spectro_points.appMag) + 1
             else: mag_max = cm_limits[1]
-        else: mag_max = fieldpointing.Magmax
+            prior_sfBounds[0,1] = np.max(photo_points.appMag)
+        else:
+            mag_max = fieldpointing.Magmax + 1
+            prior_sfBounds[0,1] = mag_max
         # colour uppper bound
         if fieldpointing.Colmin == "NoLimit":
             if cm_limits is None: col_min = np.min(spectro_points.Colour) - 0.1
             else: col_min = cm_limits[2]
-        else: col_min = fieldpointing.Colmin
+            prior_sfBounds[1,0] = np.min(photo_points.Colour)
+        else:
+            col_min = fieldpointing.Colmin - 0.1
+            prior_sfBounds[1,0] = col_min
         # colour lower bound
         if fieldpointing.Colmax == "NoLimit":
             if cm_limits is None: col_max = np.max(spectro_points.Colour) + 0.1
             else: col_max = cm_limits[3]
-        else: col_max = fieldpointing.Colmax
+            prior_sfBounds[1,1] = np.max(photo_points.Colour)
+        else:
+            col_max = fieldpointing.Colmax + 0.1
+            prior_sfBounds[1,1] = col_max
 
         # Chose only photometric survey points within the colour-magnitude region.
         photo_points = photo_points[(photo_points.appMag >= mag_min)&\
@@ -695,15 +709,20 @@ def iterateField(get_spectro, get_photo, field, fieldpointing,
                                     (spectro_points.Colour >= col_min)&\
                                     (spectro_points.Colour <= col_max)]
 
+        scales = [np.mean(spectro_points.appMag), np.mean(spectro_points.Colour),
+                  np.std(spectro_points.appMag), np.std(spectro_points.Colour)]
+
         # Interpolate for photo data - Calculates the distribution function
         DF_model, DF_magrange, DF_colrange = CreateInterpolant(photo_points,
-                                                                     (mag_min, mag_max), (col_min, col_max),
-                                                                     range_limited=True,
-                                                                     datatype = "photo", modelinfo=photo_model)
+                                                             (mag_min, mag_max), (col_min, col_max),
+                                                             range_limited=True, scales=scales,
+                                                             datatype = "photo", modelinfo=photo_model)
         # Interpolate for spectro data - Calculates the selection function
         SF_model, SF_magrange, SF_colrange = CreateInterpolant(spectro_points,
                                                               (mag_min, mag_max), (col_min, col_max),
-                                                              datatype = "spectro", photoDF=DF_model, modelinfo=spectro_model)
+                                                              scales=scales,
+                                                              datatype = "spectro", photoDF=DF_model, prior_sfBounds=prior_sfBounds,
+                                                              modelinfo=spectro_model)
 
         # Store information inside an SFInstanceClasses.observableSF instance where the selection function is calculated.
         instanceSF = SFInstanceClasses.observableSF(field)
@@ -734,8 +753,9 @@ def iterateField(get_spectro, get_photo, field, fieldpointing,
     return instanceSF, field
 
 def CreateInterpolant(points, mag_range, col_range,
-                      Grid = False, range_limited=False,
-                      datatype="", photoDF=None, modelinfo=('GMM', 1)):
+                      Grid = False, range_limited=False, scales=None,
+                      datatype="", photoDF=None, prior_sfBounds=None,
+                      modelinfo=('GMM', 1)):
 
     '''
     CreateInterpolant - Creates an interpolant in colour-magnitude space for the given set
@@ -774,12 +794,13 @@ def CreateInterpolant(points, mag_range, col_range,
 
         if datatype == "photo":
             model = PoissonLikelihood(points, mag_range, col_range,
-                                        'appMag', 'Colour',
+                                        'appMag', 'Colour', scales=scales,
                                         datatype=datatype, modelinfo=modelinfo)
         elif datatype == "spectro":
             model = PoissonLikelihood(points, mag_range, col_range,
-                                        'appMag', 'Colour',
-                                        datatype=datatype, photoDF=photoDF, modelinfo=modelinfo)
+                                        'appMag', 'Colour', scales=scales,
+                                        datatype=datatype, photoDF=photoDF, prior_sfBounds=prior_sfBounds,
+                                        modelinfo=modelinfo)
 
         return model, mag_range, col_range
 
@@ -793,8 +814,9 @@ def CreateInterpolant(points, mag_range, col_range,
 # Used when Process == Poisson
 def PoissonLikelihood(points,
                      mag_range, col_range,
-                     mag_label, col_label,
-                     datatype="", photoDF=None, modelinfo=('GMM', 1)):
+                     mag_label, col_label, scales=None,
+                     datatype="", photoDF=None, prior_sfBounds=None,
+                     modelinfo=('GMM', 1)):
     '''
     PoissonLikelihood
 
@@ -848,13 +870,14 @@ def PoissonLikelihood(points,
 
         # Generate the model
         if datatype=='photo':
-            model = StatisticalModels.BGM_TNC(x=x, y=y, rngx=mag_range, rngy=col_range, runscaling=True)
+            model = StatisticalModels.BGM_TNC(x=x, y=y, rngx=mag_range, rngy=col_range,
+                                            runscaling=True, scales=scales)
             model.runningL = True
             result = model.optimizeParams()
             #result_emcee = model.optimizeParams(method='emceeBall', init='reset')
         elif datatype == "spectro":
-            model = StatisticalModels.BGM_TNC(x=x, y=y, rngx=mag_range, rngy=col_range, runscaling=True,
-                                                priorDF=True, photoDF=photoDF)
+            model = StatisticalModels.BGM_TNC(x=x, y=y, rngx=mag_range, rngy=col_range, runscaling=True, scales=scales,
+                                                priorDF=True, photoDF=photoDF, prior_sfBounds=prior_sfBounds)
             model.runningL = True
             result = model.optimizeParams()
             #result_emcee = model.optimizeParams(method='emceeBall', init='reset')

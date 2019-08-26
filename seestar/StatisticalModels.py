@@ -130,7 +130,7 @@ class GaussianEM():
             self.sig_xy_s = sig_xy
 
         # Function which calculates the actual distribution
-        self.distribution = bivGaussMix_vect
+        self.distribution = bivGaussMixture
 
         # Print out likelihood values as calculated
         self.runningL = runningL
@@ -1627,8 +1627,8 @@ class BGM_TNC():
     '''
 
     def __init__(self, x=np.zeros(0), y=np.zeros(0), sig_xy=None,
-                rngx=(0,1), rngy=(0,1), runscaling=True, runningL=True,
-                photoDF=None, priorDF=False):
+                rngx=(0,1), rngy=(0,1), runscaling=True, scales=None, runningL=True,
+                photoDF=None, priorDF=False, prior_sfBounds=None):
 
         # Iteration number to update
         self.iter_count = 0
@@ -1661,13 +1661,7 @@ class BGM_TNC():
             self.y = y.copy()
             self.rngx, self.rngy = rngx, rngy
             # Statistics for feature scaling
-            if len(x)>1:
-                self.mux, self.sx = np.mean(x), np.std(x)
-                self.muy, self.sy = np.mean(y), np.std(y)
-            else:
-                # SD=0 if only one point which causes problems!
-                self.mux, self.sx = np.mean(x), (rngx[1]-rngx[0])/4
-                self.muy, self.sy = np.mean(y), (rngy[1]-rngy[0])/4
+            self.mux, self.muy, self.sx, self.sy = scales
             # Scaled parameters
             self.x_s, self.y_s = feature_scaling(x, y, self.mux, self.muy, self.sx, self.sy)
             self.rngx_s, self.rngy_s = feature_scaling(np.array(rngx), np.array(rngy), self.mux, self.muy, self.sx, self.sy)
@@ -1682,7 +1676,7 @@ class BGM_TNC():
             self.sig_xy_s = sig_xy
 
         # Function which calculates the actual distribution
-        self.distribution = bivGaussMix_vect
+        self.distribution = bivGaussMixture
 
         # Print out likelihood values as calculated
         self.runningL = runningL
@@ -1691,13 +1685,21 @@ class BGM_TNC():
 
         if self.priorDF:
             # Calculate Gaussian distributions from product of scaled DF and scaled star positions
-            if self.runscaling: self.params_df = self.scaleParams(self.photoDF.params_f, dfparams=True)
+            if self.runscaling:
+                self.params_df = self.scaleParams(self.photoDF.params_f, dfparams=True)
+                prior_sfBounds[0,:] = (prior_sfBounds[0,:]-self.mux)/self.sx
+                prior_sfBounds[1,:] = (prior_sfBounds[1,:]-self.muy)/self.sy
             else: self.params_df = self.photoDF.params_f
             function = lambda a, b: self.distribution(self.params_df, a, b)
             #if self.runningL:
             #    print 'DF integral = ', numericalIntegrate_precompute(function, self.x_2d, self.y_2d)
             self.ndf = len(self.photoDF.x)
+
+            # Boundaries used to generate NIW priors
+            self.prior_sfBounds = prior_sfBounds
+            if runningL: print('Prior boundaries: ', prior_sfBounds)
         else: self.ndf = None
+
 
     def __call__(self, x, y, components=None, params=None):
 
@@ -1768,7 +1770,7 @@ class BGM_TNC():
             params = self.optimize(None, 'BGM')
         if self.priorDF:
             # Generate NIW prior parameters
-            priorParams = NIW_prior_params(self.x_s, self.y_s)
+            priorParams = NIW_prior_params(self.prior_sfBounds)
             # Run optimize
             params = self.optimize(priorParams, 'TNC')
 
@@ -1839,6 +1841,7 @@ class BGM_TNC():
 
         #if self.priorDF & (not dfparams):
         #    params[:,5] /= (self.sx*self.sy)
+        params[:,5] /= (self.sx*self.sy)
 
         return params
 
@@ -1850,7 +1853,7 @@ class BGM_TNC():
         params[:,[2,3]] *= np.array([self.sx**2, self.sy**2])
 
         #if self.priorDF & (not dfparams):
-        #    params[:,5] *= (self.sx*self.sy)
+        params[:,5] *= (self.sx*self.sy)
 
         return params
 
@@ -1892,13 +1895,15 @@ def Gaussian_int(delta, Sinv, Sdet):
     return norm * np.exp(exponent)
 
 # Manipulating parameters
-def NIW_prior_params(x, y):
+def NIW_prior_params(bounds):
 
-    Xsf = np.vstack((x,y)).T
-    mu0 = np.mean(Xsf, axis=0)
-    Psi0 = np.mean((Xsf-mu0)[...,np.newaxis] * (Xsf-mu0)[...,np.newaxis,:], axis=0)
+    mu0 = (bounds[:,1] + bounds[:,0])/2
+    std0 = (bounds[:,1] - bounds[:,0])/2
+    Psi0 = np.array([[std0[0]**2, 0.], [0., std0[1]**2]])
+    #mu0_scaled = np.mean(Xsf, axis=0)
+    #Psi0 = np.mean((Xsf-mu0)[...,np.newaxis] * (Xsf-mu0)[...,np.newaxis,:], axis=0)
     l0 = 1.
-    nu0 = 1.
+    nu0 = .1
     priorParams = [mu0, l0, Psi0, nu0]
 
     return priorParams
@@ -2039,8 +2044,8 @@ def calc_nlnP_grad_pilogit_NIW(params, Xsf, NIWprior, df_params, stdout=False):
     return  - ( np.sum(np.log(m_i)) - np.sum(I) + Prior), -grad.flatten()
 def lnlike(Xdf, params):
 
-    function = lambda a, b: bivGaussMix_vect(params, a, b)
-    model = bivGaussMix_vect(params, Xdf[:,0], Xdf[:,1])
+    function = lambda a, b: bivGaussMixture(params, a, b)
+    model = bivGaussMixture(params, Xdf[:,0], Xdf[:,1])
 
     contPoints = np.sum( np.log(model) )
 
@@ -2060,7 +2065,7 @@ def TNC_sf(Xsf, priorParams, df_params, max_components=15, stdout=False):
     bic_vals = np.zeros(max_components) + np.inf
     post_vals = np.zeros(max_components) - np.inf
     sf_params_n = {}
-    for i in range(1, max_components):
+    for i in range(2, max_components):
 
         n_component=i
 
@@ -2091,16 +2096,16 @@ def TNC_sf(Xsf, priorParams, df_params, max_components=15, stdout=False):
 
     if stdout:
         print('Best components: ', np.argmax(post_vals))
+        print('Best components: ', np.argmin(bic_vals))
 
-    return sf_params_n[np.argmax(post_vals)]
+    return sf_params_n[np.argmin(bic_vals)]
     #return sf_params_n[np.argmin(bic_vals)]
 def BGMM_df(Xdf, max_components=20, stdout=False):
 
-    max_components=20
     bic_vals = np.zeros(max_components+1) + np.inf
     df_params_n = {}
 
-    for i in range(1, max_components+1):
+    for i in range(2, max_components+1):
 
         # Simple GMM
         gmm = mixture.BayesianGaussianMixture(n_components=i, n_init=3,
@@ -2125,7 +2130,57 @@ def BGMM_df(Xdf, max_components=20, stdout=False):
     return df_params_n[np.argmin(bic_vals)]
 
 
+def bivGaussMixture(params, x, y):
 
+    '''
+    bivGaussMixture - Calculation of bivariate Gaussian distribution.
+
+    Parameters
+    ----------
+        params - arr of float - length 6 - [mux, muy, l1, l2, theta, weight]
+            - Parameters of the bivariate gaussian
+        x, y - arr of float
+            - x and y coordinates of points being tested
+    Returns
+    -------
+        p - arr of float
+            - bivariate Gaussian value for each point in x, y
+    '''
+
+    shape = x.shape
+    X = np.vstack((x.ravel(), y.ravel())).T
+
+    mu = params[:,:2]
+    cov = params[:,4]*np.sqrt(params[:,2]*params[:,3])
+    sigma = np.array([[params[:,2], cov],[cov, params[:,3]]])
+    sigma = np.moveaxis(sigma, -1, 0)
+    weight= params[:,5]
+
+    # Inverse covariance
+    inv_cov = np.linalg.inv(sigma)
+    # Separation of X from mean
+    X = np.moveaxis(np.repeat([X,], mu.shape[-2], axis=0), 0, -2) - mu
+
+    # X^T * Sigma
+    X_ext = X[...,np.newaxis]
+    inv_cov = inv_cov[np.newaxis,...]
+    X_cov = X_ext*inv_cov
+    X_cov = X_cov[...,0,:]+X_cov[...,1,:]
+    # X * Sigma * X
+    X_cov_X = X_cov*X
+    X_cov_X = X_cov_X[:,:,0]+X_cov_X[:,:,1]
+    # Exponential
+    e = np.exp(-X_cov_X/2)
+
+    # Normalisation term
+    det_cov = np.linalg.det(sigma)
+    norm = 1/np.sqrt( ((2*np.pi)**2) * det_cov)
+
+    p = np.sum(weight*norm*e, axis=-1)
+
+    #if np.sum(np.isnan(p))>0: print(params)
+
+    return p.reshape(shape)
 
 
 
