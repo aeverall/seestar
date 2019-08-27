@@ -122,6 +122,8 @@ class SFGenerator():
 
         self.cm_limits = None
 
+        self.obsSF_dicts={}
+
     def __call__(self, catalogue, method='intrinsic',
                 coords = ['age', 'mh', 's', 'mass'],
                 angle_coords=['phi','theta'],
@@ -406,7 +408,7 @@ class SFGenerator():
                 # Select preferred survey stars
                 #spectro_points = self.get_spectro(field)
 
-                obsSF_field, field = iterateField(self.get_spectro, self.get_photo, field, self.pointings.loc[field],
+                obsSF_field, field = _iterateField(self.get_spectro, self.get_photo, field, self.pointings.loc[field],
                                                 cm_limits=self.cm_limits, spectro_model=self.spectro_model, photo_model=self.photo_model)
                 obsSF_dicts[field] = vars(obsSF_field)
 
@@ -414,6 +416,42 @@ class SFGenerator():
                 tleft = tnow*(float(fieldL)/fieldN - 1.)
 
         return obsSF_dicts
+
+    def debug_mode(self, field, part='df'):
+
+        spectro_points, photo_points, mag_range, col_range, prior_sfBounds = \
+                cleanPoints(self.get_spectro, self.get_photo, field, self.pointings.loc[field], self.cm_limits)
+        scales = [np.mean(spectro_points.appMag), np.mean(spectro_points.Colour),
+                  np.std(spectro_points.appMag), np.std(spectro_points.Colour)]
+
+        if part=='df':
+            DF_model = StatisticalModels.BGM_TNC(x=photo_points.appMag, y=photo_points.Colour, rngx=mag_range, rngy=col_range,
+                                                    runscaling=True, scales=scales, runningL=True)
+            result = DF_model.optimizeParams()
+            #result_emcee = model.optimizeParams(method='emceeBall', init='reset')
+            SF_model = StatisticalModels.FlatRegion()
+
+        elif part=='sf':
+            DF_model = self.obsSF[field].DF_model
+            SF_model = StatisticalModels.BGM_TNC(x=spectro_points.appMag, y=spectro_points.Colour, rngx=mag_range, rngy=col_range,
+                                                runscaling=True, scales=scales, runningL=True,
+                                                priorDF=True, photoDF=DF_model, prior_sfBounds=prior_sfBounds)
+            result = SF_model.optimizeParams()
+            #result_emcee = model.optimizeParams(method='emceeBall', init='reset')
+
+        # Store information inside an SFInstanceClasses.observableSF instance where the selection function is calculated.
+        instanceSF = SFInstanceClasses.observableSF(field)
+        SFInstanceClasses.setattrs(instanceSF,
+                                    DF_model = vars(DF_model),
+                                    DF_magrange = mag_range,
+                                    DF_colrange = col_range,
+                                    SF_model = vars(SF_model),
+                                    SF_magrange = mag_range,
+                                    SF_colrange = col_range)
+
+        self.obsSF_dicts[field] = vars(instanceSF)
+        # Initialise dictionary
+        self.obsSF = SFInstanceClasses.obsSF_dicttoclass(self.obsSF_dicts)
 
     def createDistMhAgeInterp(self, agerng=(0,13), mhrng=(-2.5,0.5)):
 
@@ -619,6 +657,133 @@ class multiprocessObsSF():
         sys.stdout.flush()
 
         return ans
+
+def _iterateField(get_spectro, get_photo, field, fieldpointing,
+                    cm_limits=None, spectro_model=('GMM', 2), photo_model=('GMM', 3)):
+
+    spectro_points, photo_points, mag_range, col_range, prior_sfBounds = \
+            cleanPoints(get_spectro, get_photo, field, fieldpointing, cm_limits)
+
+    # Only create an interpolant if there are any points in the region
+    if len(spectro_points)>0:
+
+        scales = [np.mean(spectro_points.appMag), np.mean(spectro_points.Colour),
+                  np.std(spectro_points.appMag), np.std(spectro_points.Colour)]
+
+        if spectro_model[0]=='GMM':
+
+            # Number of Gaussian components
+            nComponents = modelinfo[1]
+
+            DF_model = StatisticalModels.GaussianEM(x=photo_points.appMag, y=photo_points.Colour, nComponents=photo_model[1],
+                                                rngx=mag_range, rngy=col_range, runscaling=True, runningL=False)
+            result = DF_model.optimizeParams(method='Powell', init='kmeans')
+            #result_emcee = model.optimizeParams(method='emceeBall', init='reset')
+
+            SF_model = StatisticalModels.GaussianEM(x=spectro_points.appMag, y=spectro_points.Colour, nComponents=spectro_model[1],
+                                                rngx=mag_range, rngy=col_range, runscaling=True, runningL=False,
+                                                priorDF=True, photoDF=DF_model)
+            result = SF_model.optimizeParams(method='Powell', init='kmeans')
+            #result_emcee = model.optimizeParams(method='emceeBall', init='reset')
+
+        elif spectro_model[0]=='BGM_TNC':
+
+            DF_model = StatisticalModels.BGM_TNC(x=photo_points.appMag, y=photo_points.Colour, rngx=mag_range, rngy=col_range,
+                                                    runscaling=True, scales=scales, runningL=True)
+            result = DF_model.optimizeParams()
+            #result_emcee = model.optimizeParams(method='emceeBall', init='reset')
+
+            SF_model = StatisticalModels.BGM_TNC(x=spectro_points.appMag, y=spectro_points.Colour, rngx=mag_range, rngy=col_range,
+                                                runscaling=True, scales=scales, runningL=True,
+                                                priorDF=True, photoDF=DF_model, prior_sfBounds=prior_sfBounds)
+            result = SF_model.optimizeParams()
+            #result_emcee = model.optimizeParams(method='emceeBall', init='reset')
+
+        elif spectro_model[0]=='Flat':
+
+            DF_model = StatisticalModels.Empty()
+            SF_model = StatisticalModels.FlatRegion(len(points), mag_range, col_range)
+
+        else: raise ValueError('Model not recognised.')
+
+    else:
+        # There are no stars on the field plate
+        instanceSF = SFInstanceClasses.observableSF(field)
+        # Create class instances so that the models will still work.
+        DF_model = StatisticalModels.Empty()
+        SF_model = StatisticalModels.Empty()
+
+    # Store information inside an SFInstanceClasses.observableSF instance where the selection function is calculated.
+    instanceSF = SFInstanceClasses.observableSF(field)
+    SFInstanceClasses.setattrs(instanceSF,
+                                DF_model = vars(DF_model),
+                                DF_magrange = mag_range,
+                                DF_colrange = col_range,
+                                SF_model = vars(SF_model),
+                                SF_magrange = mag_range,
+                                SF_colrange = col_range)
+
+    return instanceSF, field
+
+def cleanPoints(get_spectro, get_photo, field, fieldpointing, cm_limits):
+
+    spectro_points = get_spectro(field)
+    spectro_points = pd.DataFrame(np.array(spectro_points), columns=['appMag', 'Colour'])
+
+    photo_points = get_photo(field)
+    photo_points = pd.DataFrame(np.array(photo_points), columns=['appMag', 'Colour'])
+
+    # Only create an interpolant if there are any points in the region
+    if len(spectro_points)>0:
+
+        prior_sfBounds = np.zeros((2,2))
+
+        # Use given limits to determine boundaries of dataset
+        # apparent mag upper bound
+        if fieldpointing.Magmin == "NoLimit":
+            if cm_limits is None: mag_min = np.min(spectro_points.appMag) - 1
+            else: mag_min = cm_limits[0]
+            prior_sfBounds[0,0] = np.min(photo_points.appMag)
+        else:
+            mag_min = fieldpointing.Magmin - 1
+            prior_sfBounds[0,0] = mag_min
+        # apparent mag lower bound
+        if fieldpointing.Magmax == "NoLimit":
+            if cm_limits is None: mag_max = np.max(spectro_points.appMag) + 1
+            else: mag_max = cm_limits[1]
+            prior_sfBounds[0,1] = np.max(photo_points.appMag)
+        else:
+            mag_max = fieldpointing.Magmax + 1
+            prior_sfBounds[0,1] = mag_max
+        # colour uppper bound
+        if fieldpointing.Colmin == "NoLimit":
+            if cm_limits is None: col_min = np.min(spectro_points.Colour) - 0.1
+            else: col_min = cm_limits[2]
+            prior_sfBounds[1,0] = np.min(photo_points.Colour)
+        else:
+            col_min = fieldpointing.Colmin - 0.1
+            prior_sfBounds[1,0] = col_min
+        # colour lower bound
+        if fieldpointing.Colmax == "NoLimit":
+            if cm_limits is None: col_max = np.max(spectro_points.Colour) + 0.1
+            else: col_max = cm_limits[3]
+            prior_sfBounds[1,1] = np.max(photo_points.Colour)
+        else:
+            col_max = fieldpointing.Colmax + 0.1
+            prior_sfBounds[1,1] = col_max
+
+        # Chose only photometric survey points within the colour-magnitude region.
+        photo_points = photo_points[(photo_points.appMag >= mag_min)&\
+                                    (photo_points.appMag <= mag_max)&\
+                                    (photo_points.Colour >= col_min)&\
+                                    (photo_points.Colour <= col_max)]
+        # If spectro points haven't been chosen from the full region, limit to this subset.
+        spectro_points = spectro_points[(spectro_points.appMag >= mag_min)&\
+                                    (spectro_points.appMag <= mag_max)&\
+                                    (spectro_points.Colour >= col_min)&\
+                                    (spectro_points.Colour <= col_max)]
+
+    return spectro_points, photo_points, (mag_min, mag_max), (col_min, col_max), prior_sfBounds
 
 def iterateField(get_spectro, get_photo, field, fieldpointing,
                 cm_limits=None, spectro_model=('GMM', 1), photo_model=('GMM', 2)):

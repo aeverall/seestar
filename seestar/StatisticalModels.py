@@ -27,6 +27,7 @@ import sys, os, time
 from mpmath import *
 
 from sklearn import mixture
+from sklearn.cluster import KMeans
 
 # Import cubature for integrating over regions
 #from cubature import cubature
@@ -1627,7 +1628,7 @@ class BGM_TNC():
     '''
 
     def __init__(self, x=np.zeros(0), y=np.zeros(0), sig_xy=None,
-                rngx=(0,1), rngy=(0,1), runscaling=True, scales=None, runningL=True,
+                rngx=(0,1), rngy=(0,1), runscaling=True, scales=None, runningL=False,
                 photoDF=None, priorDF=False, prior_sfBounds=None):
 
         # Iteration number to update
@@ -1813,7 +1814,9 @@ class BGM_TNC():
         np.seterr(invalid='ignore', divide='ignore', over='ignore')
 
         if method=='TNC':
-            raw_params = TNC_sf(X, priorParams, self.params_df, stdout=self.runningL)
+            Xdf = feature_scaling(self.photoDF.x, self.photoDF.y, self.mux, self.muy, self.sx, self.sy)
+            Xdf = np.vstack((Xdf[0], Xdf[1])).T
+            raw_params = TNC_sf(X, priorParams, self.params_df, stdout=self.runningL, Xdf=Xdf, init='kmeans')
             params = transform_sfparams_logit(raw_params)
         elif method=='BGM':
             print('Running BGM')
@@ -1895,15 +1898,13 @@ def Gaussian_int(delta, Sinv, Sdet):
     return norm * np.exp(exponent)
 
 # Manipulating parameters
-def NIW_prior_params(bounds):
+def NIW_prior_params(bounds, l0=0.001, nu0=10., shrinker=20.):
 
     mu0 = (bounds[:,1] + bounds[:,0])/2
     std0 = (bounds[:,1] - bounds[:,0])/2
-    Psi0 = np.array([[std0[0]**2, 0.], [0., std0[1]**2]])
+    Psi0 = np.array([[std0[0]**2, 0.], [0., std0[1]**2]])/shrinker
     #mu0_scaled = np.mean(Xsf, axis=0)
     #Psi0 = np.mean((Xsf-mu0)[...,np.newaxis] * (Xsf-mu0)[...,np.newaxis,:], axis=0)
-    l0 = 1.
-    nu0 = .1
     priorParams = [mu0, l0, Psi0, nu0]
 
     return priorParams
@@ -1936,23 +1937,44 @@ def get_sfparams_logit(gmm_inst, n_components):
 def transform_sfparams_logit(params):
 
     raw_params = params.copy().reshape(-1,6)
+    print(raw_params[:,5])
 
     raw_params[:,2:4] = np.abs(raw_params[:,2:4])
 
     e_alpha = np.exp(-raw_params[...,4])
-    p = 0.999/(1+e_alpha)
-    corr = np.sqrt(raw_params[...,2]*raw_params[...,3])*(2*p - 1)
-    S_sf = np.moveaxis(np.array([[raw_params[...,2], corr], [corr, raw_params[...,3]]]), -1, 0)
+    p = 0.99999/(1+e_alpha)
+    cov = np.sqrt(raw_params[...,2]*raw_params[...,3])*(2*p - 1)
+    S_sf = np.moveaxis(np.array([[raw_params[...,2], cov], [cov, raw_params[...,3]]]), -1, 0)
     Sinv_sf, Sdet_sf = quick_invdet(S_sf)
     raw_params[...,4] = (2*p - 1)
 
     # Logit correction of raw_params[:,5] - [-inf, inf] --> [0, rt(det(2.pi.S))]
     e_alpha_pi = np.exp(-raw_params[...,5])
-    p_pi = 1./(1+e_alpha_pi)
-    pi = 2*np.pi*np.sqrt(Sdet_sf) * p_pi
+    pi_scaled = 1./(1.+e_alpha_pi)
+    pi = 2*np.pi*np.sqrt(Sdet_sf) * pi_scaled
     raw_params[:,5] = pi
 
     return raw_params
+def transform_sfparams_invlogit(raw_params):
+
+    params = raw_params.copy().reshape(-1,6)
+
+    # logit scaled correlation
+    p = (params[:,4]+1)/2
+    params[:,4] = np.log(p/(1-p))
+
+    cov = raw_params[:,4]*np.sqrt(raw_params[:,2]*raw_params[:,3])
+    S_sf = np.moveaxis(np.array([[raw_params[...,2], cov], [cov, raw_params[...,3]]]), -1, 0)
+    Sinv_sf, Sdet_sf = quick_invdet(S_sf)
+
+    # Logit correction of raw_params[:,5] - [0, rt(det(2.pi.S))] --> [-inf, inf]
+    pi = raw_params[:,5].copy()
+    pi_scaled = pi / (2*np.pi*np.sqrt(Sdet_sf))
+    pi_scaled[pi_scaled>=1] = 0.99
+    params[:,5] = np.log(pi_scaled/(1-pi_scaled))
+
+    return params
+
 
 # Likelihood, Prior and Posterior functions
 def calc_nlnP_grad_pilogit_NIW(params, Xsf, NIWprior, df_params, stdout=False):
@@ -2060,7 +2082,7 @@ def BIC(n, k, lnL):
     return k*np.log(n) - 2*lnL
 
 # Optimization methods
-def TNC_sf(Xsf, priorParams, df_params, max_components=15, stdout=False):
+def TNC_sf(Xsf, priorParams, df_params, max_components=25, stdout=False, init='BGM', Xdf=None):
 
     bic_vals = np.zeros(max_components) + np.inf
     post_vals = np.zeros(max_components) - np.inf
@@ -2070,15 +2092,25 @@ def TNC_sf(Xsf, priorParams, df_params, max_components=15, stdout=False):
         n_component=i
 
         # Simple GMM
-        gmm = mixture.BayesianGaussianMixture(n_component, n_init=1,
-                                              init_params='kmeans', tol=1e-5, max_iter=1000)
-        gmm.fit(Xsf)
-        params_bgm_pilogit = get_sfparams_logit(gmm, n_component)
+        if init=='BGM':
+            gmm = mixture.BayesianGaussianMixture(n_component, n_init=1,
+                                                  init_params='kmeans', tol=1e-5, max_iter=1000)
+            gmm.fit(Xsf)
+            params_bgm_pilogit = get_sfparams_logit(gmm, n_component)
+            params_i = params_bgm_pilogit
+        elif init=='kmeans':
+            weights = 1/bivGaussMixture(df_params, Xsf[:,0], Xsf[:,1])
+            # K-Means clustering of initialisation
+            #print(Xsf.shape, Xdf.shape)
+            params=kmeans_init(Xsf, Xdf, i, weights=weights)
+            #print(params)
+            params_kms_pilogit=transform_sfparams_invlogit(params)
 
+            params_i = params_kms_pilogit
 
-        opt = op.minimize(calc_nlnP_grad_pilogit_NIW,  params_bgm_pilogit,
+        opt = op.minimize(calc_nlnP_grad_pilogit_NIW,  params_i,
                                       args=(Xsf, priorParams, df_params), method='TNC',
-                                      jac=True, options={'maxiter':500}, tol=1e-5)
+                                      jac=True, options={'maxiter':1000}, tol=1e-5)
         nlnp = calc_nlnP_grad_pilogit_NIW(opt.x, Xsf, priorParams, df_params)[0]
 
         bic_val = BIC(Xsf.shape[0], i*6, -nlnp)
@@ -2086,17 +2118,17 @@ def TNC_sf(Xsf, priorParams, df_params, max_components=15, stdout=False):
         post_vals[i] = -nlnp
         if stdout:
             print(opt.success, opt.message)
-            print(i, "...", bic_val, "...", nlnp)
+            print(i, "   BIC: ", bic_val, "   lnP: ", -nlnp)
 
         sf_params_n[i] = opt.x.reshape(-1,6)
 
-        #if i>1:
-        #    if (bic_vals[i]>bic_vals[i-1]) and (bic_vals[i-1]>bic_vals[i-2]):
-        #        break
+        if i>1:
+            if (bic_vals[i]>bic_vals[i-1]) and (bic_vals[i-1]>bic_vals[i-2]):
+                break
 
     if stdout:
-        print('Best components: ', np.argmax(post_vals))
-        print('Best components: ', np.argmin(bic_vals))
+        print('Best components (posterior): ', np.argmax(post_vals))
+        print('Best components (BIC): ', np.argmin(bic_vals))
 
     return sf_params_n[np.argmin(bic_vals)]
     #return sf_params_n[np.argmin(bic_vals)]
@@ -2116,7 +2148,7 @@ def BGMM_df(Xdf, max_components=20, stdout=False):
         bic_val = BIC(Xdf.shape[0], i*6, lnlike(Xdf, params))
         bic_vals[i] = bic_val
         if stdout:
-            print(i, "...", bic_val)
+            print(i, "  BIC: ", bic_val, "   lnP: ", lnlike(Xdf, params))
 
         df_params_n[i] = params
 
@@ -2128,6 +2160,44 @@ def BGMM_df(Xdf, max_components=20, stdout=False):
         print('Best components: ', np.argmin(bic_vals))
 
     return df_params_n[np.argmin(bic_vals)]
+
+def kmeans_init(sample, df_sample, n_components, n_iter=10, max_iter=100, weights=None):
+
+    weighted_kde = not weights is None
+    if weights is None: weights=np.ones(len(sample))
+
+    params = np.zeros((n_components, 6))
+
+    kmc = KMeans(n_components, n_init=n_iter, max_iter=max_iter)
+    kmc.fit(sample, sample_weight=weights)
+
+    labels = kmc.predict(sample)
+    df_labels = kmc.predict(df_sample)
+
+    for i in range(n_components):
+        c_sample = sample[labels==i]
+        c_df_sample = df_sample[df_labels==i]
+        c_weights = weights[labels==i]
+
+        mean = np.sum(c_sample*c_weights[:,np.newaxis], axis=0)/np.sum(c_weights)
+        delta = c_sample-mean[np.newaxis, :]
+        sigma = np.sum(delta[:,:,np.newaxis]*delta[:,np.newaxis,:]*c_weights[:,np.newaxis,np.newaxis], axis=0)/np.sum(c_weights)
+
+        w = float(len(c_sample))/float(len(c_df_sample))
+
+        if np.sum(labels==i)<=2:
+            mu = np.sum(sample*weights[:,np.newaxis], axis=0)/np.sum(weights)
+            delta = sample-mu[np.newaxis, :]
+            sigma = np.sum(delta[:,:,np.newaxis]*delta[:,np.newaxis,:]*weights[:,np.newaxis,np.newaxis], axis=0)/np.sum(weights)
+
+        multiplier=3.
+        params[i, :2] = mean
+        params[i, 2:4] = sigma[[0,1],[0,1]]*multiplier
+        params[i, 4] = sigma[0,1]/np.sqrt(sigma[0,0]*sigma[1,1])
+        params[i, 5] = w*multiplier
+
+
+    return params
 
 
 def bivGaussMixture(params, x, y):
@@ -2204,7 +2274,7 @@ class FlatRegion:
             - Value of selection function at x, y coordinates
     '''
 
-    def __init__(self, value, rangex, rangey):
+    def __init__(self, value=0., rangex=(0.,0.), rangey=(0.,0.), runscaling=False):
 
         # Name of the model to used for reloading from dictionary
         self.modelname = self.__class__.__name__
