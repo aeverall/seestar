@@ -1898,7 +1898,7 @@ def Gaussian_int(delta, Sinv, Sdet):
     return norm * np.exp(exponent)
 
 # Manipulating parameters
-def NIW_prior_params(bounds, l0=0.001, nu0=10., shrinker=20.):
+def NIW_prior_params(bounds, l0=0.001, nu0=20., shrinker=20.):
 
     mu0 = (bounds[:,1] + bounds[:,0])/2
     std0 = (bounds[:,1] - bounds[:,0])/2

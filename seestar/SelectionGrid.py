@@ -783,6 +783,11 @@ def cleanPoints(get_spectro, get_photo, field, fieldpointing, cm_limits):
                                     (spectro_points.Colour >= col_min)&\
                                     (spectro_points.Colour <= col_max)]
 
+    else:
+        mag_min, mag_max, col_min, col_max = None, None, None, None
+        prior_sfBounds = None
+        print("No stars on field")
+
     return spectro_points, photo_points, (mag_min, mag_max), (col_min, col_max), prior_sfBounds
 
 def iterateField(get_spectro, get_photo, field, fieldpointing,
