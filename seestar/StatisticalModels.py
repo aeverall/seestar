@@ -1976,6 +1976,36 @@ def transform_sfparams_invlogit(raw_params):
     return params
 
 
+def gmm_gradient(X, sigma_inv,  mu, weight, norm):
+
+    delta = mu-X[np.newaxis,:]
+    sigma_inv_delta = np.sum(sigma_inv*delta[:,:,np.newaxis], axis=1)
+
+    # Gaussian
+    exponent = np.exp(-0.5 * np.sum(delta*sigma_inv_delta, axis=1))
+    fx = norm*exponent
+
+    # Jacobian
+    jac = -sigma_inv_delta * fx[:,np.newaxis]
+
+    result =  -np.sum(jac*weight[:,np.newaxis], axis=0)
+    #print(X.shape, result.shape)
+    return result
+def gradient_rootfinder(params, sigma_inv, norm):
+
+    loc = np.zeros((params.shape[0], 2))
+    for i in range(params.shape[0]):
+        opt = op.root(gmm_gradient, params[i,:2],
+                                      args=(sigma_inv, params[:,:2], params[:,5], norm))
+        loc[i] = opt.x
+
+    #if not np.product(~np.isnan(norm)): print(params[:,0])
+
+    out = bivGaussMixture(params, loc[:,0], loc[:,1])
+
+    return np.max(out)
+    #return out, loc
+
 # Likelihood, Prior and Posterior functions
 def calc_nlnP_grad_pilogit_NIW(params, Xsf, NIWprior, df_params, stdout=False):
 
@@ -1999,6 +2029,14 @@ def calc_nlnP_grad_pilogit_NIW(params, Xsf, NIWprior, df_params, stdout=False):
     p_pi = 1./(1+e_alpha_pi)
     pi = 2*np.pi*np.sqrt(Sdet_sf) * p_pi
 
+    # Unscaled parameters
+    params_original = params.copy()
+    params_original[:,4] = corr
+    params_original[:,5] = pi
+    # Max SF prior
+    gmm_maxima = gradient_rootfinder(params_original, Sinv_sf, 1/(2*np.pi*np.sqrt(Sdet_sf)))
+    if gmm_maxima>1:
+        return 1e100, params.flatten().copy()*0.#grad.flatten()
 
     # Likelihood
     corr = np.sqrt(df_params[...,2]*df_params[...,3])*df_params[...,4]
