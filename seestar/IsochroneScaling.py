@@ -27,7 +27,7 @@ from itertools import  product
 import scipy
 from scipy.interpolate import RegularGridInterpolator as RGI
 
-from seestar import ArrayMechanics as AM
+import ArrayMechanics as AM
 
 class IntrinsicToObservable():
 

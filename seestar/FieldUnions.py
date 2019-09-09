@@ -36,8 +36,8 @@ import pandas as pd
 import sys, gc
 from builtins import map # map now behaves as python3
 
-from seestar import ArrayMechanics
-from seestar import FieldAssignment
+import ArrayMechanics
+import FieldAssignment
 
 class FieldUnion():
 

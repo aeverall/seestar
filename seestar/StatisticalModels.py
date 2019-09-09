@@ -224,7 +224,7 @@ class GaussianEM():
         # Set initial parameters
         finite = False
         a = 0
-        if self.runningL: print 'init, ', init
+        if self.runningL: print('init, ', init)
 
         while not finite:
             if not init=="reset":
@@ -247,7 +247,7 @@ class GaussianEM():
             else:
                 params = self.params_i.copy()
 
-            if self.runningL: print 'initial parameters', params
+            if self.runningL: print('initial parameters', params)
             self.param_shape = params.shape
             lnp = self.lnprob(params)
             finite = np.isfinite(lnp)
@@ -255,11 +255,11 @@ class GaussianEM():
             if a%3==0:
                 raise ValueError("Couldn't initialise good parameters")
             if not finite:
-                print "Fail: ", self.params_i,\
+                print("Fail: ", self.params_i,\
                         prior_bounds(self.params_i, self.params_l, self.params_u),\
                         prior_multim(self.params_i),\
                         prior_erfprecision(self.params_i, self.rngx_s, self.rngy_s), \
-                        len(self.x_s)
+                        len(self.x_s))
 
         start = time.time()
         bounds = None
@@ -322,7 +322,7 @@ class GaussianEM():
         kwargs = {'method':method, 'bounds':bounds}
         # result is the set of theta parameters which optimize the likelihood given x, y, yerr
         test = self.nll(params)
-        if self.runningL: print r'\nInit  lnl: ', test, r'\n'
+        if self.runningL: print(r'\nInit  lnl: ', test, r'\n')
         params, self.output = optimizer(self.nll, params)#, pl = self.params_l[0,:], pu = self.params_u[0,:])
         params = params.reshape(self.param_shape)
         # Potential to use scikit optimize
@@ -1091,7 +1091,7 @@ def emcee_opt(function, params, niter=2000, file_loc=''):
     return median, sampler
 
 def emcee_ball(function, params, params_l=None, params_u=None, niter=2000):
-    print 'emcee with %d iterations...' % niter
+    print('emcee with %d iterations...' % niter)
 
     pshape =params.shape
     foo = lambda pars: -function(pars.reshape(pshape))
