@@ -1816,7 +1816,8 @@ class BGM_TNC():
         if method=='TNC':
             Xdf = feature_scaling(self.photoDF.x, self.photoDF.y, self.mux, self.muy, self.sx, self.sy)
             Xdf = np.vstack((Xdf[0], Xdf[1])).T
-            raw_params = TNC_sf(X, priorParams, self.params_df, stdout=self.runningL, Xdf=Xdf, init='kmeans')
+            raw_params = TNC_sf(X, priorParams, self.params_df, stdout=self.runningL,
+                                Xdf=Xdf, init='best', max_components=self.params_df.shape[0])
             params = transform_sfparams_logit(raw_params)
         elif method=='BGM':
             print('Running BGM')
@@ -1898,7 +1899,7 @@ def Gaussian_int(delta, Sinv, Sdet):
     return norm * np.exp(exponent)
 
 # Manipulating parameters
-def NIW_prior_params(bounds, l0=0.001, nu0=20., shrinker=20.):
+def NIW_prior_params(bounds, l0=0.001, nu0=1., shrinker=10.):
 
     mu0 = (bounds[:,1] + bounds[:,0])/2
     std0 = (bounds[:,1] - bounds[:,0])/2
@@ -1922,13 +1923,25 @@ def get_sfparams_logit(gmm_inst, n_components):
     params = np.zeros((n_components,6))
     params[:,:2] = gmm_inst.means_
     params[:,2:4] = gmm_inst.covariances_[:,[0,1],[0,1]]
-    corr = gmm_inst.covariances_[:,0,1]/np.sqrt(gmm_inst.covariances_[:,0,0]*gmm_inst.covariances_[:,1,1])
-    params[:,4] = (corr+1)/2.
+    params[:,4] = gmm_inst.covariances_[:,0,1]/np.sqrt(gmm_inst.covariances_[:,0,0]*gmm_inst.covariances_[:,1,1])
+    params[:,5] = gmm_inst.weights_
+
+    # Constrain the distribution maxima
+    sigma = np.array([[params[:,2], np.sqrt(params[:,2]*params[:,3])*params[:,4]],
+                      [np.sqrt(params[:,2]*params[:,3])*params[:,4], params[:,3]]])
+    sigma = np.moveaxis(sigma, -1, 0)
+    sigma_inv, sigma_det = quick_invdet(sigma)
+    norm = 1/(2*np.pi*np.sqrt(sigma_det))
+    maxima = gradient_rootfinder(params, sigma_inv, norm)
+    if maxima>=1:
+        params[:,5] *= 0.9/maxima
+
+    # logit
+    params[:,4] = (params[:,4]+1)/2.
     params[:,4] = np.log(params[:,4]/(1-params[:,4]))
 
-    w = gmm_inst.weights_
-    Sdet = quick_invdet(gmm_inst.covariances_)[1]
-    w /= (2*np.pi*np.sqrt(Sdet))
+    w = params[:,5]
+    w *= norm
     w[w>1] = 0.9
     params[:,5] = np.log(w/(1-w))
     # Logit on correlation
@@ -1942,7 +1955,7 @@ def transform_sfparams_logit(params):
     raw_params[:,2:4] = np.abs(raw_params[:,2:4])
 
     e_alpha = np.exp(-raw_params[...,4])
-    p = 0.99999/(1+e_alpha)
+    p = (1-1e-10)/(1+e_alpha)
     cov = np.sqrt(raw_params[...,2]*raw_params[...,3])*(2*p - 1)
     S_sf = np.moveaxis(np.array([[raw_params[...,2], cov], [cov, raw_params[...,3]]]), -1, 0)
     Sinv_sf, Sdet_sf = quick_invdet(S_sf)
@@ -1970,7 +1983,7 @@ def transform_sfparams_invlogit(raw_params):
     # Logit correction of raw_params[:,5] - [0, rt(det(2.pi.S))] --> [-inf, inf]
     pi = raw_params[:,5].copy()
     pi_scaled = pi / (2*np.pi*np.sqrt(Sdet_sf))
-    pi_scaled[pi_scaled>=1] = 0.99
+    pi_scaled[pi_scaled>=1] = (1-1e-10)
     params[:,5] = np.log(pi_scaled/(1-pi_scaled))
 
     return params
@@ -1991,7 +2004,7 @@ def gmm_gradient(X, sigma_inv,  mu, weight, norm):
     result =  -np.sum(jac*weight[:,np.newaxis], axis=0)
     #print(X.shape, result.shape)
     return result
-def gradient_rootfinder(params, sigma_inv, norm):
+def gradient_rootfinder(params, sigma_inv, norm, all_maxima=False):
 
     loc = np.zeros((params.shape[0], 2))
     for i in range(params.shape[0]):
@@ -2003,6 +2016,8 @@ def gradient_rootfinder(params, sigma_inv, norm):
 
     out = bivGaussMixture(params, loc[:,0], loc[:,1])
 
+    if all_maxima:
+        return out, loc
     return np.max(out)
     #return out, loc
 
@@ -2017,9 +2032,10 @@ def calc_nlnP_grad_pilogit_NIW(params, Xsf, NIWprior, df_params, stdout=False):
     sf_idx = np.tile(np.arange(params.shape[0]), df_params.shape[0])
     # covariances
     e_alpha = np.exp(-params[...,4])
-    p = 0.999/(1+e_alpha)
-    corr = np.sqrt(params[...,2]*params[...,3])*(2*p - 1)
-    S_sf = np.moveaxis(np.array([[params[...,2], corr], [corr, params[...,3]]]), -1, 0)
+    p = (1-1e-10)/(1+e_alpha)
+    corr = (2*p - 1)
+    cov = np.sqrt(params[...,2]*params[...,3])*corr
+    S_sf = np.moveaxis(np.array([[params[...,2], cov], [cov, params[...,3]]]), -1, 0)
     Sinv_sf, Sdet_sf = quick_invdet(S_sf)
     delta_sf = Xsf[:,np.newaxis,:]-params[:,:2][np.newaxis,:,:]
     Sinv_sf_delta = np.sum(Sinv_sf[np.newaxis,...]*delta_sf[...,np.newaxis], axis=2)
@@ -2120,7 +2136,7 @@ def BIC(n, k, lnL):
     return k*np.log(n) - 2*lnL
 
 # Optimization methods
-def TNC_sf(Xsf, priorParams, df_params, max_components=25, stdout=False, init='BGM', Xdf=None):
+def TNC_sf(Xsf, priorParams, df_params, max_components=10, stdout=False, init='BGM', Xdf=None):
 
     bic_vals = np.zeros(max_components) + np.inf
     post_vals = np.zeros(max_components) - np.inf
@@ -2130,26 +2146,60 @@ def TNC_sf(Xsf, priorParams, df_params, max_components=25, stdout=False, init='B
         n_component=i
 
         # Simple GMM
-        if init=='BGM':
+        if not init=='best':
+            if init=='BGM':
+                gmm = mixture.BayesianGaussianMixture(n_component, n_init=1,
+                                                      init_params='kmeans', tol=1e-5, max_iter=1000)
+                gmm.fit(Xsf)
+                params_bgm_pilogit = get_sfparams_logit(gmm, n_component)
+                params_i = params_bgm_pilogit
+            elif init=='kmeans':
+                weights = 1/bivGaussMixture(df_params, Xsf[:,0], Xsf[:,1])
+                # K-Means clustering of initialisation
+                #print(Xsf.shape, Xdf.shape)
+                params=kmeans_init(Xsf, Xdf, i, weights=weights)
+                #print(params)
+                params_kms_pilogit=transform_sfparams_invlogit(params)
+
+                params_i = params_kms_pilogit
+
+            opt = op.minimize(calc_nlnP_grad_pilogit_NIW,  params_i,
+                                          args=(Xsf, priorParams, df_params), method='TNC',
+                                          jac=True, options={'maxiter':1000}, tol=1e-5)
+            nlnp = calc_nlnP_grad_pilogit_NIW(opt.x, Xsf, priorParams, df_params)[0]
+
+        else:
+            params_pilogit = []
+            # BGM
             gmm = mixture.BayesianGaussianMixture(n_component, n_init=1,
                                                   init_params='kmeans', tol=1e-5, max_iter=1000)
             gmm.fit(Xsf)
             params_bgm_pilogit = get_sfparams_logit(gmm, n_component)
-            params_i = params_bgm_pilogit
-        elif init=='kmeans':
+            params_pilogit.insert(0, params_bgm_pilogit)
+
+            # KMS
             weights = 1/bivGaussMixture(df_params, Xsf[:,0], Xsf[:,1])
             # K-Means clustering of initialisation
             #print(Xsf.shape, Xdf.shape)
             params=kmeans_init(Xsf, Xdf, i, weights=weights)
             #print(params)
             params_kms_pilogit=transform_sfparams_invlogit(params)
+            params_pilogit.insert(0, params_kms_pilogit)
 
-            params_i = params_kms_pilogit
+            nlnp_trials = np.zeros(2)
+            opt_trials = [None, None]
+            methods = ['KMS', 'BGM']
+            for ii in range(2):
+                opt = op.minimize(calc_nlnP_grad_pilogit_NIW,  params_pilogit[ii],
+                                              args=(Xsf, priorParams, df_params), method='TNC',
+                                              jac=True, options={'maxiter':1000}, tol=1e-5)
+                nlnp_trials[ii] = calc_nlnP_grad_pilogit_NIW(opt.x, Xsf, priorParams, df_params)[0]
+                opt_trials[ii] = opt
 
-        opt = op.minimize(calc_nlnP_grad_pilogit_NIW,  params_i,
-                                      args=(Xsf, priorParams, df_params), method='TNC',
-                                      jac=True, options={'maxiter':1000}, tol=1e-5)
-        nlnp = calc_nlnP_grad_pilogit_NIW(opt.x, Xsf, priorParams, df_params)[0]
+            nlnp = np.min(nlnp_trials)
+            method = methods[np.argmin(nlnp_trials)]
+            opt = opt_trials[np.argmin(nlnp_trials)]
+            print(method, nlnp_trials, '  Test: ', calc_nlnP_grad_pilogit_NIW(opt.x, Xsf, priorParams, df_params)[0])
 
         bic_val = BIC(Xsf.shape[0], i*6, -nlnp)
         bic_vals[i] = bic_val
@@ -2160,9 +2210,9 @@ def TNC_sf(Xsf, priorParams, df_params, max_components=25, stdout=False, init='B
 
         sf_params_n[i] = opt.x.reshape(-1,6)
 
-        if i>1:
-            if (bic_vals[i]>bic_vals[i-1]) and (bic_vals[i-1]>bic_vals[i-2]):
-                break
+        #if i>1:
+        #    if (bic_vals[i]>bic_vals[i-1]) and (bic_vals[i-1]>bic_vals[i-2]):
+        #        break
 
     if stdout:
         print('Best components (posterior): ', np.argmax(post_vals))
@@ -2190,9 +2240,11 @@ def BGMM_df(Xdf, max_components=20, stdout=False):
 
         df_params_n[i] = params
 
-        if i>1:
-            if (bic_vals[i]>bic_vals[i-1]) and (bic_vals[i-1]>bic_vals[i-2]):
+        if i>3:
+            if np.product(np.argsort(bic_vals[i-2:i+1]) == np.arange(3)):
                 break
+            #if (bic_vals[i]>bic_vals[i-1]) and (bic_vals[i-1]>bic_vals[i-2]):
+            #    break
 
     if stdout:
         print('Best components: ', np.argmin(bic_vals))
@@ -2228,12 +2280,21 @@ def kmeans_init(sample, df_sample, n_components, n_iter=10, max_iter=100, weight
             delta = sample-mu[np.newaxis, :]
             sigma = np.sum(delta[:,:,np.newaxis]*delta[:,np.newaxis,:]*weights[:,np.newaxis,np.newaxis], axis=0)/np.sum(weights)
 
-        multiplier=3.
+        multiplier=1.
         params[i, :2] = mean
         params[i, 2:4] = sigma[[0,1],[0,1]]*multiplier
         params[i, 4] = sigma[0,1]/np.sqrt(sigma[0,0]*sigma[1,1])
-        params[i, 5] = w*multiplier
+        params[i, 5] = w * 2*np.pi*np.sqrt(sigma[0,0]*sigma[1,1]*(1-params[i,4]**2)) * multiplier
 
+
+    sigma = np.array([[params[:,2], np.sqrt(params[:,2]*params[:,3])*params[:,4]],
+                      [np.sqrt(params[:,2]*params[:,3])*params[:,4], params[:,3]]])
+    sigma = np.moveaxis(sigma, -1, 0)
+    sigma_inv, sigma_det = quick_invdet(sigma)
+    norm = 1/(2*np.pi*np.sqrt(sigma_det))
+    maxima = gradient_rootfinder(params, sigma_inv, norm)
+    if maxima>=1:
+        params[:,5] *= 0.9/maxima
 
     return params
 
