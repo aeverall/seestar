@@ -1782,7 +1782,7 @@ class BGM_TNC():
 
         return params
 
-    def optimize(self, priorParams, method):
+    def optimize(self, priorParams, method, niter=100):
 
         '''
         optimize - Run scipy.optimize.minimize to determine the optimal parameters for the distribution
@@ -1822,6 +1822,10 @@ class BGM_TNC():
         elif method=='BGM':
             print('Running BGM')
             params = BGMM_df(X, stdout=self.runningL)
+        elif method=='emcee':
+            params = transform_sfparams_invlogit(self.params_f_scaled)
+            self.sampler = BGMM_emcee_ball(params, X, priorParams, self.params_df, niter=niter)
+            return self.sampler
         else:
             raise ValueError('What is the method???')
 
@@ -2022,6 +2026,67 @@ def gradient_rootfinder(params, sigma_inv, norm, all_maxima=False):
     #return out, loc
 
 # Likelihood, Prior and Posterior functions
+def calc_nlnP_pilogit_NIW(params, Xsf, NIWprior, df_params, stdout=False):
+
+    # Parameters - transform to means, covariances and weights
+    params = np.reshape(params, (-1,6))
+    # means
+    params[:,2:4] = np.abs(params[:,2:4])
+    df_idx = np.repeat(np.arange(df_params.shape[0]), params.shape[0])
+    sf_idx = np.tile(np.arange(params.shape[0]), df_params.shape[0])
+    # covariances
+    e_alpha = np.exp(-params[...,4])
+    p = (1-1e-10)/(1+e_alpha)
+    corr = (2*p - 1)
+    cov = np.sqrt(params[...,2]*params[...,3])*corr
+    S_sf = np.moveaxis(np.array([[params[...,2], cov], [cov, params[...,3]]]), -1, 0)
+    Sinv_sf, Sdet_sf = quick_invdet(S_sf)
+    delta_sf = Xsf[:,np.newaxis,:]-params[:,:2][np.newaxis,:,:]
+    Sinv_sf_delta = np.sum(Sinv_sf[np.newaxis,...]*delta_sf[...,np.newaxis], axis=2)
+    #weights
+    # Logit correction of params[:,5] - [-inf, inf] --> [0, rt(det(2.pi.S))]
+    e_alpha_pi = np.exp(-params[...,5])
+    p_pi = 1./(1+e_alpha_pi)
+    pi = 2*np.pi*np.sqrt(Sdet_sf) * p_pi
+
+    # Unscaled parameters
+    params_original = params.copy()
+    params_original[:,4] = corr
+    params_original[:,5] = pi
+    # Max SF prior
+    gmm_maxima = gradient_rootfinder(params_original, Sinv_sf, 1/(2*np.pi*np.sqrt(Sdet_sf)))
+    #print(gmm_maxima)
+    if gmm_maxima>1:
+        return 1e10
+
+    # Likelihood
+    corr = np.sqrt(df_params[...,2]*df_params[...,3])*df_params[...,4]
+    S_df = np.moveaxis(np.array([[df_params[...,2], corr], [corr, df_params[...,3]]]), -1, 0)
+
+    Sinv_sum, Sdet_sum = quick_invdet(S_sf[sf_idx]+S_df[df_idx])
+    Sinv_sum_delta = np.sum(Sinv_sum*(df_params[:,:2][df_idx] - params[:,:2][sf_idx])[...,np.newaxis], axis=1)
+
+    # Star iteration term
+    # (Nstar x Ncomponent_sf)
+    m_ij = Gaussian_i(delta_sf, Sinv_sf, Sdet_sf)
+    m_i = np.sum(pi*m_ij, axis=1)
+
+    # Integral Term
+    delta_mumu = params[:,:2][sf_idx] - df_params[:,:2][df_idx]
+    I_jl = Gaussian_int(delta_mumu, Sinv_sum, Sdet_sum)  * pi[sf_idx] * df_params[:,5][df_idx]
+    I = np.sum(I_jl)
+
+    # Prior
+    m0, l0, Psi0, nu0 = NIWprior
+    delta_mumu0 = params[:,:2]-m0[np.newaxis,:]
+    Prior0 = (-(nu0+4.)/2.) * np.log(Sdet_sf)
+    Priormu = (-l0/2.) * np.sum(delta_mumu0 * np.sum(Sinv_sf * delta_mumu0[...,np.newaxis], axis=1), axis=1)
+    PriorS = (-1/2.) * np.trace(np.matmul(Psi0[np.newaxis,...], Sinv_sf), axis1=-2, axis2=-1)
+    Prior = np.sum(Prior0 + Priormu + PriorS)
+
+    nlnP = - ( np.sum(np.log(m_i)) - np.sum(I) + Prior)
+    #print('%.0f' % nlnP, '.....', end='')
+    return  nlnP
 def calc_nlnP_grad_pilogit_NIW(params, Xsf, NIWprior, df_params, stdout=False):
 
     # Parameters - transform to means, covariances and weights
@@ -2250,6 +2315,24 @@ def BGMM_df(Xdf, max_components=20, stdout=False):
         print('Best components: ', np.argmin(bic_vals))
 
     return df_params_n[np.argmin(bic_vals)]
+def BGMM_emcee_ball(params, Xsf, priorParams, df_params, niter=200):
+    print('emcee with %d iterations...' % niter)
+
+    ndim=len(params.flatten())
+    nwalkers=ndim*2
+
+    p0 = np.repeat([params,], nwalkers, axis=0)
+    p0 = np.random.normal(loc=p0, scale=np.abs(p0/500))
+    p0[:,:,2:4] = np.abs(p0[:,:,2:4])
+
+    p0 = p0.reshape(nwalkers, -1)
+    foo = lambda a, b, c, d: -calc_nlnP_pilogit_NIW(a, b, c, d)
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, foo,
+                                    args=(Xsf, priorParams, df_params))
+    # Run emcee
+    _=sampler.run_mcmc(p0, niter)
+
+    return sampler
 
 def kmeans_init(sample, df_sample, n_components, n_iter=10, max_iter=100, weights=None):
 
