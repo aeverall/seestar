@@ -1954,7 +1954,7 @@ def get_sfparams_logit(gmm_inst, n_components):
 def transform_sfparams_logit(params):
 
     raw_params = params.copy().reshape(-1,6)
-    print(raw_params[:,5])
+    #print(raw_params[:,5])
 
     raw_params[:,2:4] = np.abs(raw_params[:,2:4])
 
@@ -1991,6 +1991,41 @@ def transform_sfparams_invlogit(raw_params):
     params[:,5] = np.log(pi_scaled/(1-pi_scaled))
 
     return params
+def gmm_product_params(params1, params2):
+
+    idx1 = np.repeat(np.arange(params1.shape[0]), params2.shape[0])
+    idx2 = np.tile(np.arange(params2.shape[0]), params1.shape[0])
+
+    m1 = params1[:,:2]
+    m2 = params2[:,:2]
+
+    # Covariance matrices
+    cov1 = np.sqrt(params1[...,2]*params1[...,3])*params1[...,4]
+    S1 = np.moveaxis(np.array([[params1[...,2], cov1], [cov1, params1[...,3]]]), -1, 0)
+    cov2 = np.sqrt(params2[...,2]*params2[...,3])*params2[...,4]
+    S2 = np.moveaxis(np.array([[params2[...,2], cov2], [cov2, params2[...,3]]]), -1, 0)
+
+    S1_inv, S1_det = quick_invdet(S1)
+    S2_inv, S2_det = quick_invdet(S2)
+    S3 = quick_invdet(S1_inv[idx1]+S2_inv[idx2])[0]
+
+    m3 = np.sum(S3 * np.sum((S1_inv*m1[:,:,np.newaxis])[idx1] + (S2_inv*m2[:,:,np.newaxis])[idx2], axis=1)[:,:,np.newaxis], axis=1)
+
+    delta_mm = m1[idx1] - m2[idx2]
+    S1_S2_inv, S1_S2_det = quick_invdet(S1[idx1]+S2[idx2])
+    exponent = -0.5 * np.sum(delta_mm * np.sum(S1_S2_inv * delta_mm[:,:,np.newaxis], axis=1), axis=1)
+    norm = 1/(2*np.pi*np.sqrt(S1_S2_det))
+    cc = norm*np.exp(exponent)
+
+    weights = params1[:,5][idx1]*params2[:,5][idx2]
+
+    params3 = np.zeros((S3.shape[0], 6))
+    params3[:,:2] = m3
+    params3[:,2:4] = S3[:,[0,1],[0,1]]
+    params3[:,4] = S3[:,0,1]/(np.sqrt(S3[:,0,0]*S3[:,1,1]))
+    params3[:,5] = weights*cc
+
+    return params3
 
 
 def gmm_gradient(X, sigma_inv,  mu, weight, norm):
