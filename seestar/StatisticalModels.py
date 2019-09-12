@@ -1903,7 +1903,7 @@ def Gaussian_int(delta, Sinv, Sdet):
     return norm * np.exp(exponent)
 
 # Manipulating parameters
-def NIW_prior_params(bounds, l0=0.001, nu0=1., shrinker=10.):
+def NIW_prior_params(bounds, l0=0.001, nu0=2., shrinker=20.):
 
     mu0 = (bounds[:,1] + bounds[:,0])/2
     std0 = (bounds[:,1] - bounds[:,0])/2
@@ -2329,7 +2329,10 @@ def BGMM_df(Xdf, max_components=20, stdout=False):
 
         # Simple GMM
         gmm = mixture.BayesianGaussianMixture(n_components=i, n_init=3,
-                                              init_params='kmeans', tol=1e-5, max_iter=1000)
+                                              init_params='kmeans', tol=1e-5, max_iter=2000,
+                                              weight_concentration_prior_type='dirichlet_distribution', weight_concentration_prior=1./float(i),
+                                              covariance_prior= 'NA',
+                                              mean_prior= 'NA', mean_precision_prior=0.1, degrees_of_freedom_prior=2)
         gmm.fit(Xdf)
 
         params = get_params(gmm, Xdf.shape[0], i)

@@ -745,7 +745,7 @@ def cleanPoints(get_spectro, get_photo, field, fieldpointing, cm_limits):
             else: mag_min = cm_limits[0]
             prior_sfBounds[0,0] = np.min(photo_points.appMag)
         else:
-            mag_min = fieldpointing.Magmin - 1
+            mag_min = fieldpointing.Magmin
             prior_sfBounds[0,0] = mag_min
         # apparent mag lower bound
         if fieldpointing.Magmax == "NoLimit":
@@ -753,7 +753,7 @@ def cleanPoints(get_spectro, get_photo, field, fieldpointing, cm_limits):
             else: mag_max = cm_limits[1]
             prior_sfBounds[0,1] = np.max(photo_points.appMag)
         else:
-            mag_max = fieldpointing.Magmax + 1
+            mag_max = fieldpointing.Magmax
             prior_sfBounds[0,1] = mag_max
         # colour uppper bound
         if fieldpointing.Colmin == "NoLimit":
@@ -761,7 +761,7 @@ def cleanPoints(get_spectro, get_photo, field, fieldpointing, cm_limits):
             else: col_min = cm_limits[2]
             prior_sfBounds[1,0] = np.min(photo_points.Colour)
         else:
-            col_min = fieldpointing.Colmin - 0.1
+            col_min = fieldpointing.Colmin
             prior_sfBounds[1,0] = col_min
         # colour lower bound
         if fieldpointing.Colmax == "NoLimit":
@@ -769,7 +769,7 @@ def cleanPoints(get_spectro, get_photo, field, fieldpointing, cm_limits):
             else: col_max = cm_limits[3]
             prior_sfBounds[1,1] = np.max(photo_points.Colour)
         else:
-            col_max = fieldpointing.Colmax + 0.1
+            col_max = fieldpointing.Colmax
             prior_sfBounds[1,1] = col_max
 
         # Chose only photometric survey points within the colour-magnitude region.
