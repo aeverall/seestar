@@ -28,6 +28,7 @@ from mpmath import *
 
 from sklearn import mixture
 from sklearn.cluster import KMeans
+from tqdm import tqdm_notebook as tqdm
 
 # Import cubature for integrating over regions
 #from cubature import cubature
@@ -1821,10 +1822,22 @@ class BGM_TNC():
             params = transform_sfparams_logit(raw_params)
         elif method=='BGM':
             print('Running BGM')
-            params = BGMM_df(X, stdout=self.runningL)
+            params, gmm = BGMM_df(X, stdout=self.runningL)
+            self.gmm_df = gmm
         elif method=='emcee':
             params = transform_sfparams_invlogit(self.params_f_scaled)
             self.sampler = BGMM_emcee_ball(params, X, priorParams, self.params_df, niter=niter)
+            return self.sampler
+        elif method=='emceeBHM':
+            df_params = self.params_df.copy()
+            df_params[:,5] = df_params[:,5]/np.sum(df_params[:,5])
+            params = transform_sfparams_invlogit(self.params_f_scaled)
+            p0 = np.hstack((params.flatten(), df_params.flatten(), np.array([len(self.photoDF.x)])))
+            gmm = self.photoDF.gmm_df
+            df_posterior = [Xdf.shape[0], gmm.weight_concentration_,
+                            gmm.means_, gmm.mean_precision_,
+                            gmm.covariances_, gmm.degrees_of_freedom_]
+            self.sampler = BGMM_emcee_ball(params, X, priorParams, df_posterior, niter=niter)
             return self.sampler
         else:
             raise ValueError('What is the method???')
@@ -1989,6 +2002,39 @@ def transform_sfparams_invlogit(raw_params):
     pi_scaled = pi / (2*np.pi*np.sqrt(Sdet_sf))
     pi_scaled[pi_scaled>=1] = (1-1e-10)
     params[:,5] = np.log(pi_scaled/(1-pi_scaled))
+
+    return params
+def transform_dfparams_logit(params):
+
+    raw_params = params.copy().reshape(-1,6)
+    #print(raw_params[:,5])
+    raw_params[:,2:4] = np.abs(raw_params[:,2:4])
+
+    e_alpha = np.exp(-raw_params[...,4])
+    p = (1-1e-10)/(1+e_alpha)
+    raw_params[...,4] = (2*p - 1)
+
+    # Logit correction of raw_params[:,5] - [-inf, inf] --> [0, rt(det(2.pi.S))]
+    e_alpha_pi = np.exp(-raw_params[...,5])
+    pi = 1./(1.+e_alpha_pi)
+    raw_params[:,5] = pi
+
+    return raw_params
+def transform_dfparams_invlogit(raw_params):
+
+    params = raw_params.copy().reshape(-1,6)
+
+    # logit scaled correlation
+    p = (params[:,4]+1)/2
+    params[:,4] = np.log(p/(1-p))
+
+    cov = raw_params[:,4]*np.sqrt(raw_params[:,2]*raw_params[:,3])
+    S_sf = np.moveaxis(np.array([[raw_params[...,2], cov], [cov, raw_params[...,3]]]), -1, 0)
+    Sinv_sf, Sdet_sf = quick_invdet(S_sf)
+
+    # Logit correction of raw_params[:,5] - [0, rt(det(2.pi.S))] --> [-inf, inf]
+    pi = raw_params[:,5].copy()
+    params[:,5] = np.log(pi/(1-pi))
 
     return params
 def gmm_product_params(params1, params2):
@@ -2218,6 +2264,418 @@ def calc_nlnP_grad_pilogit_NIW(params, Xsf, NIWprior, df_params, stdout=False):
     grad[:,5] = gradPi * 2*np.pi*np.sqrt(Sdet_sf) * p_pi**2 * e_alpha_pi
 
     return  - ( np.sum(np.log(m_i)) - np.sum(I) + Prior), -grad.flatten()
+def calc_nlnP_pilogit_NIW_DFfit(params, Xsf, NIWprior, Post_df, stdout=False):
+
+    # Prior on distribution function components
+    Nphot, conc_df, mdf, ldf, Psidf, nudf = Post_df
+    ncomponents_df = mdf.shape[0]
+
+    # Parameters - transform to means, covariances and weights
+    N = params[-1]
+    params = np.reshape(params[:-1], (-1,6))
+    params[:,2:4] = np.abs(params[:,2:4])
+    df_params = params[-ncomponents_df:].copy()
+    params = params[:-ncomponents_df].copy()
+    # means
+    df_idx = np.repeat(np.arange(df_params.shape[0]), params.shape[0])
+    sf_idx = np.tile(np.arange(params.shape[0]), df_params.shape[0])
+    # covariances
+    e_alpha = np.exp(-params[...,4])
+    p = (1-1e-10)/(1+e_alpha)
+    corr_sf = (2*p - 1)
+    cov = np.sqrt(params[...,2]*params[...,3])*corr_sf
+    S_sf = np.moveaxis(np.array([[params[...,2], cov], [cov, params[...,3]]]), -1, 0)
+    Sinv_sf, Sdet_sf = quick_invdet(S_sf)
+    delta_sf = Xsf[:,np.newaxis,:]-params[:,:2][np.newaxis,:,:]
+    Sinv_sf_delta = np.sum(Sinv_sf[np.newaxis,...]*delta_sf[...,np.newaxis], axis=2)
+    #weights
+    # Logit correction of params[:,5] - [-inf, inf] --> [0, rt(det(2.pi.S))]
+    e_alpha_pi = np.exp(-params[...,5])
+    p_pi = 1./(1+e_alpha_pi)
+    pi = 2*np.pi*np.sqrt(Sdet_sf) * p_pi
+
+    # Nor for the DF
+    # covariances
+    e_alpha = np.exp(-df_params[...,4])
+    p = (1-1e-10)/(1+e_alpha)
+    corr = (2*p - 1)
+    cov = np.sqrt(df_params[...,2]*df_params[...,3])*corr
+    S_df = np.moveaxis(np.array([[df_params[...,2], cov], [cov, df_params[...,3]]]), -1, 0)
+    Sinv_df, Sdet_df = quick_invdet(S_df)
+    delta_df = Xsf[:,np.newaxis,:]-df_params[:,:2][np.newaxis,:,:]
+    Sinv_df_delta = np.sum(Sinv_df[np.newaxis,...]*delta_df[...,np.newaxis], axis=2)
+    #weights
+    # Logit correction of params[:,5] - [-inf, inf] --> [0, rt(det(2.pi.S))]
+    e_alpha_pi = np.exp(-df_params[...,5])
+    pi_df = 1./(1+e_alpha_pi)
+
+    # Unscaled parameters
+    params_original = params.copy()
+    params_original[:,4] = corr_sf
+    params_original[:,5] = pi
+    # Max SF prior
+    gmm_maxima = gradient_rootfinder(params_original, Sinv_sf, 1/(2*np.pi*np.sqrt(Sdet_sf)))
+    #print(gmm_maxima)
+    if gmm_maxima>1:
+        return 1e10
+
+    # Joint sf-df model
+    Sinv_sum, Sdet_sum = quick_invdet(S_sf[sf_idx]+S_df[df_idx])
+    Sinv_sum_delta = np.sum(Sinv_sum*(df_params[:,:2][df_idx] - params[:,:2][sf_idx])[...,np.newaxis], axis=1)
+
+    # Likelihood
+    # SF star iteration term (Nstar x Ncomponent_sf)
+    m_ij = Gaussian_i(delta_sf, Sinv_sf, Sdet_sf)
+    m_i = np.sum(pi*m_ij, axis=1)
+    # DF star iteration term (Nstar x Ncomponent_sf)
+    m_ij_df = Gaussian_i(delta_df, Sinv_df, Sdet_df)
+    m_i_df = np.sum(pi_df*m_ij_df, axis=1)
+    # Integral Term
+    delta_mumu = params[:,:2][sf_idx] - df_params[:,:2][df_idx]
+    I_jl = Gaussian_int(delta_mumu, Sinv_sum, Sdet_sum)  * pi[sf_idx] * df_params[:,5][df_idx]
+    I = np.sum(I_jl)
+
+    # Prior
+    m0, l0, Psi0, nu0 = NIWprior
+    delta_mumu0 = params[:,:2]-m0[np.newaxis,:]
+    Prior0 = (-(nu0+4.)/2.) * np.log(Sdet_sf)
+    Priormu = (-l0/2.) * np.sum(delta_mumu0 * np.sum(Sinv_sf * delta_mumu0[...,np.newaxis], axis=1), axis=1)
+    PriorS = (-1/2.) * np.trace(np.matmul(Psi0[np.newaxis,...], Sinv_sf), axis1=-2, axis2=-1)
+    Prior = np.sum(Prior0 + Priormu + PriorS)
+
+    delta_mumudf = df_params[:,:2]-mdf
+    PriorN_df = N*np.log(Nphot/N) - (Nphot-N)
+    PriorPi_df = (conc_df - 1) * np.log(pi_df)
+    Prior0_df = (-(nudf+4.)/2.) * np.log(Sdet_df)
+    Priormu_df = (-ldf/2.) * np.sum(delta_mumudf * np.sum(Sinv_df * delta_mumudf[...,np.newaxis], axis=1), axis=1)
+    PriorS_df = (-1/2.) * np.trace(np.matmul(Psidf, Sinv_df), axis1=-2, axis2=-1)
+    Prior_df = np.sum(PriorN_df + PriorPi_df + Prior0_df + Priormu_df + PriorS_df)
+
+    nlnP = - ( np.log(N) + np.sum(np.log(m_i_df)) + np.sum(np.log(m_i)) - np.sum(I) + Prior + Prior_df)
+    #print('%.0f' % nlnP, '.....', end='')
+
+
+    if np.isnan(nlnP):
+        print('Nan Prob')
+        print(np.log(N), np.sum(np.log(m_i_df)), np.sum(np.log(m_i)), np.sum(I), Prior, Prior_df)
+        print('DF prior components: ', PriorN_df, PriorPi_df, Prior0_df, Priormu_df, PriorS_df)
+        print('Pi prior components: ', conc_df, pi_df)
+
+    return  nlnP
+def calc_prior_df(params, Xsf, NIWprior, Post_df, stdout=False):
+    # Prior on distribution function components
+    Nphot, conc_df, mdf, ldf, Psidf, nudf = Post_df
+    ncomponents_df = mdf.shape[0]
+
+    # Parameters - transform to means, covariances and weights
+    params = np.reshape(params, (-1,6))
+    params[:,2:4] = np.abs(params[:,2:4])
+    df_params = params[-ncomponents_df:].copy()
+    N = np.sum(df_params[:,5])
+    # Prior on df_params
+    if (np.sum(np.abs(df_params[...,4])>=1)>0)|(np.sum(df_params[:,5]<0)>0)|(N<0):
+        return 1e10
+
+    # Nor for the DF
+    # covariances
+    cov = np.sqrt(df_params[...,2]*df_params[...,3])*df_params[...,4]
+    S_df = np.moveaxis(np.array([[df_params[...,2], cov], [cov, df_params[...,3]]]), -1, 0)
+    Sinv_df, Sdet_df = quick_invdet(S_df)
+    delta_df = Xsf[:,np.newaxis,:]-df_params[:,:2][np.newaxis,:,:]
+    Sinv_df_delta = np.sum(Sinv_df[np.newaxis,...]*delta_df[...,np.newaxis], axis=2)
+    #weights
+    pi_df = df_params[:,5].copy()/N
+
+    delta_mumudf = df_params[:,:2]-mdf
+    PriorN_df = N*np.log(Nphot/N) - (Nphot-N)
+    PriorPi_df = (conc_df - 1) * np.log(pi_df)
+    Prior0_df = (-(nudf+4.)/2.) * np.log(Sdet_df)
+    Priormu_df = (-ldf/2.) * np.sum(delta_mumudf * np.sum(Sinv_df * delta_mumudf[...,np.newaxis], axis=1), axis=1)
+    PriorS_df = (-1/2.) * np.trace(np.matmul(Psidf, Sinv_df), axis1=-2, axis2=-1)
+    Prior_df = np.sum(PriorN_df + PriorPi_df + Prior0_df + Priormu_df + PriorS_df)
+
+    nlnP = - Prior_df
+    #print('%.0f' % nlnP, '.....', end='')
+
+    return  nlnP
+
+def calc_nlnP_NIW_DFfit(params, Xsf, NIWprior, Post_df, stdout=False):
+
+    # Prior on distribution function components
+    Nphot, conc_df, mdf, ldf, Psidf, nudf = Post_df
+    ncomponents_df = mdf.shape[0]
+
+    # Parameters - transform to means, covariances and weights
+    params = np.reshape(params, (-1,6))
+    params[:,2:4] = np.abs(params[:,2:4])
+    df_params = params[-ncomponents_df:].copy()
+    params = params[:-ncomponents_df].copy()
+    N = np.sum(df_params[:,5])
+    # Prior on df_params
+    if (np.sum(np.abs(df_params[...,4])>=1)>0)|(np.sum(df_params[:,5]<0)>0)|(N<0):
+        return 1e10
+    # means
+    df_idx = np.repeat(np.arange(df_params.shape[0]), params.shape[0])
+    sf_idx = np.tile(np.arange(params.shape[0]), df_params.shape[0])
+    # covariances
+    e_alpha = np.exp(-params[...,4])
+    p = (1-1e-10)/(1+e_alpha)
+    corr_sf = (2*p - 1)
+    cov = np.sqrt(params[...,2]*params[...,3])*corr_sf
+    S_sf = np.moveaxis(np.array([[params[...,2], cov], [cov, params[...,3]]]), -1, 0)
+    Sinv_sf, Sdet_sf = quick_invdet(S_sf)
+    delta_sf = Xsf[:,np.newaxis,:]-params[:,:2][np.newaxis,:,:]
+    Sinv_sf_delta = np.sum(Sinv_sf[np.newaxis,...]*delta_sf[...,np.newaxis], axis=2)
+    #weights
+    # Logit correction of params[:,5] - [-inf, inf] --> [0, rt(det(2.pi.S))]
+    e_alpha_pi = np.exp(-params[...,5])
+    p_pi = 1./(1+e_alpha_pi)
+    pi = 2*np.pi*np.sqrt(Sdet_sf) * p_pi
+
+    # Nor for the DF
+    # covariances
+    cov = np.sqrt(df_params[...,2]*df_params[...,3])*df_params[...,4]
+    S_df = np.moveaxis(np.array([[df_params[...,2], cov], [cov, df_params[...,3]]]), -1, 0)
+    Sinv_df, Sdet_df = quick_invdet(S_df)
+    delta_df = Xsf[:,np.newaxis,:]-df_params[:,:2][np.newaxis,:,:]
+    Sinv_df_delta = np.sum(Sinv_df[np.newaxis,...]*delta_df[...,np.newaxis], axis=2)
+    #weights
+    pi_df = df_params[:,5].copy()/N
+
+    # Unscaled parameters
+    params_original = params.copy()
+    params_original[:,4] = corr_sf
+    params_original[:,5] = pi
+    # Max SF prior
+    gmm_maxima = gradient_rootfinder(params_original, Sinv_sf, 1/(2*np.pi*np.sqrt(Sdet_sf)))
+    #print(gmm_maxima)
+    if gmm_maxima>1:
+        return 1e10
+
+    # Joint sf-df model
+    Sinv_sum, Sdet_sum = quick_invdet(S_sf[sf_idx]+S_df[df_idx])
+    Sinv_sum_delta = np.sum(Sinv_sum*(df_params[:,:2][df_idx] - params[:,:2][sf_idx])[...,np.newaxis], axis=1)
+
+    # Likelihood
+    # SF star iteration term (Nstar x Ncomponent_sf)
+    m_ij = Gaussian_i(delta_sf, Sinv_sf, Sdet_sf)
+    m_i = np.sum(pi*m_ij, axis=1)
+    # DF star iteration term (Nstar x Ncomponent_sf)
+    m_ij_df = Gaussian_i(delta_df, Sinv_df, Sdet_df)
+    m_i_df = np.sum(pi_df*m_ij_df, axis=1)
+    # Integral Term
+    delta_mumu = params[:,:2][sf_idx] - df_params[:,:2][df_idx]
+    I_jl = Gaussian_int(delta_mumu, Sinv_sum, Sdet_sum)  * pi[sf_idx] * df_params[:,5][df_idx]
+    I = np.sum(I_jl)
+
+    # Prior
+    m0, l0, Psi0, nu0 = NIWprior
+    delta_mumu0 = params[:,:2]-m0[np.newaxis,:]
+    Prior0 = (-(nu0+4.)/2.) * np.log(Sdet_sf)
+    Priormu = (-l0/2.) * np.sum(delta_mumu0 * np.sum(Sinv_sf * delta_mumu0[...,np.newaxis], axis=1), axis=1)
+    PriorS = (-1/2.) * np.trace(np.matmul(Psi0[np.newaxis,...], Sinv_sf), axis1=-2, axis2=-1)
+    Prior = np.sum(Prior0 + Priormu + PriorS)
+
+    delta_mumudf = df_params[:,:2]-mdf
+    PriorN_df = N*np.log(Nphot/N) - (Nphot-N)
+    PriorPi_df = (conc_df - 1) * np.log(pi_df)
+    Prior0_df = (-(nudf+4.)/2.) * np.log(Sdet_df)
+    Priormu_df = (-ldf/2.) * np.sum(delta_mumudf * np.sum(Sinv_df * delta_mumudf[...,np.newaxis], axis=1), axis=1)
+    PriorS_df = (-1/2.) * np.trace(np.matmul(Psidf, Sinv_df), axis1=-2, axis2=-1)
+    Prior_df = np.sum(PriorN_df + PriorPi_df + Prior0_df + Priormu_df + PriorS_df)
+
+    nlnP = - ( np.log(N) + np.sum(np.log(m_i_df)) + np.sum(np.log(m_i)) - np.sum(I) + Prior + Prior_df)
+    #print('%.0f' % nlnP, '.....', end='')
+
+
+    if np.isnan(nlnP):
+        print('Nan Prob')
+        print(np.log(N), np.sum(np.log(m_i_df)), np.sum(np.log(m_i)), np.sum(I), Prior, Prior_df)
+        print('DF prior components: ', PriorN_df, PriorPi_df, Prior0_df, Priormu_df, PriorS_df)
+        print('Pi prior components: ', conc_df, pi_df)
+        print('Constraints: ', np.abs(df_params[...,4])>=1, df_params[:,5]<0, N<0)
+        print('Constraints sum: ', np.sum(np.abs(df_params[...,4])>=1), np.sum(df_params[:,5]<0), N<0)
+        print('Constraints bool: ', np.sum(np.abs(df_params[...,4])>=1)>0, np.sum(df_params[:,5]<0)>0, N<0)
+        print('Constraints combined: ', (np.sum(np.abs(df_params[...,4])>=1)>0)|(np.sum(df_params[:,5]<0)>0)|(N<0))
+
+    return  nlnP
+def calc_nlnP_grad_pilogit_NIW_DFfit(params, Xsf, NIWprior, Post_df, stdout=False):
+
+    # Prior on distribution function components
+    Nphot, conc_df, mdf, ldf, Psidf, nudf = Post_df
+    ncomponents_df = mdf.shape[0]
+
+    # Parameters - transform to means, covariances and weights
+    params = np.reshape(params, (-1,6))
+    params[:,2:4] = np.abs(params[:,2:4])
+    df_params = params[-ncomponents_df:].copy()
+    params = params[:-ncomponents_df].copy()
+    N = np.sum(df_params[:,5])
+    # Prior on df_params
+    if (np.sum(np.abs(df_params[...,4])>=1)>0)|(np.sum(df_params[:,5]<0)>0)|(N<0):
+        return 1e10
+    # means
+    df_idx = np.repeat(np.arange(df_params.shape[0]), params.shape[0])
+    sf_idx = np.tile(np.arange(params.shape[0]), df_params.shape[0])
+    # covariances
+    e_alpha = np.exp(-params[...,4])
+    p = (1-1e-10)/(1+e_alpha)
+    corr = (2*p - 1)
+    cov = np.sqrt(params[...,2]*params[...,3])*corr
+    S_sf = np.moveaxis(np.array([[params[...,2], cov], [cov, params[...,3]]]), -1, 0)
+    Sinv_sf, Sdet_sf = quick_invdet(S_sf)
+    delta_sf = Xsf[:,np.newaxis,:]-params[:,:2][np.newaxis,:,:]
+    Sinv_sf_delta = np.sum(Sinv_sf[np.newaxis,...]*delta_sf[...,np.newaxis], axis=2)
+    #weights
+    # Logit correction of params[:,5] - [-inf, inf] --> [0, rt(det(2.pi.S))]
+    e_alpha_pi = np.exp(-params[...,5])
+    p_pi = 1./(1+e_alpha_pi)
+    pi = 2*np.pi*np.sqrt(Sdet_sf) * p_pi
+
+    # Now for the DF
+    cov = np.sqrt(df_params[...,2]*df_params[...,3])*df_params[...,4]
+    S_df = np.moveaxis(np.array([[df_params[...,2], cov], [cov, df_params[...,3]]]), -1, 0)
+    Sinv_df, Sdet_df = quick_invdet(S_df)
+    delta_df = Xsf[:,np.newaxis,:]-df_params[:,:2][np.newaxis,:,:]
+    Sinv_df_delta = np.sum(Sinv_df[np.newaxis,...]*delta_df[...,np.newaxis], axis=2)
+    #weights
+    pi_df = df_params[:,5].copy()/N
+
+    # Unscaled parameters
+    params_original = params.copy()
+    params_original[:,4] = corr
+    params_original[:,5] = pi
+    # Max SF prior
+    gmm_maxima = gradient_rootfinder(params_original, Sinv_sf, 1/(2*np.pi*np.sqrt(Sdet_sf)))
+    #print(gmm_maxima)
+    if gmm_maxima>1:
+        return 1e10
+
+    # Joint sf-df model
+    Sinv_sum, Sdet_sum = quick_invdet(S_sf[sf_idx]+S_df[df_idx])
+    Sinv_sum_delta = np.sum(Sinv_sum*(df_params[:,:2][df_idx] - params[:,:2][sf_idx])[...,np.newaxis], axis=1)
+
+    # Likelihood
+    # SF star iteration term (Nstar x Ncomponent_sf)
+    m_ij = Gaussian_i(delta_sf, Sinv_sf, Sdet_sf)
+    m_i = np.sum(pi*m_ij, axis=1)
+    # DF star iteration term (Nstar x Ncomponent_sf)
+    m_ij_df = Gaussian_i(delta_df, Sinv_df, Sdet_df)
+    m_i_df = np.sum(pi_df*m_ij_df, axis=1)
+    # Integral Term
+    delta_mumu = params[:,:2][sf_idx] - df_params[:,:2][df_idx]
+    I_jl = Gaussian_int(delta_mumu, Sinv_sum, Sdet_sum)  * pi[sf_idx] * df_params[:,5][df_idx]
+    I = np.sum(I_jl)
+
+    # Prior
+    m0, l0, Psi0, nu0 = NIWprior
+    delta_mumu0 = params[:,:2]-m0[np.newaxis,:]
+    Prior0 = (-(nu0+4.)/2.) * np.log(Sdet_sf)
+    Priormu = (-l0/2.) * np.sum(delta_mumu0 * np.sum(Sinv_sf * delta_mumu0[...,np.newaxis], axis=1), axis=1)
+    PriorS = (-1/2.) * np.trace(np.matmul(Psi0[np.newaxis,...], Sinv_sf), axis1=-2, axis2=-1)
+    Prior = np.sum(Prior0 + Priormu + PriorS)
+
+    delta_mumudf = df_params[:,:2]-mdf
+    PriorN_df = N*np.log(Nphot/N) - (Nphot-N)
+    PriorPi_df = (conc_df/np.sum(conc_df) - 1) * np.log(pi_df/np.sum(pi_df))
+    Prior0_df = (-(nudf+4.)/2.) * np.log(Sdet_df)
+    Priormu_df = (-ldf/2.) * np.sum(delta_mumudf * np.sum(Sinv_df * delta_mumudf[...,np.newaxis], axis=1), axis=1)
+    PriorS_df = (-1/2.) * np.trace(np.matmul(Psidf, Sinv_df), axis1=-2, axis2=-1)
+    Prior_df = np.sum(PriorN_df + PriorPi_df + Prior0_df + Priormu_df + PriorS_df)
+
+    nlnP = - ( np.log(N) + np.sum(np.log(m_i_df)) + np.sum(np.log(m_i)) - np.sum(I) + Prior + Prior_df)
+    if stdout:
+        print('PriorS: ', PriorS_df)
+        print(PriorN_df, np.sum(PriorPi_df), np.sum(Prior0_df), np.sum(Priormu_df), np.sum(PriorS_df))
+        print(np.log(N), np.sum(np.log(m_i_df)), np.sum(np.log(m_i)), np.sum(I), Prior, Prior_df)
+
+    # Calculation for later
+    Sinv_delta_mumu0 = np.sum(Sinv_sf * delta_mumu0[...,np.newaxis], axis=1)
+    Sinv_delta_mumudf = np.sum(Sinv_df * delta_mumudf[...,np.newaxis], axis=1)
+
+
+    # Gradients
+    # Pi
+    A = np.sum(m_ij/m_i[:,np.newaxis], axis=0) # i-term
+    B = np.sum((I_jl/pi[sf_idx]).reshape(df_params.shape[0], params.shape[0]), axis=0) # int-term
+    C = 1/pi # prior-term
+    gradPi = A - B
+
+    # mu
+    A = (pi[np.newaxis,:]*(m_ij/m_i[:,np.newaxis]))[...,np.newaxis]*\
+        Sinv_sf_delta
+    A = np.sum(A, axis=0) # i-term (nComponent x 2)
+    B = (I_jl)[:,np.newaxis] * \
+        Sinv_sum_delta
+    B = np.sum(B.reshape(df_params.shape[0], params.shape[0], 2), axis=0) # int-term
+    C = -l0 * np.sum(Sinv_sf * delta_mumu0[...,np.newaxis], axis=1) # NIW prior
+    gradmu = A - B + C
+
+    #sigma
+    diff = -0.5*(Sinv_sf[np.newaxis] - Sinv_sf_delta[...,np.newaxis]*Sinv_sf_delta[...,np.newaxis,:])
+    A = (pi*(m_ij/m_i[:,np.newaxis]))[...,np.newaxis,np.newaxis] * diff
+    A = np.sum(A, axis=0) # i-term (nComponent x 2 x 2)
+    diff = -0.5*(Sinv_sum - Sinv_sum_delta[...,np.newaxis]*Sinv_sum_delta[...,np.newaxis,:])
+    B = (I_jl)[:,np.newaxis,np.newaxis] * diff
+    B = np.sum(B.reshape(df_params.shape[0], params.shape[0], 2, 2), axis=0) # int-term (nComponent x 2 x 2)
+    C = -((nu0+4)/2.)*Sinv_sf - (l0/2.)*Sinv_delta_mumu0[...,np.newaxis]*Sinv_delta_mumu0[...,np.newaxis,:]\
+        + (1./2.) * np.matmul(Sinv_sf, np.matmul(Psi0[np.newaxis,...], Sinv_sf))
+    gradS = A - B + C
+
+    grad = np.zeros((params.shape[0],6))
+    grad[:,:2] = gradmu
+    grad[:,2] = gradS[:,0,0]
+    grad[:,3] = gradS[:,1,1]
+    grad[:,4] = 2*gradS[:,0,1]*np.sqrt(params[:,2]*params[:,3])*2*p**2*e_alpha
+    grad[:,5] = gradPi * 2*np.pi*np.sqrt(Sdet_sf) * p_pi**2 * e_alpha_pi
+
+    # DF priors
+    # N df
+    A = 1/N
+    C = np.log(float(Nphot)/N)
+    gradN = A+C
+    # pi df
+    A = np.sum(m_ij_df/m_i_df[:,np.newaxis], axis=0) # i-term
+    B = np.sum((I_jl/pi_df[df_idx]).reshape(params.shape[0], df_params.shape[0]), axis=0) # int-term
+    C = (conc_df/np.sum(conc_df)-1)/pi_df
+    gradPi = A - B + C
+    # weight
+    gradW = gradN/pi_df + gradPi/N
+    #print('A', A)
+    #print('-B', -B)
+    #print('C', C)
+    #print(gradN/pi_df,  gradPi/N)
+    #print(gradW)
+
+    # mu df
+    A = np.sum( (pi_df[np.newaxis,:]*(m_ij_df/m_i_df[:,np.newaxis]))[...,np.newaxis]*\
+                Sinv_df_delta, axis=0)
+    B = np.sum(((I_jl)[:,np.newaxis] * Sinv_sum_delta).reshape(df_params.shape[0], params.shape[0], 2), axis=1)
+    C = -ldf[:,np.newaxis] * np.sum(Sinv_df * delta_mumudf[...,np.newaxis], axis=1) # NIW prior
+    gradmu = A - B + C
+
+    #sigma DF
+    diff = -0.5*(Sinv_df[np.newaxis] - Sinv_df_delta[...,np.newaxis]*Sinv_df_delta[...,np.newaxis,:])
+    A = (pi_df*(m_ij_df/m_i_df[:,np.newaxis]))[...,np.newaxis,np.newaxis] * diff
+    A = np.sum(A, axis=0) # i-term (nComponent x 2 x 2)
+    diff = -0.5*(Sinv_sum - Sinv_sum_delta[...,np.newaxis]*Sinv_sum_delta[...,np.newaxis,:])
+    B = (I_jl)[:,np.newaxis,np.newaxis] * diff
+    B = np.sum(B.reshape(df_params.shape[0], params.shape[0], 2, 2), axis=1) # int-term (nComponent x 2 x 2)
+    C = -((nudf[:,np.newaxis,np.newaxis]+4)/2.)*Sinv_df - (ldf[:,np.newaxis,np.newaxis]/2.)*(Sinv_delta_mumudf[...,np.newaxis]*Sinv_delta_mumudf[...,np.newaxis,:])\
+        + (1./2.) * np.matmul(Sinv_df, np.matmul(Psidf, Sinv_df))
+    gradS = A - B + C
+
+    grad_df = np.zeros((df_params.shape[0],6))
+    grad_df[:,:2] = gradmu
+    grad_df[:,2] = gradS[:,0,0]
+    grad_df[:,3] = gradS[:,1,1]
+    grad_df[:,4] = gradS[:,0,1]*np.sqrt(df_params[:,2]*df_params[:,3])
+    grad_df[:,5] = gradW
+
+    grad = np.hstack((grad.flatten(), grad_df.flatten()))
+
+    return  nlnP, -grad
+
 def lnlike(Xdf, params):
 
     function = lambda a, b: bivGaussMixture(params, a, b)
@@ -2236,7 +2694,8 @@ def BIC(n, k, lnL):
     return k*np.log(n) - 2*lnL
 
 # Optimization methods
-def TNC_sf(Xsf, priorParams, df_params, max_components=10, stdout=False, init='BGM', Xdf=None):
+def TNC_sf(Xsf, priorParams, df_params, max_components=10, stdout=False,
+            init='BGM', Xdf=None):
 
     bic_vals = np.zeros(max_components) + np.inf
     post_vals = np.zeros(max_components) - np.inf
@@ -2324,6 +2783,7 @@ def BGMM_df(Xdf, max_components=20, stdout=False):
 
     bic_vals = np.zeros(max_components+1) + np.inf
     df_params_n = {}
+    gmm_n = {}
 
     for i in range(2, max_components+1):
 
@@ -2331,8 +2791,7 @@ def BGMM_df(Xdf, max_components=20, stdout=False):
         gmm = mixture.BayesianGaussianMixture(n_components=i, n_init=3,
                                               init_params='kmeans', tol=1e-5, max_iter=2000,
                                               weight_concentration_prior_type='dirichlet_distribution', weight_concentration_prior=1./float(i),
-                                              covariance_prior= 'NA',
-                                              mean_prior= 'NA', mean_precision_prior=0.1, degrees_of_freedom_prior=2)
+                                              mean_precision_prior=0.1, degrees_of_freedom_prior=2)# covariance_prior= 'NA', mean_prior= 'NA',
         gmm.fit(Xdf)
 
         params = get_params(gmm, Xdf.shape[0], i)
@@ -2342,6 +2801,7 @@ def BGMM_df(Xdf, max_components=20, stdout=False):
             print(i, "  BIC: ", bic_val, "   lnP: ", lnlike(Xdf, params))
 
         df_params_n[i] = params
+        gmm_n[i] = gmm
 
         if i>3:
             if np.product(np.argsort(bic_vals[i-2:i+1]) == np.arange(3)):
@@ -2352,7 +2812,7 @@ def BGMM_df(Xdf, max_components=20, stdout=False):
     if stdout:
         print('Best components: ', np.argmin(bic_vals))
 
-    return df_params_n[np.argmin(bic_vals)]
+    return df_params_n[np.argmin(bic_vals)], gmm_n[np.argmin(bic_vals)]
 def BGMM_emcee_ball(params, Xsf, priorParams, df_params, niter=200):
     print('emcee with %d iterations...' % niter)
 
@@ -2369,6 +2829,25 @@ def BGMM_emcee_ball(params, Xsf, priorParams, df_params, niter=200):
                                     args=(Xsf, priorParams, df_params))
     # Run emcee
     _=sampler.run_mcmc(p0, niter)
+
+    return sampler
+def BGMM_emcee_ball_BHM(params, Xsf, priorParams, DFpost, niter=200):
+    print('emcee with %d iterations...' % niter)
+
+    ndim=len(params.flatten())
+    nwalkers=ndim*2
+
+    p0 = np.repeat([params,], nwalkers, axis=0)
+    p0 = np.random.normal(loc=p0, scale=np.abs(p0/500))
+    #p0[:,:,2:4] = np.abs(p0[:,:,2:4])
+
+    p0 = p0.reshape(nwalkers, -1)
+    foo = lambda a, b, c, d: -calc_nlnP_NIW_DFfit(a, b, c, d)
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, foo,
+                                    args=(Xsf, priorParams, DFpost))
+    # Run emcee
+    for _ in tqdm(sampler.sample(p0, iterations=niter), total=niter):
+        pass
 
     return sampler
 
