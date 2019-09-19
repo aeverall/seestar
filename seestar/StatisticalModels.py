@@ -2675,6 +2675,190 @@ def calc_nlnP_grad_pilogit_NIW_DFfit(params, Xsf, NIWprior, Post_df, stdout=Fals
     grad = np.hstack((grad.flatten(), grad_df.flatten()))
 
     return  nlnP, -grad
+def calc_nlnP_grad_pilogit_NIW_DFfit_debug(params, Xsf, NIWprior, Post_df, stdout=False, debug=False):
+
+    # Prior on selection function components
+    m0, l0, Psi0, nu0 = NIWprior
+    # Prior on distribution function components
+    Nphot, conc_df, mdf, ldf, Psidf, nudf = Post_df
+    conc_df = conc_df/np.sum(conc_df)
+    ncomponents_df = mdf.shape[0]
+
+    # Parameters - transform to means, covariances and weights
+    params = np.reshape(params, (-1,6))
+    params[:,2:4] = np.abs(params[:,2:4])
+    df_params = params[-ncomponents_df:].copy()
+    params = params[:-ncomponents_df].copy()
+    N = np.sum(df_params[:,5])
+    # Prior on df_params
+    if (np.sum(np.abs(df_params[...,4])>=1)>0)|(np.sum(df_params[:,5]<0)>0)|(N<0):
+        return 1e10
+    # means
+    df_idx = np.repeat(np.arange(df_params.shape[0]), params.shape[0])
+    sf_idx = np.tile(np.arange(params.shape[0]), df_params.shape[0])
+    # covariances
+    e_alpha = np.exp(-params[...,4])
+    p = (1-1e-10)/(1+e_alpha)
+    corr = (2*p - 1)
+    cov = np.sqrt(params[...,2]*params[...,3])*corr
+    S_sf = np.moveaxis(np.array([[params[...,2], cov], [cov, params[...,3]]]), -1, 0)
+    Sinv_sf, Sdet_sf = StatisticalModels.quick_invdet(S_sf.copy())
+    delta_sf = Xsf[:,np.newaxis,:]-params[:,:2][np.newaxis,:,:]
+    Sinv_sf_delta = np.sum(Sinv_sf[np.newaxis,...]*delta_sf[...,np.newaxis], axis=2).copy()
+    #weights
+    # Logit correction of params[:,5] - [-inf, inf] --> [0, rt(det(2.pi.S))]
+    e_alpha_pi = np.exp(-params[...,5])
+    p_pi = 1./(1+e_alpha_pi)
+    pi = 2*np.pi*np.sqrt(Sdet_sf) * p_pi
+
+    # Now for the DF
+    cov_df = np.sqrt(df_params[...,2]*df_params[...,3])*df_params[...,4]
+    S_df = np.moveaxis(np.array([[df_params[...,2], cov_df], [cov_df, df_params[...,3]]]), -1, 0)
+    Sinv_df, Sdet_df = StatisticalModels.quick_invdet(S_df)
+    delta_df = Xsf[:,np.newaxis,:]-df_params[:,:2][np.newaxis,:,:]
+    Sinv_df_delta = np.sum(Sinv_df[np.newaxis,...]*delta_df[...,np.newaxis], axis=2)
+    #weights
+    #pi_df = df_params[:,5].copy()#/N
+    w_df = df_params[:,5].copy()
+    pi_df = w_df.copy()/np.sum(w_df)
+
+    # Unscaled parameters
+    params_original = params.copy()
+    params_original[:,4] = corr.copy()
+    params_original[:,5] = pi
+    # Max SF prior
+    gmm_maxima = StatisticalModels.gradient_rootfinder(params_original, Sinv_sf, 1/(2*np.pi*np.sqrt(Sdet_sf)))
+    #print(gmm_maxima)
+    if gmm_maxima>1:
+        return 1e10
+
+    # Joint sf-df model
+    Sinv_sum, Sdet_sum = StatisticalModels.quick_invdet(S_sf[sf_idx]+S_df[df_idx])
+    Sinv_sum_delta = np.sum(Sinv_sum*(df_params[:,:2][df_idx] - params[:,:2][sf_idx])[...,np.newaxis], axis=1)
+
+    # Calculation for later
+    Sinv_dd_Sinv = Sinv_sf_delta[...,np.newaxis]*Sinv_sf_delta[...,np.newaxis,:]
+    Sinv_dd_Sinv_df = Sinv_df_delta[...,np.newaxis]*Sinv_df_delta[...,np.newaxis,:]
+    delta_mumu0 = params[:,:2]-m0[np.newaxis,:]
+    Sinv_delta_mumu0 = np.sum(Sinv_sf * delta_mumu0[...,np.newaxis], axis=1)
+    delta_mumudf = df_params[:,:2]-mdf
+    Sinv_delta_mumudf = np.sum(Sinv_df * delta_mumudf[...,np.newaxis], axis=1)
+    SddS_mumudf = Sinv_delta_mumudf[...,np.newaxis]*Sinv_delta_mumudf[...,np.newaxis,:]
+
+    # Likelihood
+    # SF star iteration term (Nstar x Ncomponent_sf)
+    m_ij = StatisticalModels.Gaussian_i(delta_sf, Sinv_sf, Sdet_sf)
+    m_i = np.sum(pi*m_ij, axis=1)
+    # DF star iteration term (Nstar x Ncomponent_sf)
+    m_ij_df = StatisticalModels.Gaussian_i(delta_df, Sinv_df, Sdet_df)
+    m_i_df = np.sum(w_df*m_ij_df, axis=1)
+    # Integral Term
+    delta_mumu = params[:,:2][sf_idx] - df_params[:,:2][df_idx]
+    I_jl = StatisticalModels.Gaussian_int(delta_mumu, Sinv_sum, Sdet_sum)  * pi[sf_idx] * df_params[:,5][df_idx]
+    I = np.sum(I_jl)
+
+    # Prior
+    Prior0 = (-(nu0+4.)/2.) * np.log(Sdet_sf)
+    Priormu = (-l0/2.) * np.sum(delta_mumu0 * np.sum(Sinv_sf * delta_mumu0[...,np.newaxis], axis=1), axis=1)
+    PriorS = (-1/2.) * np.trace(np.matmul(Psi0[np.newaxis,...], Sinv_sf), axis1=-2, axis2=-1)
+    Prior = np.sum(Prior0 + Priormu + PriorS)
+
+    PriorN_df = N*np.log(Nphot/N) - (Nphot-N)
+    PriorPi_df = (conc_df - 1) * np.log(pi_df)
+    Prior0_df = (-(nudf+4.)/2.) * np.log(Sdet_df)
+    Priormu_df = (-ldf/2.) * np.sum(delta_mumudf * \
+                                    np.sum(Sinv_df * delta_mumudf[...,np.newaxis], axis=1), axis=1)
+    PriorS_df = (-1/2.) * np.trace(np.matmul(Psidf, Sinv_df), axis1=-2, axis2=-1)
+    Prior_df = PriorN_df + np.sum(PriorPi_df + Prior0_df + Priormu_df + PriorS_df)
+
+    # Gradients
+    # Pi
+    xgrad_pi = np.sum(m_ij/m_i[:,np.newaxis], axis=0) # i-term
+    Igrad_pi = -np.sum((I_jl/pi[sf_idx]).reshape(df_params.shape[0], params.shape[0]), axis=0) # int-term
+    prgrad_pi = 0.#1/pi # prior-term
+
+    # mu
+    xgrad_mu = (pi[np.newaxis,:]*(m_ij/m_i[:,np.newaxis]))[...,np.newaxis]*\
+        Sinv_sf_delta
+    xgrad_mu = np.sum(xgrad_mu, axis=0) # i-term (nComponent x 2)
+    Igrad_mu = -np.sum(((I_jl)[:,np.newaxis] * Sinv_sum_delta).\
+                             reshape(df_params.shape[0], params.shape[0], 2), axis=0)
+    prgrad_mu = -l0 * np.sum(Sinv_sf * delta_mumu0[...,np.newaxis], axis=1) # NIW prior
+
+    #sigma
+    diff_xs = 0.5 * (2*Sinv_dd_Sinv - np.eye(2)[np.newaxis,np.newaxis,:,:]*(Sinv_sf_delta**2)[...,np.newaxis])
+    xgrad_s = (pi[np.newaxis,:]*(m_ij/m_i[:,np.newaxis]))[...,np.newaxis,np.newaxis]*diff_xs
+    xgrad_s = np.sum(xgrad_s, axis=0) # i-term (nComponent x 2 x 2)
+    Sinv_dd_Sinv_sum = Sinv_sum_delta[...,np.newaxis]*Sinv_sum_delta[...,np.newaxis,:]
+    diff = 0.5*(Sinv_dd_Sinv_sum + Sinv_sf[sf_idx] - Sinv_sum)
+    diff_diag = np.eye(2)[np.newaxis,np.newaxis,...]*np.diagonal(diff, axis1=-2,axis2=-1)[...,np.newaxis]
+    diff_Is = 2*diff-diff_diag
+    Igrad_s = (I_jl)[:,np.newaxis,np.newaxis] * diff_Is
+    Igrad_s = -np.sum(Igrad_s.reshape(df_params.shape[0], params.shape[0], 2, 2), axis=0) # int-term (nComponent x 2 x 2)
+    prgrad_s = -((nu0+4)/2.)*Sinv_sf - (l0/2.)*Sinv_delta_mumu0[...,np.newaxis]*Sinv_delta_mumu0[...,np.newaxis,:]\
+        + (1./2.) * np.matmul(Sinv_sf, np.matmul(Psi0[np.newaxis,...], Sinv_sf))
+    pr_diag = np.eye(2)[np.newaxis,...]*np.diagonal(prgrad_s, axis1=-2,axis2=-1)[...,np.newaxis]
+    prgrad_s = 2*prgrad_s - pr_diag
+
+    # DF priors
+    # N df
+    # Not using this part for x now
+    xgrad_Ndf = Xsf.shape[0]/N
+    prgrad_Ndf = np.log(float(Nphot)/N)
+    gradN = xgrad_Ndf + prgrad_Ndf
+    # pi df
+    xgrad_pidf = np.sum(m_ij_df/m_i_df[:,np.newaxis], axis=0)# i-term
+    Igrad_pidf = -np.sum((I_jl/w_df[df_idx]).reshape(df_params.shape[0],params.shape[0]), axis=1) # int-term
+    prgrad_pidf = (conc_df-1)/(pi_df)
+    prgrad_pidf = (1/N) * (prgrad_pidf - np.sum(prgrad_pidf*pi_df))
+
+    # mu df
+    xgrad_mudf = np.sum( (w_df[np.newaxis,:]*(m_ij_df/m_i_df[:,np.newaxis]))[...,np.newaxis]*\
+                Sinv_df_delta, axis=0)
+    Igrad_mudf = np.sum(((I_jl)[:,np.newaxis] * Sinv_sum_delta).\
+                             reshape(df_params.shape[0], params.shape[0], 2), axis=1)
+    prgrad_mudf = -ldf[:,np.newaxis] * np.sum(Sinv_df * delta_mumudf[...,np.newaxis], axis=1) # NIW prior
+
+    #sigma DF
+    diff = -0.5*(Sinv_df - Sinv_dd_Sinv_df)
+    diff_diag = np.eye(2)[np.newaxis,np.newaxis,...]*np.diagonal(diff, axis1=-2,axis2=-1)[...,np.newaxis]
+    diff = 2*diff-diff_diag
+    xgrad_sdf = (w_df*(m_ij_df/m_i_df[:,np.newaxis]))[...,np.newaxis,np.newaxis] * diff
+    xgrad_sdf = np.sum(xgrad_sdf, axis=0) # i-term (nComponent x 2 x 2)
+    diff = 0.5*(Sinv_dd_Sinv_sum - Sinv_sum)
+    diff_diag = np.eye(2)[np.newaxis,np.newaxis,...]*np.diagonal(diff, axis1=-2,axis2=-1)[...,np.newaxis]
+    diff_Is = 2*diff-diff_diag
+    Igrad_sdf = (I_jl)[:,np.newaxis,np.newaxis] * diff_Is
+    Igrad_sdf = -np.sum(Igrad_sdf.reshape(df_params.shape[0], params.shape[0], 2, 2), axis=1) # int-term (nComponent x 2 x 2)
+    prgrad_sdf = -((nudf[:,np.newaxis,np.newaxis]+4)/2.)*Sinv_df \
+                 + (ldf[:,np.newaxis,np.newaxis]/2.)*(SddS_mumudf)\
+                 + (1./2.) * np.matmul(Sinv_df, np.matmul(Psidf, Sinv_df))
+    pr_sdf_diag = np.eye(2)[np.newaxis,...]*np.diagonal(prgrad_sdf, axis1=-2,axis2=-1)[...,np.newaxis]
+    prgrad_sdf = 2*prgrad_sdf - pr_sdf_diag
+
+    gradS = xgrad_s + Igrad_s + prgrad_s
+    grad = np.zeros((params.shape[0],6))
+    grad[:,:2] = xgrad_mu + Igrad_mu + prgrad_mu
+    grad[:,2] = gradS[:,0,0] + gradS[:,0,1]*cov/(2*params[:,2])
+    grad[:,3] = gradS[:,1,1] + gradS[:,0,1]*cov/(2*params[:,3])
+    grad[:,4] = gradS[:,0,1]*np.sqrt(params[:,2]*params[:,3])* 2*e_alpha/(1+e_alpha)**2
+    grad[:,5] = (xgrad_pi + Igrad_pi + prgrad_pi) * 2*np.pi*np.sqrt(Sdet_sf) * p_pi**2 * e_alpha_pi
+
+    gradS_df = xgrad_sdf + Igrad_sdf + prgrad_sdf
+    grad_df = np.zeros((df_params.shape[0],6))
+    grad_df[:,:2] = xgrad_mudf + Igrad_mudf + prgrad_mudf
+    grad_df[:,2] = gradS_df[:,0,0] + gradS_df[:,0,1]*cov_df/(2*params_df[:,2])
+    grad_df[:,3] = gradS_df[:,1,1] + gradS_df[:,0,1]*cov_df/(2*params_df[:,3])
+    grad_df[:,4] = gradS_df[:,0,1]*np.sqrt(df_params[:,2]*df_params[:,3])
+    grad_df[:,5] = xgrad_pidf + Igrad_pidf + prgrad_pidf + prgrad_Ndf
+
+    grad = np.hstack((grad.flatten(), grad_df.flatten()))
+
+    nlnP = - ( np.sum(np.log(m_i_df)) + np.sum(np.log(m_i)) - np.sum(I) + Prior + Prior_df)
+
+
+
+    return  nlnP, -grad
 
 def lnlike(Xdf, params):
 
@@ -2779,7 +2963,7 @@ def TNC_sf(Xsf, priorParams, df_params, max_components=10, stdout=False,
 
     return sf_params_n[np.argmin(bic_vals)]
     #return sf_params_n[np.argmin(bic_vals)]
-def BGMM_df(Xdf, max_components=20, stdout=False):
+def BGMM_df(Xdf, max_components=3, stdout=False):
 
     bic_vals = np.zeros(max_components+1) + np.inf
     df_params_n = {}
