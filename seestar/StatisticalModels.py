@@ -2675,7 +2675,8 @@ def calc_nlnP_grad_pilogit_NIW_DFfit(params, Xsf, NIWprior, Post_df, stdout=Fals
     grad = np.hstack((grad.flatten(), grad_df.flatten()))
 
     return  nlnP, -grad
-def calc_nlnP_grad_pilogit_NIW_DFfit_debug(params, Xsf, NIWprior, Post_df, stdout=False, debug=False):
+def calc_nlnP_FullBHM(params, Xsf, NIWprior, Post_df,
+                                        get_grad=True, stdout=False,test=False, component=''):
 
     # Prior on selection function components
     m0, l0, Psi0, nu0 = NIWprior
@@ -2702,7 +2703,7 @@ def calc_nlnP_grad_pilogit_NIW_DFfit_debug(params, Xsf, NIWprior, Post_df, stdou
     corr = (2*p - 1)
     cov = np.sqrt(params[...,2]*params[...,3])*corr
     S_sf = np.moveaxis(np.array([[params[...,2], cov], [cov, params[...,3]]]), -1, 0)
-    Sinv_sf, Sdet_sf = StatisticalModels.quick_invdet(S_sf.copy())
+    Sinv_sf, Sdet_sf = quick_invdet(S_sf.copy())
     delta_sf = Xsf[:,np.newaxis,:]-params[:,:2][np.newaxis,:,:]
     Sinv_sf_delta = np.sum(Sinv_sf[np.newaxis,...]*delta_sf[...,np.newaxis], axis=2).copy()
     #weights
@@ -2714,7 +2715,7 @@ def calc_nlnP_grad_pilogit_NIW_DFfit_debug(params, Xsf, NIWprior, Post_df, stdou
     # Now for the DF
     cov_df = np.sqrt(df_params[...,2]*df_params[...,3])*df_params[...,4]
     S_df = np.moveaxis(np.array([[df_params[...,2], cov_df], [cov_df, df_params[...,3]]]), -1, 0)
-    Sinv_df, Sdet_df = StatisticalModels.quick_invdet(S_df)
+    Sinv_df, Sdet_df = quick_invdet(S_df)
     delta_df = Xsf[:,np.newaxis,:]-df_params[:,:2][np.newaxis,:,:]
     Sinv_df_delta = np.sum(Sinv_df[np.newaxis,...]*delta_df[...,np.newaxis], axis=2)
     #weights
@@ -2727,13 +2728,13 @@ def calc_nlnP_grad_pilogit_NIW_DFfit_debug(params, Xsf, NIWprior, Post_df, stdou
     params_original[:,4] = corr.copy()
     params_original[:,5] = pi
     # Max SF prior
-    gmm_maxima = StatisticalModels.gradient_rootfinder(params_original, Sinv_sf, 1/(2*np.pi*np.sqrt(Sdet_sf)))
+    gmm_maxima = gradient_rootfinder(params_original, Sinv_sf, 1/(2*np.pi*np.sqrt(Sdet_sf)))
     #print(gmm_maxima)
     if gmm_maxima>1:
         return 1e10
 
     # Joint sf-df model
-    Sinv_sum, Sdet_sum = StatisticalModels.quick_invdet(S_sf[sf_idx]+S_df[df_idx])
+    Sinv_sum, Sdet_sum = quick_invdet(S_sf[sf_idx]+S_df[df_idx])
     Sinv_sum_delta = np.sum(Sinv_sum*(df_params[:,:2][df_idx] - params[:,:2][sf_idx])[...,np.newaxis], axis=1)
 
     # Calculation for later
@@ -2747,14 +2748,14 @@ def calc_nlnP_grad_pilogit_NIW_DFfit_debug(params, Xsf, NIWprior, Post_df, stdou
 
     # Likelihood
     # SF star iteration term (Nstar x Ncomponent_sf)
-    m_ij = StatisticalModels.Gaussian_i(delta_sf, Sinv_sf, Sdet_sf)
+    m_ij = Gaussian_i(delta_sf, Sinv_sf, Sdet_sf)
     m_i = np.sum(pi*m_ij, axis=1)
     # DF star iteration term (Nstar x Ncomponent_sf)
-    m_ij_df = StatisticalModels.Gaussian_i(delta_df, Sinv_df, Sdet_df)
+    m_ij_df = Gaussian_i(delta_df, Sinv_df, Sdet_df)
     m_i_df = np.sum(w_df*m_ij_df, axis=1)
     # Integral Term
     delta_mumu = params[:,:2][sf_idx] - df_params[:,:2][df_idx]
-    I_jl = StatisticalModels.Gaussian_int(delta_mumu, Sinv_sum, Sdet_sum)  * pi[sf_idx] * df_params[:,5][df_idx]
+    I_jl = Gaussian_int(delta_mumu, Sinv_sum, Sdet_sum)  * pi[sf_idx] * df_params[:,5][df_idx]
     I = np.sum(I_jl)
 
     # Prior
@@ -2770,6 +2771,11 @@ def calc_nlnP_grad_pilogit_NIW_DFfit_debug(params, Xsf, NIWprior, Post_df, stdou
                                     np.sum(Sinv_df * delta_mumudf[...,np.newaxis], axis=1), axis=1)
     PriorS_df = (-1/2.) * np.trace(np.matmul(Psidf, Sinv_df), axis1=-2, axis2=-1)
     Prior_df = PriorN_df + np.sum(PriorPi_df + Prior0_df + Priormu_df + PriorS_df)
+
+    nlnP = - ( np.sum(np.log(m_i_df)) + np.sum(np.log(m_i)) - np.sum(I) + Prior + Prior_df)
+    if (not get_grad) and (not test):
+        return nlnP
+
 
     # Gradients
     # Pi
@@ -2836,6 +2842,33 @@ def calc_nlnP_grad_pilogit_NIW_DFfit_debug(params, Xsf, NIWprior, Post_df, stdou
     pr_sdf_diag = np.eye(2)[np.newaxis,...]*np.diagonal(prgrad_sdf, axis1=-2,axis2=-1)[...,np.newaxis]
     prgrad_sdf = 2*prgrad_sdf - pr_sdf_diag
 
+    if test:
+
+        if component=='xsf':
+            nlnP, grad = gradtest_x(params, df_params, m_i, xgrad_mu, xgrad_s, xgrad_pi,
+                                p, e_alpha, p_pi, e_alpha_pi, Sdet_sf, cov)
+        if component=='xdf':
+            nlnP, grad = gradtest_xdf(params, df_params, m_i_df,
+                        xgrad_mudf, xgrad_sdf, xgrad_pidf, xgrad_Ndf,
+                        p, e_alpha, p_pi, e_alpha_pi, N, pi_df, Sdet_sf, cov_df)
+        if component=='integral':
+            nlnP, grad = gradtest_I(params, df_params, I,
+                                Igrad_mu, Igrad_s, Igrad_pi,
+                                Igrad_mudf, Igrad_sdf, Igrad_pidf,
+                                p, e_alpha, p_pi, e_alpha_pi, Sdet_sf, cov, cov_df)
+        if component=='prior_sf':
+            nlnP, grad = gradtest_prior(params, df_params, Prior,
+                        prgrad_mu, prgrad_s, prgrad_pi,
+                        p, e_alpha, p_pi, e_alpha_pi, Sdet_sf, cov)
+        if component=='prior_df':
+            nlnP, grad = gradtest_priordf(params, df_params, Prior_df,
+                        prgrad_mudf, prgrad_sdf, prgrad_pidf, prgrad_Ndf,
+                        p, e_alpha, p_pi, e_alpha_pi, N, pi_df, Sdet_sf, cov_df)
+        if component=='full':
+            pass
+        if not get_grad: return nlnP
+        return nlnP, -grad
+
     gradS = xgrad_s + Igrad_s + prgrad_s
     grad = np.zeros((params.shape[0],6))
     grad[:,:2] = xgrad_mu + Igrad_mu + prgrad_mu
@@ -2847,16 +2880,12 @@ def calc_nlnP_grad_pilogit_NIW_DFfit_debug(params, Xsf, NIWprior, Post_df, stdou
     gradS_df = xgrad_sdf + Igrad_sdf + prgrad_sdf
     grad_df = np.zeros((df_params.shape[0],6))
     grad_df[:,:2] = xgrad_mudf + Igrad_mudf + prgrad_mudf
-    grad_df[:,2] = gradS_df[:,0,0] + gradS_df[:,0,1]*cov_df/(2*params_df[:,2])
-    grad_df[:,3] = gradS_df[:,1,1] + gradS_df[:,0,1]*cov_df/(2*params_df[:,3])
+    grad_df[:,2] = gradS_df[:,0,0] + gradS_df[:,0,1]*cov_df/(2*df_params[:,2])
+    grad_df[:,3] = gradS_df[:,1,1] + gradS_df[:,0,1]*cov_df/(2*df_params[:,3])
     grad_df[:,4] = gradS_df[:,0,1]*np.sqrt(df_params[:,2]*df_params[:,3])
     grad_df[:,5] = xgrad_pidf + Igrad_pidf + prgrad_pidf + prgrad_Ndf
 
     grad = np.hstack((grad.flatten(), grad_df.flatten()))
-
-    nlnP = - ( np.sum(np.log(m_i_df)) + np.sum(np.log(m_i)) - np.sum(I) + Prior + Prior_df)
-
-
 
     return  nlnP, -grad
 
@@ -3135,7 +3164,122 @@ def bivGaussMixture(params, x, y):
 
     return p.reshape(shape)
 
+# Test likelihood function
+def gradtest_all(params_sf, params_df, Xsf, Prior_sf, Prior_df):
 
+    p0 = np.hstack((params_sf.flatten(), params_df.flatten()))
+
+    for component in ['xsf', 'xdf', 'integral', 'prior_sf', 'prior_df', 'full']:
+        print(component)
+        grad_anc = calc_nlnP_FullBHM(p0, Xsf, Prior_sf, Prior_df, component=component)[1].reshape(-1,6)
+        like = lambda params: calc_nlnP_FullBHM(params, Xsf, Prior_sf, Prior_df, component=component)[0]
+        grad_app = op.approx_fprime(p0, like, 0.001).reshape(-1, 6)
+        for i in range(grad_anc.shape[0]):
+            print(grad_anc[i])
+            print(grad_app[i])
+            print("")
+        print("")
+def gradtest_like_all(params_sf, params_df, Xsf, Prior_sf, Prior_df):
+
+    p0 = np.hstack((params_sf.flatten(), params_df.flatten()))
+
+    for component in ['xsf', 'xdf', 'integral', 'prior_sf', 'prior_df', 'full']:
+        print(component)
+        grad_anc = calc_nlnP_FullBHM(p0, Xsf, Prior_sf, Prior_df, component=component)[1].reshape(-1,6)
+        like = lambda params: calc_nlnP_FullBHM(params, Xsf, Prior_sf, Prior_df, component=component, get_grad=False)
+        grad_app = op.approx_fprime(p0, like, 0.001).reshape(-1, 6)
+        for i in range(grad_anc.shape[0]):
+            print(grad_anc[i])
+            print(grad_app[i])
+            print("")
+        print("")
+
+def gradtest_x(params, df_params, m_i, xgrad_mu, xgrad_s, xgrad_pi,
+           p, e_alpha_sf, p_pi, e_alpha_pi, Sdet_sf, cov):
+
+    nlnP = - np.sum(np.log(m_i))
+    grad = np.zeros((params.shape[0],6))
+    grad[:,:2] = xgrad_mu
+    grad[:,2] = xgrad_s[:,0,0] + xgrad_s[:,0,1]*cov/(2*params[:,2])
+    grad[:,3] = xgrad_s[:,1,1] + xgrad_s[:,0,1]*cov/(2*params[:,3])
+    grad[:,4] = xgrad_s[:,1,0]*np.sqrt(params[:,2]*params[:,3])* 2*e_alpha_sf/(1+e_alpha_sf)**2
+    grad[:,5] = xgrad_pi * 2*np.pi*np.sqrt(Sdet_sf) * p_pi**2 * e_alpha_pi
+
+    grad_df = np.zeros((df_params.shape[0],6))
+
+    grad = np.hstack((grad.flatten(), grad_df.flatten()))
+
+    return -np.sum(np.log(m_i)), grad
+def gradtest_I(params, df_params, I,
+           Igrad_mu, Igrad_s, Igrad_pi,
+           Igrad_mudf, Igrad_sdf, Igrad_pidf,
+           p, e_alpha, p_pi, e_alpha_pi, Sdet_sf, cov, cov_df):
+
+    grad = np.zeros((params.shape[0],6))
+    grad[:,:2] = Igrad_mu
+    grad[:,2] = Igrad_s[:,0,0] + Igrad_s[:,0,1]*cov/(2*params[:,2])
+    grad[:,3] = Igrad_s[:,1,1] + Igrad_s[:,0,1]*cov/(2*params[:,3])
+    grad[:,4] = Igrad_s[:,0,1]*np.sqrt(params[:,2]*params[:,3])* 2*e_alpha/(1+e_alpha)**2
+    grad[:,5] = Igrad_pi * 2*np.pi*np.sqrt(Sdet_sf) * p_pi**2 * e_alpha_pi
+
+    grad_df = np.zeros((df_params.shape[0],6))
+    grad_df[:,:2] = Igrad_mudf
+    grad_df[:,2] = Igrad_sdf[:,0,0] + Igrad_sdf[:,0,1]*cov_df/(2*params_df[:,2])
+    grad_df[:,3] = Igrad_sdf[:,1,1] + Igrad_sdf[:,0,1]*cov_df/(2*params_df[:,3])
+    grad_df[:,4] = Igrad_sdf[:,0,1]*np.sqrt(df_params[:,2]*df_params[:,3])
+    grad_df[:,5] = Igrad_pidf
+
+    grad = np.hstack((grad.flatten(), grad_df.flatten()))
+
+    return np.sum(I), grad
+def gradtest_prior(params, df_params, Prior,
+           prgrad_mu, prgrad_s, prgrad_pi,
+           p, e_alpha, p_pi, e_alpha_pi, Sdet_sf, cov):
+
+    grad = np.zeros((params.shape[0],6))
+    grad[:,:2] = prgrad_mu
+    grad[:,2] = prgrad_s[:,0,0] + prgrad_s[:,0,1]*cov/(2*params[:,2])
+    grad[:,3] = prgrad_s[:,1,1] + prgrad_s[:,0,1]*cov/(2*params[:,3])
+    grad[:,4] = prgrad_s[:,0,1]*np.sqrt(params[:,2]*params[:,3])* 2*e_alpha/(1+e_alpha)**2
+    grad[:,5] = prgrad_pi * 2*np.pi*np.sqrt(Sdet_sf) * p_pi**2 * e_alpha_pi
+
+    grad_df = np.zeros((df_params.shape[0],6))
+
+    grad = np.hstack((grad.flatten(), grad_df.flatten()))
+
+    return -Prior, grad
+def gradtest_priordf(params, df_params, Prior_df,
+           prgrad_mudf, prgrad_sdf, prgrad_pidf, prgrad_Ndf,
+           p, e_alpha, p_pi, e_alpha_pi, N, pi_df, Sdet_sf, cov_df):
+
+    grad = np.zeros((params.shape[0],6))
+
+    grad_df = np.zeros((df_params.shape[0],6))
+    grad_df[:,:2] = prgrad_mudf
+    grad_df[:,2] = prgrad_sdf[:,0,0] + prgrad_sdf[:,0,1]*cov_df/(2*df_params[:,2])
+    grad_df[:,3] = prgrad_sdf[:,1,1] + prgrad_sdf[:,0,1]*cov_df/(2*df_params[:,3])
+    grad_df[:,4] = prgrad_sdf[:,0,1]*np.sqrt(df_params[:,2]*df_params[:,3])
+    grad_df[:,5] = prgrad_Ndf + prgrad_pidf
+
+    grad = np.hstack((grad.flatten(), grad_df.flatten()))
+
+    return -(Prior_df), grad
+def gradtest_xdf(params, df_params, m_i_df,
+           xgrad_mudf, xgrad_sdf, xgrad_pidf, xgrad_Ndf,
+           p, e_alpha, p_pi, e_alpha_pi, N, pi_df, Sdet_sf, cov_df):
+
+    grad = np.zeros((params.shape[0],6))
+
+    grad_df = np.zeros((df_params.shape[0],6))
+    grad_df[:,:2] = xgrad_mudf
+    grad_df[:,2] = xgrad_sdf[:,0,0] + xgrad_sdf[:,0,1]*cov_df/(2*df_params[:,2])
+    grad_df[:,3] = xgrad_sdf[:,1,1] + xgrad_sdf[:,0,1]*cov_df/(2*df_params[:,3])
+    grad_df[:,4] = xgrad_sdf[:,0,1]*np.sqrt(df_params[:,2]*df_params[:,3])
+    grad_df[:,5] = xgrad_pidf
+
+    grad = np.hstack((grad.flatten(), grad_df.flatten()))
+
+    return -np.sum(np.log(m_i_df)), grad
 
 
 # Used when Process == "Number"
