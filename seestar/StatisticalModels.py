@@ -1772,9 +1772,9 @@ class BGM_TNC():
             params = self.optimize(None, 'BGM')
         if self.priorDF:
             # Generate NIW prior parameters
-            priorParams = NIW_prior_params(self.prior_sfBounds)
+            self.priorParams = NIW_prior_params(self.prior_sfBounds)
             # Run optimize
-            params = self.optimize(priorParams, 'TNC')
+            params = self.optimize(self.priorParams, 'TNC_SFonly')
 
         self.params_f_scaled = params.copy()
         if self.runscaling: params = self.unscaleParams(params)
@@ -1820,6 +1820,23 @@ class BGM_TNC():
             raw_params = TNC_sf(X, priorParams, self.params_df, stdout=self.runningL,
                                 Xdf=Xdf, init='best', max_components=self.params_df.shape[0])
             params = transform_sfparams_logit(raw_params)
+        elif method=='TNC_HBM':
+            Xdf = feature_scaling(self.photoDF.x, self.photoDF.y, self.mux, self.muy, self.sx, self.sy)
+            Xdf = np.vstack((Xdf[0], Xdf[1])).T
+            gmm = self.photoDF.gmm_df
+            df_posterior = [Xdf.shape[0], gmm.weight_concentration_,
+                            gmm.means_, gmm.mean_precision_,
+                            gmm.covariances_, gmm.degrees_of_freedom_]
+            raw_params, new_df_params = TNC_sf_HBM(X, priorParams, self.params_df, df_posterior, stdout=self.runningL,
+                                            Xdf=Xdf, init='best', max_components=self.params_df.shape[0])
+            params = transform_sfparams_logit(raw_params)
+            self.new_df_params = new_df_params
+        elif method=='TNC_SFonly':
+            Xdf = feature_scaling(self.photoDF.x, self.photoDF.y, self.mux, self.muy, self.sx, self.sy)
+            Xdf = np.vstack((Xdf[0], Xdf[1])).T
+            raw_params = TNC_sf_SFonly(X, priorParams, self.params_df, stdout=self.runningL,
+                                            Xdf=Xdf, init='best', max_components=self.params_df.shape[0])
+            params = transform_sfparams_logit(raw_params)
         elif method=='BGM':
             print('Running BGM')
             params, gmm = BGMM_df(X, stdout=self.runningL)
@@ -1829,15 +1846,21 @@ class BGM_TNC():
             self.sampler = BGMM_emcee_ball(params, X, priorParams, self.params_df, niter=niter)
             return self.sampler
         elif method=='emceeBHM':
+            Xdf = feature_scaling(self.photoDF.x, self.photoDF.y, self.mux, self.muy, self.sx, self.sy)
+            Xdf = np.vstack((Xdf[0], Xdf[1])).T
             df_params = self.params_df.copy()
-            df_params[:,5] = df_params[:,5]/np.sum(df_params[:,5])
             params = transform_sfparams_invlogit(self.params_f_scaled)
             p0 = np.hstack((params.flatten(), df_params.flatten(), np.array([len(self.photoDF.x)])))
             gmm = self.photoDF.gmm_df
             df_posterior = [Xdf.shape[0], gmm.weight_concentration_,
                             gmm.means_, gmm.mean_precision_,
                             gmm.covariances_, gmm.degrees_of_freedom_]
-            self.sampler = BGMM_emcee_ball(params, X, priorParams, df_posterior, niter=niter)
+            params = np.vstack((params, df_params))
+            self.sampler = BGMM_emcee_ball_BHM(params, X, priorParams, df_posterior, niter=niter)
+            return self.sampler
+        elif method=='emceeSFonly':
+            params = transform_sfparams_invlogit(self.params_f_scaled)
+            self.sampler = BGMM_emcee_ball_SFonly(params, X, priorParams, self.params_df, niter=niter)
             return self.sampler
         else:
             raise ValueError('What is the method???')
@@ -1916,11 +1939,11 @@ def Gaussian_int(delta, Sinv, Sdet):
     return norm * np.exp(exponent)
 
 # Manipulating parameters
-def NIW_prior_params(bounds, l0=0.001, nu0=2., shrinker=20.):
+def NIW_prior_params(bounds, l0=0.001, nu0=2., shrinker=10.):
 
     mu0 = (bounds[:,1] + bounds[:,0])/2
     std0 = (bounds[:,1] - bounds[:,0])/2
-    Psi0 = np.array([[std0[0]**2, 0.], [0., std0[1]**2]])/shrinker
+    Psi0 = np.array([[std0[0]**2, 0.], [0., std0[1]**2]])/(shrinker**2)
     #mu0_scaled = np.mean(Xsf, axis=0)
     #Psi0 = np.mean((Xsf-mu0)[...,np.newaxis] * (Xsf-mu0)[...,np.newaxis,:], axis=0)
     priorParams = [mu0, l0, Psi0, nu0]
@@ -2678,6 +2701,7 @@ def calc_nlnP_grad_pilogit_NIW_DFfit(params, Xsf, NIWprior, Post_df, stdout=Fals
 def calc_nlnP_FullBHM(params, Xsf, NIWprior, Post_df,
                                         get_grad=True, stdout=False,test=False, component=''):
 
+    ndim = len(params)
     # Prior on selection function components
     m0, l0, Psi0, nu0 = NIWprior
     # Prior on distribution function components
@@ -2693,7 +2717,8 @@ def calc_nlnP_FullBHM(params, Xsf, NIWprior, Post_df,
     N = np.sum(df_params[:,5])
     # Prior on df_params
     if (np.sum(np.abs(df_params[...,4])>=1)>0)|(np.sum(df_params[:,5]<0)>0)|(N<0):
-        return 1e10
+        if get_grad: return 1e10, np.zeros(ndim)
+        else: return 1e10
     # means
     df_idx = np.repeat(np.arange(df_params.shape[0]), params.shape[0])
     sf_idx = np.tile(np.arange(params.shape[0]), df_params.shape[0])
@@ -2730,8 +2755,10 @@ def calc_nlnP_FullBHM(params, Xsf, NIWprior, Post_df,
     # Max SF prior
     gmm_maxima = gradient_rootfinder(params_original, Sinv_sf, 1/(2*np.pi*np.sqrt(Sdet_sf)))
     #print(gmm_maxima)
+    #print(gmm_maxima)
     if gmm_maxima>1:
-        return 1e10
+        if get_grad: return 1e10, np.zeros(ndim)
+        else: return 1e10
 
     # Joint sf-df model
     Sinv_sum, Sdet_sum = quick_invdet(S_sf[sf_idx]+S_df[df_idx])
@@ -2772,6 +2799,7 @@ def calc_nlnP_FullBHM(params, Xsf, NIWprior, Post_df,
     PriorS_df = (-1/2.) * np.trace(np.matmul(Psidf, Sinv_df), axis1=-2, axis2=-1)
     Prior_df = PriorN_df + np.sum(PriorPi_df + Prior0_df + Priormu_df + PriorS_df)
 
+    #print(np.sum(np.log(m_i_df)), np.sum(np.log(m_i)), -np.sum(I), Prior, Prior_df)
     nlnP = - ( np.sum(np.log(m_i_df)) + np.sum(np.log(m_i)) - np.sum(I) + Prior + Prior_df)
     if (not get_grad) and (not test):
         return nlnP
@@ -2888,7 +2916,150 @@ def calc_nlnP_FullBHM(params, Xsf, NIWprior, Post_df,
     grad = np.hstack((grad.flatten(), grad_df.flatten()))
 
     return  nlnP, -grad
+def calc_nlnP_SFOnly(params, Xsf, NIWprior, df_params,
+                    get_grad=True, stdout=False,test=False, component=''):
 
+    ndim = len(params)
+    # Prior on selection function components
+    m0, l0, Psi0, nu0 = NIWprior
+
+    # Parameters - transform to means, covariances and weights
+    params = np.reshape(params, (-1,6))
+    params[:,2:4] = np.abs(params[:,2:4])
+    N = np.sum(df_params[:,5])
+    # Prior on df_params
+    if (np.sum(np.abs(df_params[...,4])>=1)>0)|(np.sum(df_params[:,5]<0)>0)|(N<0):
+        if get_grad: return 1e10, np.zeros(ndim)
+        else: return 1e10
+    # means
+    df_idx = np.repeat(np.arange(df_params.shape[0]), params.shape[0])
+    sf_idx = np.tile(np.arange(params.shape[0]), df_params.shape[0])
+    # covariances
+    e_alpha = np.exp(-params[...,4])
+    p = (1-1e-10)/(1+e_alpha)
+    corr = (2*p - 1)
+    cov = np.sqrt(params[...,2]*params[...,3])*corr
+    S_sf = np.moveaxis(np.array([[params[...,2], cov], [cov, params[...,3]]]), -1, 0)
+    Sinv_sf, Sdet_sf = quick_invdet(S_sf.copy())
+    delta_sf = Xsf[:,np.newaxis,:]-params[:,:2][np.newaxis,:,:]
+    Sinv_sf_delta = np.sum(Sinv_sf[np.newaxis,...]*delta_sf[...,np.newaxis], axis=2).copy()
+    #weights
+    # Logit correction of params[:,5] - [-inf, inf] --> [0, rt(det(2.pi.S))]
+    e_alpha_pi = np.exp(-params[...,5])
+    p_pi = 1./(1+e_alpha_pi)
+    pi = 2*np.pi*np.sqrt(Sdet_sf) * p_pi
+
+    # Now for the DF
+    cov_df = np.sqrt(df_params[...,2]*df_params[...,3])*df_params[...,4]
+    S_df = np.moveaxis(np.array([[df_params[...,2], cov_df], [cov_df, df_params[...,3]]]), -1, 0)
+    Sinv_df, Sdet_df = quick_invdet(S_df)
+    delta_df = Xsf[:,np.newaxis,:]-df_params[:,:2][np.newaxis,:,:]
+    Sinv_df_delta = np.sum(Sinv_df[np.newaxis,...]*delta_df[...,np.newaxis], axis=2)
+    #weights
+    #pi_df = df_params[:,5].copy()#/N
+    w_df = df_params[:,5].copy()
+    pi_df = w_df.copy()/np.sum(w_df)
+
+    # Unscaled parameters
+    params_original = params.copy()
+    params_original[:,4] = corr.copy()
+    params_original[:,5] = pi
+    # Max SF prior
+    gmm_maxima = gradient_rootfinder(params_original, Sinv_sf, 1/(2*np.pi*np.sqrt(Sdet_sf)))
+    #print(gmm_maxima)
+    if gmm_maxima>1:
+        if get_grad: return 1e10, np.zeros(ndim)
+        else: return 1e10
+
+    # Joint sf-df model
+    Sinv_sum, Sdet_sum = quick_invdet(S_sf[sf_idx]+S_df[df_idx])
+    Sinv_sum_delta = np.sum(Sinv_sum*(df_params[:,:2][df_idx] - params[:,:2][sf_idx])[...,np.newaxis], axis=1)
+
+    # Calculation for later
+    Sinv_dd_Sinv = Sinv_sf_delta[...,np.newaxis]*Sinv_sf_delta[...,np.newaxis,:]
+    delta_mumu0 = params[:,:2]-m0[np.newaxis,:]
+    Sinv_delta_mumu0 = np.sum(Sinv_sf * delta_mumu0[...,np.newaxis], axis=1)
+
+    # Likelihood
+    # SF star iteration term (Nstar x Ncomponent_sf)
+    m_ij = Gaussian_i(delta_sf, Sinv_sf, Sdet_sf)
+    m_i = np.sum(pi*m_ij, axis=1)
+    # DF star iteration term (Nstar x Ncomponent_sf)
+    m_ij_df = Gaussian_i(delta_df, Sinv_df, Sdet_df)
+    m_i_df = np.sum(w_df*m_ij_df, axis=1)
+    # Integral Term
+    delta_mumu = params[:,:2][sf_idx] - df_params[:,:2][df_idx]
+    I_jl = Gaussian_int(delta_mumu, Sinv_sum, Sdet_sum)  * pi[sf_idx] * df_params[:,5][df_idx]
+    I = np.sum(I_jl)
+
+    # Prior
+    Prior0 = (-(nu0+4.)/2.) * np.log(Sdet_sf)
+    Priormu = (-l0/2.) * np.sum(delta_mumu0 * np.sum(Sinv_sf * delta_mumu0[...,np.newaxis], axis=1), axis=1)
+    PriorS = (-1/2.) * np.trace(np.matmul(Psi0[np.newaxis,...], Sinv_sf), axis1=-2, axis2=-1)
+    Prior = np.sum(Prior0 + Priormu + PriorS)
+
+    nlnP = - ( np.sum(np.log(m_i)) - np.sum(I) + Prior )
+    if (not get_grad) and (not test):
+        return nlnP
+
+    # Gradients
+    # Pi
+    xgrad_pi = np.sum(m_ij/m_i[:,np.newaxis], axis=0) # i-term
+    Igrad_pi = -np.sum((I_jl/pi[sf_idx]).reshape(df_params.shape[0], params.shape[0]), axis=0) # int-term
+    prgrad_pi = 0.#1/pi # prior-term
+
+    # mu
+    xgrad_mu = (pi[np.newaxis,:]*(m_ij/m_i[:,np.newaxis]))[...,np.newaxis]*\
+        Sinv_sf_delta
+    xgrad_mu = np.sum(xgrad_mu, axis=0) # i-term (nComponent x 2)
+    Igrad_mu = -np.sum(((I_jl)[:,np.newaxis] * Sinv_sum_delta).\
+                             reshape(df_params.shape[0], params.shape[0], 2), axis=0)
+    prgrad_mu = -l0 * np.sum(Sinv_sf * delta_mumu0[...,np.newaxis], axis=1) # NIW prior
+
+    #sigma
+    diff_xs = 0.5 * (2*Sinv_dd_Sinv - np.eye(2)[np.newaxis,np.newaxis,:,:]*(Sinv_sf_delta**2)[...,np.newaxis])
+    xgrad_s = (pi[np.newaxis,:]*(m_ij/m_i[:,np.newaxis]))[...,np.newaxis,np.newaxis]*diff_xs
+    xgrad_s = np.sum(xgrad_s, axis=0) # i-term (nComponent x 2 x 2)
+    Sinv_dd_Sinv_sum = Sinv_sum_delta[...,np.newaxis]*Sinv_sum_delta[...,np.newaxis,:]
+    diff = 0.5*(Sinv_dd_Sinv_sum + Sinv_sf[sf_idx] - Sinv_sum)
+    diff_diag = np.eye(2)[np.newaxis,np.newaxis,...]*np.diagonal(diff, axis1=-2,axis2=-1)[...,np.newaxis]
+    diff_Is = 2*diff-diff_diag
+    Igrad_s = (I_jl)[:,np.newaxis,np.newaxis] * diff_Is
+    Igrad_s = -np.sum(Igrad_s.reshape(df_params.shape[0], params.shape[0], 2, 2), axis=0) # int-term (nComponent x 2 x 2)
+    prgrad_s = -((nu0+4)/2.)*Sinv_sf - (l0/2.)*Sinv_delta_mumu0[...,np.newaxis]*Sinv_delta_mumu0[...,np.newaxis,:]\
+        + (1./2.) * np.matmul(Sinv_sf, np.matmul(Psi0[np.newaxis,...], Sinv_sf))
+    pr_diag = np.eye(2)[np.newaxis,...]*np.diagonal(prgrad_s, axis1=-2,axis2=-1)[...,np.newaxis]
+    prgrad_s = 2*prgrad_s - pr_diag
+
+    if test:
+
+        if component=='xsf':
+            nlnP, grad = gradtest_x(params, df_params, m_i, xgrad_mu, xgrad_s, xgrad_pi,
+                                p, e_alpha, p_pi, e_alpha_pi, Sdet_sf, cov)
+        if component=='integral':
+            nlnP, grad = gradtest_I(params, df_params, I,
+                                Igrad_mu, Igrad_s, Igrad_pi,
+                                Igrad_mudf, Igrad_sdf, Igrad_pidf,
+                                p, e_alpha, p_pi, e_alpha_pi, Sdet_sf, cov, cov_df)
+        if component=='prior_sf':
+            nlnP, grad = gradtest_prior(params, df_params, Prior,
+                        prgrad_mu, prgrad_s, prgrad_pi,
+                        p, e_alpha, p_pi, e_alpha_pi, Sdet_sf, cov)
+        if component=='full':
+            pass
+        if not get_grad: return nlnP
+        return nlnP, -grad
+
+    gradS = xgrad_s + Igrad_s + prgrad_s
+    grad = np.zeros((params.shape[0],6))
+    grad[:,:2] = xgrad_mu + Igrad_mu + prgrad_mu
+    grad[:,2] = gradS[:,0,0] + gradS[:,0,1]*cov/(2*params[:,2])
+    grad[:,3] = gradS[:,1,1] + gradS[:,0,1]*cov/(2*params[:,3])
+    grad[:,4] = gradS[:,0,1]*np.sqrt(params[:,2]*params[:,3])* 2*e_alpha/(1+e_alpha)**2
+    grad[:,5] = (xgrad_pi + Igrad_pi + prgrad_pi) * 2*np.pi*np.sqrt(Sdet_sf) * p_pi**2 * e_alpha_pi
+    grad = grad.flatten()
+
+    return  nlnP, -grad
 def lnlike(Xdf, params):
 
     function = lambda a, b: bivGaussMixture(params, a, b)
@@ -2923,17 +3094,14 @@ def TNC_sf(Xsf, priorParams, df_params, max_components=10, stdout=False,
                 gmm = mixture.BayesianGaussianMixture(n_component, n_init=1,
                                                       init_params='kmeans', tol=1e-5, max_iter=1000)
                 gmm.fit(Xsf)
-                params_bgm_pilogit = get_sfparams_logit(gmm, n_component)
-                params_i = params_bgm_pilogit
+                params_i = get_sfparams_logit(gmm, n_component)
             elif init=='kmeans':
                 weights = 1/bivGaussMixture(df_params, Xsf[:,0], Xsf[:,1])
                 # K-Means clustering of initialisation
                 #print(Xsf.shape, Xdf.shape)
                 params=kmeans_init(Xsf, Xdf, i, weights=weights)
                 #print(params)
-                params_kms_pilogit=transform_sfparams_invlogit(params)
-
-                params_i = params_kms_pilogit
+                params_i=transform_sfparams_invlogit(params)
 
             opt = op.minimize(calc_nlnP_grad_pilogit_NIW,  params_i,
                                           args=(Xsf, priorParams, df_params), method='TNC',
@@ -2992,7 +3160,170 @@ def TNC_sf(Xsf, priorParams, df_params, max_components=10, stdout=False,
 
     return sf_params_n[np.argmin(bic_vals)]
     #return sf_params_n[np.argmin(bic_vals)]
-def BGMM_df(Xdf, max_components=3, stdout=False):
+def TNC_sf_HBM(Xsf, priorParams, df_params, df_posterior, max_components=10, stdout=False,
+            init='BGM', Xdf=None):
+
+    bic_vals = np.zeros(max_components) + np.inf
+    post_vals = np.zeros(max_components) - np.inf
+    sf_params_n = {}
+    df_newparams_n = {}
+    for i in range(2, max_components):
+
+        n_component=i
+
+        # Simple GMM
+        if not init=='best':
+            if init=='BGM':
+                gmm = mixture.BayesianGaussianMixture(n_component, n_init=1,
+                                                      init_params='kmeans', tol=1e-5, max_iter=1000)
+                gmm.fit(Xsf)
+                params_bgm_pilogit = get_sfparams_logit(gmm, n_component)
+                sf_params_i = params_bgm_pilogit
+            elif init=='kmeans':
+                weights = 1/bivGaussMixture(df_params, Xsf[:,0], Xsf[:,1])
+                # K-Means clustering of initialisation
+                #print(Xsf.shape, Xdf.shape)
+                params=kmeans_init(Xsf, Xdf, i, weights=weights)
+                #print(params)
+                params_kms_pilogit=transform_sfparams_invlogit(params)
+
+                sf_params_i = params_kms_pilogit
+
+            params_i = np.vstack((sf_params_i, df_params))
+            opt = op.minimize(calc_nlnP_FullBHM,  params_i,
+                                          args=(Xsf, priorParams, df_posterior),
+                                          method='TNC',jac=True, options={'maxiter':1000}, tol=1e-5)
+            nlnp = calc_nlnP_FullBHM(opt.x, Xsf, priorParams, df_posterior, get_grad=False)
+
+        else:
+            params_pilogit = []
+            # BGM
+            gmm = mixture.BayesianGaussianMixture(n_component, n_init=1,
+                                                  init_params='kmeans', tol=1e-5, max_iter=1000)
+            gmm.fit(Xsf)
+            params_bgm_pilogit = get_sfparams_logit(gmm, n_component)
+            params_bgm_i = np.vstack((params_bgm_pilogit, df_params))
+            params_pilogit.insert(0, params_bgm_i)
+
+            # KMS
+            weights = 1/bivGaussMixture(df_params, Xsf[:,0], Xsf[:,1])
+            # K-Means clustering of initialisation
+            #print(Xsf.shape, Xdf.shape)
+            params=kmeans_init(Xsf, Xdf, i, weights=weights)
+            #print(params)
+            params_kms_pilogit=transform_sfparams_invlogit(params)
+            params_kms_i = np.vstack((params_kms_pilogit, df_params))
+            params_pilogit.insert(0, params_kms_i)
+
+            nlnp_trials = np.zeros(2)
+            opt_trials = [None, None]
+            methods = ['KMS', 'BGM']
+            for ii in range(2):
+                opt = op.minimize(calc_nlnP_FullBHM,  params_pilogit[ii],
+                                              args=(Xsf, priorParams, df_posterior), method='TNC',
+                                              jac=True, options={'maxiter':1000}, tol=1e-5)
+                nlnp_trials[ii] = calc_nlnP_FullBHM(opt.x, Xsf, priorParams, df_posterior, get_grad=False)
+                opt_trials[ii] = opt
+
+            nlnp = np.min(nlnp_trials)
+            method = methods[np.argmin(nlnp_trials)]
+            opt = opt_trials[np.argmin(nlnp_trials)]
+            print(method, nlnp_trials, '  Test: ', calc_nlnP_FullBHM(opt.x, Xsf, priorParams, df_posterior, get_grad=False))
+
+        bic_val = BIC(Xsf.shape[0], i*6, -nlnp)
+        bic_vals[i] = bic_val
+        post_vals[i] = -nlnp
+        if stdout:
+            print(opt.success, opt.message)
+            print(i, "   BIC: ", bic_val, "   lnP: ", -nlnp)
+
+        sf_params_n[i] = opt.x.reshape(-1,6)[:-df_params.shape[0]]
+        df_newparams_n[i] = opt.x.reshape(-1,6)[-df_params.shape[0]:]
+
+    if stdout:
+        print('Best components (posterior): ', np.argmax(post_vals))
+        print('Best components (BIC): ', np.argmin(bic_vals))
+
+    return sf_params_n[np.argmin(bic_vals)], df_newparams_n[np.argmin(bic_vals)]
+def TNC_sf_SFonly(Xsf, priorParams, df_params, max_components=10, stdout=False,
+            init='BGM', Xdf=None):
+
+    bic_vals = np.zeros(max_components) + np.inf
+    post_vals = np.zeros(max_components) - np.inf
+    sf_params_n = {}
+    df_newparams_n = {}
+    for i in range(2, max_components):
+
+        n_component=i
+
+        # Simple GMM
+        if not init=='best':
+            if init=='BGM':
+                gmm = mixture.BayesianGaussianMixture(n_component, n_init=1,
+                                                      init_params='kmeans', tol=1e-5, max_iter=1000)
+                gmm.fit(Xsf)
+                params_i = get_sfparams_logit(gmm, n_component)
+            elif init=='kmeans':
+                weights = 1/bivGaussMixture(df_params, Xsf[:,0], Xsf[:,1])
+                # K-Means clustering of initialisation
+                #print(Xsf.shape, Xdf.shape)
+                params=kmeans_init(Xsf, Xdf, i, weights=weights)
+                #print(params)
+                params_i=transform_sfparams_invlogit(params)
+
+            opt = op.minimize(calc_nlnP_SFOnly,  params_i,
+                                          args=(Xsf, priorParams, df_params),
+                                          method='TNC',jac=True, options={'maxiter':1000}, tol=1e-5)
+            nlnp = calc_nlnP_SFOnly(opt.x, Xsf, priorParams, df_params, get_grad=False)
+
+        else:
+            params_pilogit = []
+            # BGM
+            gmm = mixture.BayesianGaussianMixture(n_component, n_init=1,
+                                                  init_params='kmeans', tol=1e-5, max_iter=1000)
+            gmm.fit(Xsf)
+            params_bgm_i = get_sfparams_logit(gmm, n_component)
+            params_pilogit.insert(0, params_bgm_i)
+
+            # KMS
+            weights = 1/bivGaussMixture(df_params, Xsf[:,0], Xsf[:,1])
+            # K-Means clustering of initialisation
+            #print(Xsf.shape, Xdf.shape)
+            params=kmeans_init(Xsf, Xdf, i, weights=weights)
+            #print(params)
+            params_kms_i=transform_sfparams_invlogit(params)
+            params_pilogit.insert(0, params_kms_i)
+
+            nlnp_trials = np.zeros(2)
+            opt_trials = [None, None]
+            methods = ['KMS', 'BGM']
+            for ii in range(2):
+                opt = op.minimize(calc_nlnP_SFOnly,  params_pilogit[ii],
+                                              args=(Xsf, priorParams, df_params),
+                                              method='TNC', jac=True, options={'maxiter':1000}, tol=1e-5)
+                nlnp_trials[ii] = calc_nlnP_SFOnly(opt.x, Xsf, priorParams, df_params, get_grad=False)
+                opt_trials[ii] = opt
+
+            nlnp = np.min(nlnp_trials)
+            method = methods[np.argmin(nlnp_trials)]
+            opt = opt_trials[np.argmin(nlnp_trials)]
+            print(method, nlnp_trials, '  Test: ', calc_nlnP_SFOnly(opt.x, Xsf, priorParams, df_params, get_grad=False))
+
+        bic_val = BIC(Xsf.shape[0], i*6, -nlnp)
+        bic_vals[i] = bic_val
+        post_vals[i] = -nlnp
+        if stdout:
+            print(opt.success, opt.message)
+            print(i, "   BIC: ", bic_val, "   lnP: ", -nlnp)
+
+        sf_params_n[i] = opt.x.reshape(-1,6)
+
+    if stdout:
+        print('Best components (posterior): ', np.argmax(post_vals))
+        print('Best components (BIC): ', np.argmin(bic_vals))
+
+    return sf_params_n[np.argmin(bic_vals)]
+def BGMM_df(Xdf, max_components=20, stdout=False):
 
     bic_vals = np.zeros(max_components+1) + np.inf
     df_params_n = {}
@@ -3041,7 +3372,8 @@ def BGMM_emcee_ball(params, Xsf, priorParams, df_params, niter=200):
     sampler = emcee.EnsembleSampler(nwalkers, ndim, foo,
                                     args=(Xsf, priorParams, df_params))
     # Run emcee
-    _=sampler.run_mcmc(p0, niter)
+    for _ in tqdm(sampler.sample(p0, iterations=niter), total=niter):
+        pass
 
     return sampler
 def BGMM_emcee_ball_BHM(params, Xsf, priorParams, DFpost, niter=200):
@@ -3055,9 +3387,28 @@ def BGMM_emcee_ball_BHM(params, Xsf, priorParams, DFpost, niter=200):
     #p0[:,:,2:4] = np.abs(p0[:,:,2:4])
 
     p0 = p0.reshape(nwalkers, -1)
-    foo = lambda a, b, c, d: -calc_nlnP_NIW_DFfit(a, b, c, d)
+    foo = lambda a, b, c, d: -calc_nlnP_FullBHM(a, b, c, d, get_grad=False)
     sampler = emcee.EnsembleSampler(nwalkers, ndim, foo,
                                     args=(Xsf, priorParams, DFpost))
+    # Run emcee
+    for _ in tqdm(sampler.sample(p0, iterations=niter), total=niter):
+        pass
+
+    return sampler
+def BGMM_emcee_ball_SFonly(params, Xsf, priorParams, df_params, niter=200):
+    print('emcee with %d iterations...' % niter)
+
+    ndim=len(params.flatten())
+    nwalkers=ndim*2
+
+    p0 = np.repeat([params,], nwalkers, axis=0)
+    p0 = np.random.normal(loc=p0, scale=np.abs(p0/500))
+    #p0[:,:,2:4] = np.abs(p0[:,:,2:4])
+
+    p0 = p0.reshape(nwalkers, -1)
+    foo = lambda a, b, c, d: -calc_nlnP_SFOnly(a, b, c, d, get_grad=False)
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, foo,
+                                    args=(Xsf, priorParams, df_params))
     # Run emcee
     for _ in tqdm(sampler.sample(p0, iterations=niter), total=niter):
         pass
@@ -3110,8 +3461,6 @@ def kmeans_init(sample, df_sample, n_components, n_iter=10, max_iter=100, weight
         params[:,5] *= 0.9/maxima
 
     return params
-
-
 def bivGaussMixture(params, x, y):
 
     '''
@@ -3188,6 +3537,20 @@ def gradtest_like_all(params_sf, params_df, Xsf, Prior_sf, Prior_df):
         grad_anc = calc_nlnP_FullBHM(p0, Xsf, Prior_sf, Prior_df, component=component)[1].reshape(-1,6)
         like = lambda params: calc_nlnP_FullBHM(params, Xsf, Prior_sf, Prior_df, component=component, get_grad=False)
         grad_app = op.approx_fprime(p0, like, 0.001).reshape(-1, 6)
+        for i in range(grad_anc.shape[0]):
+            print(grad_anc[i])
+            print(grad_app[i])
+            print("")
+        print("")
+def gradtest_like_all_sfonly(params_sf, params_df, Xsf, Prior_sf):
+
+    p0 = params_sf.flatten()
+
+    for component in ['xsf', 'xdf', 'integral', 'prior_sf', 'prior_df', 'full']:
+        print(component)
+        grad_anc = calc_nlnP_SFOnly(p0, Xsf, Prior_sf, params_df, component=component)[1].reshape(-1,6)
+        like = lambda params: calc_nlnP_SFOnly(params, Xsf, Prior_sf, params_df, component=component, get_grad=False)
+        grad_app = op.approx_fprime(p0, like, 1e-6).reshape(-1, 6)
         for i in range(grad_anc.shape[0]):
             print(grad_anc[i])
             print(grad_app[i])
