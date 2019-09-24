@@ -84,15 +84,19 @@ def obsSF_classtodict(obsSF_classes):
 
     '''
 
+    obsSF_classes = obsSF_classes.copy()
     obsSF_dicts = {}
     for field in obsSF_classes: # Load classes from dictionaries
 
         # Get dictionary of attributes from class
         obsSF_field = vars(obsSF_classes[field])
         # Get dictionary of attributes from classes within obsSF_classes
-        obsSF_field['DF_model'] = vars(obsSF_classes[field].DF_model)
-        obsSF_field['SF_model'] = vars(obsSF_classes[field].SF_model)
-        obsSF_field['SF_model']['photoDF'] = vars(obsSF_field['SF_model']['photoDF'])
+        try: obsSF_field['DF_model'] = vars(obsSF_classes[field].DF_model)
+        except TypeError: obsSF_field['DF_model'] = obsSF_classes[field].DF_model
+        try: obsSF_field['SF_model'] = vars(obsSF_classes[field].SF_model)
+        except TypeError: obsSF_field['SF_model'] = obsSF_classes[field].SF_model
+        try: obsSF_field['SF_model']['photoDF'] = vars(obsSF_field['SF_model']['photoDF'])
+        except TypeError: obsSF_field['SF_model']['photoDF'] = obsSF_field['SF_model']['photoDF']
 
         # Add class instance to dictionary
         obsSF_dicts[field] = obsSF_field

@@ -178,7 +178,7 @@ def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcal
     pointings.rename(index=str, columns=dict(zip(point_coords, angle_coords)), inplace=True)
     df = ArrayMechanics.AnglePointsToPointingsMatrix(df, pointings, angle_coords[0], angle_coords[1], halfangle,
                                                         IDtype = IDtype, Nsample=Nsample, progress=progress)
-    print("")
+    if progress: print("")
 
     iterated=0
 

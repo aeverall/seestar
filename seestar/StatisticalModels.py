@@ -1649,6 +1649,10 @@ class BGM_TNC():
         # Shape of parameter set (number of components x parameters per component)
         self.param_shape = ()
 
+        # Boundaries used to generate NIW priors
+        self.prior_sfBounds = prior_sfBounds
+        if runningL: print('Prior boundaries: ', prior_sfBounds)
+
         # Coordinate covariance matrix
         if sig_xy is None:
             z_ = np.zeros(len(x))
@@ -1696,10 +1700,6 @@ class BGM_TNC():
             #if self.runningL:
             #    print 'DF integral = ', numericalIntegrate_precompute(function, self.x_2d, self.y_2d)
             self.ndf = len(self.photoDF.x)
-
-            # Boundaries used to generate NIW priors
-            self.prior_sfBounds = prior_sfBounds
-            if runningL: print('Prior boundaries: ', prior_sfBounds)
         else: self.ndf = None
 
 
@@ -1769,10 +1769,12 @@ class BGM_TNC():
         '''
 
         if not self.priorDF:
+            # Generate NIW prior parameters
+            self.priorDFParams = NIW_prior_params(self.prior_sfBounds, shrinker=7.5)
             params = self.optimize(None, 'BGM')
         if self.priorDF:
             # Generate NIW prior parameters
-            self.priorParams = NIW_prior_params(self.prior_sfBounds)
+            self.priorParams = NIW_prior_params(self.prior_sfBounds, shrinker=7.5)
             # Run optimize
             params = self.optimize(self.priorParams, 'TNC_SFonly')
 
@@ -1817,7 +1819,7 @@ class BGM_TNC():
         if method=='TNC':
             Xdf = feature_scaling(self.photoDF.x, self.photoDF.y, self.mux, self.muy, self.sx, self.sy)
             Xdf = np.vstack((Xdf[0], Xdf[1])).T
-            raw_params = TNC_sf(X, priorParams, self.params_df, stdout=self.runningL,
+            raw_params = TNC_sf(X, self.priorParams, self.params_df, stdout=self.runningL,
                                 Xdf=Xdf, init='best', max_components=self.params_df.shape[0])
             params = transform_sfparams_logit(raw_params)
         elif method=='TNC_HBM':
@@ -1828,23 +1830,23 @@ class BGM_TNC():
                             gmm.means_, gmm.mean_precision_,
                             gmm.covariances_*(gmm.degrees_of_freedom_[:,np.newaxis,np.newaxis]-3),
                             gmm.degrees_of_freedom_]
-            raw_params, new_df_params = TNC_sf_HBM(X, priorParams, self.params_df, df_posterior, stdout=self.runningL,
+            raw_params, new_df_params = TNC_sf_HBM(X, self.priorParams, self.params_df, df_posterior, stdout=self.runningL,
                                             Xdf=Xdf, init='best', max_components=self.params_df.shape[0])
             params = transform_sfparams_logit(raw_params)
             self.new_df_params = new_df_params
         elif method=='TNC_SFonly':
             Xdf = feature_scaling(self.photoDF.x, self.photoDF.y, self.mux, self.muy, self.sx, self.sy)
             Xdf = np.vstack((Xdf[0], Xdf[1])).T
-            raw_params = TNC_sf_SFonly(X, priorParams, self.params_df, stdout=self.runningL,
+            raw_params = TNC_sf_SFonly(X, self.priorParams, self.params_df, stdout=self.runningL,
                                             Xdf=Xdf, init='best', max_components=self.params_df.shape[0])
             params = transform_sfparams_logit(raw_params)
         elif method=='BGM':
             print('Running BGM')
-            params, gmm = BGMM_df(X, stdout=self.runningL)
+            params, gmm = BGMM_df(X, self.priorDFParams, stdout=self.runningL)
             self.gmm_df = gmm
         elif method=='emcee':
             params = transform_sfparams_invlogit(self.params_f_scaled)
-            self.sampler = BGMM_emcee_ball(params, X, priorParams, self.params_df, niter=niter)
+            self.sampler = BGMM_emcee_ball(params, X, self.priorParams, self.params_df, niter=niter)
             return self.sampler
         elif method=='emceeBHM':
             Xdf = feature_scaling(self.photoDF.x, self.photoDF.y, self.mux, self.muy, self.sx, self.sy)
@@ -1858,11 +1860,11 @@ class BGM_TNC():
                             gmm.covariances_*(gmm.degrees_of_freedom_[:,np.newaxis,np.newaxis]-3),
                             gmm.degrees_of_freedom_]
             params = np.vstack((params, df_params))
-            self.sampler = BGMM_emcee_ball_BHM(params, X, priorParams, df_posterior, niter=niter)
+            self.sampler = BGMM_emcee_ball_BHM(params, X, self.priorParams, df_posterior, niter=niter)
             return self.sampler
         elif method=='emceeSFonly':
             params = transform_sfparams_invlogit(self.params_f_scaled)
-            self.sampler = BGMM_emcee_ball_SFonly(params, X, priorParams, self.params_df, niter=niter)
+            self.sampler = BGMM_emcee_ball_SFonly(params, X, self.priorParams, self.params_df, niter=niter)
             return self.sampler
         else:
             raise ValueError('What is the method???')
@@ -1941,7 +1943,7 @@ def Gaussian_int(delta, Sinv, Sdet):
     return norm * np.exp(exponent)
 
 # Manipulating parameters
-def NIW_prior_params(bounds, l0=0.001, nu0=2., shrinker=6.):
+def NIW_prior_params(bounds, l0=1e-4, nu0=2., shrinker=5):
 
     mu0 = (bounds[:,1] + bounds[:,0])/2
     std0 = (bounds[:,1] - bounds[:,0])/2
@@ -1949,6 +1951,7 @@ def NIW_prior_params(bounds, l0=0.001, nu0=2., shrinker=6.):
     #mu0_scaled = np.mean(Xsf, axis=0)
     #Psi0 = np.mean((Xsf-mu0)[...,np.newaxis] * (Xsf-mu0)[...,np.newaxis,:], axis=0)
     priorParams = [mu0, l0, Psi0, nu0]
+    print('priorParams: ', priorParams)
 
     return priorParams
 def get_params(gmm_inst, Nstar, n_components):
@@ -2998,8 +3001,6 @@ def calc_nlnP_SFOnly(params, Xsf, NIWprior, df_params,
     params_original = params.copy()
     params_original[:,4] = corr.copy()
     params_original[:,5] = pi
-    if np.sum(Sdet_sf<0)>0:
-        print(corr)
     # Max SF prior
     gmm_maxima = gradient_rootfinder(params_original, Sinv_sf, 1/(2*np.pi*np.sqrt(Sdet_sf)))
     #print(gmm_maxima)
@@ -3035,9 +3036,6 @@ def calc_nlnP_SFOnly(params, Xsf, NIWprior, df_params,
     Prior = np.sum(Prior0 + Priormu + PriorS)
 
     nlnP = - ( np.sum(np.log(m_i)) - np.sum(I) + Prior )
-    if np.isnan(nlnP):
-        print(params)
-        print(params_original)
     if (not get_grad) and (not test):
         return nlnP
 
@@ -3071,7 +3069,6 @@ def calc_nlnP_SFOnly(params, Xsf, NIWprior, df_params,
     prgrad_s = 2*prgrad_s - pr_diag
 
     if test:
-
         if component=='xsf':
             nlnP, grad = gradtest_x(params, df_params, m_i, xgrad_mu, xgrad_s, xgrad_pi,
                                 p, e_alpha, p_pi, e_alpha_pi, Sdet_sf, cov)
@@ -3443,7 +3440,7 @@ def TNC_sf_SFonly(Xsf, priorParams, df_params, max_components=10, stdout=False,
         print('Best components (BIC): ', np.argmin(bic_vals))
 
     return sf_params_n[np.argmin(bic_vals)]
-def BGMM_df(Xdf, max_components=20, stdout=False):
+def BGMM_df(Xdf, priorParams, max_components=25, stdout=False):
 
     bic_vals = np.zeros(max_components+1) + np.inf
     df_params_n = {}
@@ -3455,7 +3452,8 @@ def BGMM_df(Xdf, max_components=20, stdout=False):
         gmm = mixture.BayesianGaussianMixture(n_components=i, n_init=3,
                                               init_params='kmeans', tol=1e-5, max_iter=2000,
                                               weight_concentration_prior_type='dirichlet_distribution', weight_concentration_prior=1./float(i),
-                                              mean_precision_prior=0.1, degrees_of_freedom_prior=2)# covariance_prior= 'NA', mean_prior= 'NA',
+                                              mean_precision_prior=priorParams[1], degrees_of_freedom_prior=priorParams[3],
+                                              covariance_prior= priorParams[2], mean_prior=priorParams[0])
         gmm.fit(Xdf)
 
         params = get_params(gmm, Xdf.shape[0], i)

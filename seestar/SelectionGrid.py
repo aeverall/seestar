@@ -127,7 +127,7 @@ class SFGenerator():
     def __call__(self, catalogue, method='intrinsic',
                 coords = ['age', 'mh', 's', 'mass'],
                 angle_coords=['phi','theta'],
-                rng_phi=(0, 2*np.pi), rng_th=(-np.pi/2, np.pi/2)):
+                rng_phi=(0, 2*np.pi), rng_th=(-np.pi/2, np.pi/2), progress=False):
 
         '''
         __call__ - Once the selection function has been included, this takes in a catalogue
@@ -163,18 +163,18 @@ class SFGenerator():
         if self.style == 'multiobj':
             # Drop column which will be readded if this has been calculated before.
             if 'SFprob' in list(catalogue): catalogue = catalogue.drop('SFprob', axis=1)
-            print('Calculating all SF values...')
+            if progress: print('Calculating all SF values...')
             catalogue = FieldUnions.GenerateMatrices(catalogue, self.pointings,
                                                     angle_coords, point_coords, 'halfangle',
-                                                    SFcalc, IDtype=self.fieldlabel_type)
-            print('...done')
-            #print catalogue.SFprob
+                                                    SFcalc, IDtype=self.fieldlabel_type, progress=progressFalse)
+            if progress: print('...done')
+            if progress: print catalogue.SFprob
 
             # The SF probabilities are used to calculate the field union.
-            print('Calculating union contribution...')
+            if progress: print('Calculating union contribution...')
             FUInstance = FieldUnions.FieldUnion()
             catalogue['union'] = FUInstance(catalogue.SFprob)
-            print('...done')
+            if progress: print('...done')
         elif self.style == 'allsky':
             npixel = len(self.pointings)
             nside = hp.npix2nside( npixel )
@@ -300,6 +300,15 @@ class SFGenerator():
 
         # Retrieve dictionary from class instances
         obsSF_dicts = SFInstanceClasses.obsSF_classtodict(self.obsSF)
+        for field in obsSF_dicts:
+            obsSF_dicts[field]['distribution'] = None
+            obsSF_dicts[field]['DF_model']['distribution'] = None
+            obsSF_dicts[field]['SF_model']['distribution'] = None
+            obsSF_dicts[field]['SF_model']['photoDF']['distribution'] = None
+            try: obsSF_dicts[field]['DF_model']['sampler'].lnprobfn = None
+            except KeyError: pass
+            try: obsSF_dicts[field]['SF_model']['sampler'].lnprobfn = None
+            except KeyError: pass
 
         # Decide whether to save pickled instance
         save_bool = None
@@ -426,7 +435,7 @@ class SFGenerator():
 
         if part=='df':
             DF_model = StatisticalModels.BGM_TNC(x=photo_points.appMag, y=photo_points.Colour, rngx=mag_range, rngy=col_range,
-                                                    runscaling=True, scales=scales, runningL=True)
+                                                    runscaling=True, scales=scales, runningL=True, prior_sfBounds=prior_sfBounds)
             result = DF_model.optimizeParams()
             #result_emcee = model.optimizeParams(method='emceeBall', init='reset')
             SF_model = StatisticalModels.FlatRegion()
@@ -450,6 +459,35 @@ class SFGenerator():
                                     SF_colrange = col_range)
 
         self.obsSF_dicts[field] = vars(instanceSF)
+        # Initialise dictionary
+        self.obsSF = SFInstanceClasses.obsSF_dicttoclass(self.obsSF_dicts)
+    def rerun_sf(self):
+
+        for field in self.pointings.fieldID:
+            spectro_points, photo_points, mag_range, col_range, prior_sfBounds = \
+                    cleanPoints(self.get_spectro, self.get_photo, field, self.pointings.loc[field], self.cm_limits)
+            scales = [np.mean(spectro_points.appMag), np.mean(spectro_points.Colour),
+                      np.std(spectro_points.appMag), np.std(spectro_points.Colour)]
+
+            DF_model = self.obsSF[field].DF_model
+            scales = [DF_model.mux, DF_model.muy, DF_model.sx, DF_model.sy]
+            SF_model = StatisticalModels.BGM_TNC(x=spectro_points.appMag, y=spectro_points.Colour, rngx=mag_range, rngy=col_range,
+                                                runscaling=True, scales=scales, runningL=True,
+                                                priorDF=True, photoDF=DF_model, prior_sfBounds=prior_sfBounds)
+            result = SF_model.optimizeParams()
+            #result_emcee = model.optimizeParams(method='emceeBall', init='reset')
+
+            # Store information inside an SFInstanceClasses.observableSF instance where the selection function is calculated.
+            instanceSF = SFInstanceClasses.observableSF(field)
+            SFInstanceClasses.setattrs(instanceSF,
+                                        DF_model = vars(DF_model),
+                                        DF_magrange = mag_range,
+                                        DF_colrange = col_range,
+                                        SF_model = vars(SF_model),
+                                        SF_magrange = mag_range,
+                                        SF_colrange = col_range)
+
+            self.obsSF_dicts[field] = vars(instanceSF)
         # Initialise dictionary
         self.obsSF = SFInstanceClasses.obsSF_dicttoclass(self.obsSF_dicts)
 
@@ -689,7 +727,7 @@ def _iterateField(get_spectro, get_photo, field, fieldpointing,
         elif spectro_model[0]=='BGM_TNC':
 
             DF_model = StatisticalModels.BGM_TNC(x=photo_points.appMag, y=photo_points.Colour, rngx=mag_range, rngy=col_range,
-                                                    runscaling=True, scales=scales, runningL=True)
+                                                    runscaling=True, scales=scales, runningL=True, prior_sfBounds=prior_sfBounds)
             result = DF_model.optimizeParams()
             #result_emcee = model.optimizeParams(method='emceeBall', init='reset')
 
@@ -1041,7 +1079,7 @@ def PoissonLikelihood(points,
         # Generate the model
         if datatype=='photo':
             model = StatisticalModels.BGM_TNC(x=x, y=y, rngx=mag_range, rngy=col_range,
-                                            runscaling=True, scales=scales)
+                                            runscaling=True, scales=scales, prior_sfBounds=prior_sfBounds)
             model.runningL = True
             result = model.optimizeParams()
             #result_emcee = model.optimizeParams(method='emceeBall', init='reset')
