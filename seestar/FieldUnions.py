@@ -126,7 +126,7 @@ class FieldUnion():
         return product*sign
 
 
-def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcalc,
+def GenerateMatrices(df, pointings, angle_coords, point_coords, ID_coords, halfangle, SFcalc,
                     IDtype = str, Nsample = 10000, test=False, progress=True):
 
     '''
@@ -174,12 +174,7 @@ def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcal
                 - 'field_info': list of tuples - (P(S|v), fieldID) - (float, fieldIDtype)
     '''
     Nsample = FieldAssignment.iterLimit(len(pointings))
-
     pointings.rename(index=str, columns=dict(zip(point_coords, angle_coords)), inplace=True)
-    df = ArrayMechanics.AnglePointsToPointingsMatrix(df, pointings, angle_coords[0], angle_coords[1], halfangle,
-                                                        IDtype = IDtype, Nsample=Nsample, progress=progress)
-    if progress: print("")
-
     iterated=0
 
     # Iterate over portions of size, Nsample to constrain memory usage.
@@ -195,7 +190,7 @@ def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcal
         for field in pointings.fieldID:
 
             # Condition: Boolean series - field is in the points list
-            condition = np.array(dfi.points.map(lambda points: field in points))
+            condition = np.array(dfi[ID_coords].map(lambda points: field in points))
             # Create array for probability values
             array = np.zeros(len(dfi)) - 1
             # Calculate probabilities
@@ -232,14 +227,14 @@ def GenerateMatrices(df, pointings, angle_coords, point_coords, halfangle, SFcal
         SFprob = pd.DataFrame(pd.Series(listoflists), columns=['SFprob'])
 
         # zip datatypes together - tupes of (sf, field)
-        field_info = [list(zip(SFprob.SFprob.iloc[i], dfi.points.iloc[i])) for i in range(len(dfi))]
-        field_info = pd.DataFrame(pd.Series(field_info), columns=['field_info'])
+        #field_info = [list(zip(SFprob.SFprob.iloc[i], dfi.points.iloc[i])) for i in range(len(dfi))]
+        #field_info = pd.DataFrame(pd.Series(field_info), columns=['field_info'])
 
         # Reset index to merge on position then bring index back
         if 'index' in list(dfi): dfi.drop('index', axis=1, inplace=True)
         dfi.reset_index(inplace=True)
         dfi = dfi.merge(SFprob, how='inner', right_index=True, left_index=True)
-        dfi = dfi.merge(field_info, how='inner', right_index=True, left_index=True)
+        #dfi = dfi.merge(field_info, how='inner', right_index=True, left_index=True)
         dfi.index = dfi['index']
         dfi.drop('index', axis=1, inplace=True)
 

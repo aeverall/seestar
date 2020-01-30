@@ -2943,7 +2943,8 @@ def calc_nlnP_FullBHM(params, Xsf, NIWprior, Post_df,
 
     return  nlnP, -grad
 def calc_nlnP_SFOnly(params, Xsf, NIWprior, df_params,
-                    get_grad=True, stdout=False,test=False, component='',
+                    get_grad=True, stdout=False,test=False, L_only=False,
+                    component='',
                     component_order=None):
 
     ndim = len(params)
@@ -3036,6 +3037,8 @@ def calc_nlnP_SFOnly(params, Xsf, NIWprior, df_params,
     Prior = np.sum(Prior0 + Priormu + PriorS)
 
     nlnP = - ( np.sum(np.log(m_i)) - np.sum(I) + Prior )
+    if L_only:
+        return - (np.sum(np.log(m_i)) - np.sum(I))
     if (not get_grad) and (not test):
         return nlnP
 
@@ -3193,6 +3196,10 @@ def lnlike(Xdf, params):
     return lnL
 def BIC(n, k, lnL):
     return k*np.log(n) - 2*lnL
+def AIC(n, k, lnL):
+    return 2*k - 2*lnL
+def AICc(n, k, lnL):
+    return 2*k - 2*lnL + (2*k**2 + 2*k)/(n-k-1)
 
 # Optimization methods
 def TNC_sf(Xsf, priorParams, df_params, max_components=10, stdout=False,
@@ -3369,7 +3376,7 @@ def TNC_sf_SFonly(Xsf, priorParams, df_params, max_components=10, stdout=False,
     post_vals = np.zeros(max_components) - np.inf
     sf_params_n = {}
     df_newparams_n = {}
-    for i in range(2, max_components):
+    for i in range(1, max_components):
 
         n_component=i
 
@@ -3426,15 +3433,17 @@ def TNC_sf_SFonly(Xsf, priorParams, df_params, max_components=10, stdout=False,
             opt = opt_trials[np.argmin(nlnp_trials)]
             print(method, nlnp_trials, '  Test: ', calc_nlnP_SFOnly(opt.x, Xsf, priorParams, df_params, get_grad=False))
 
-        bic_val = BIC(Xsf.shape[0], i*6, -nlnp)
+        nlnL = calc_nlnP_SFOnly(opt.x, Xsf, priorParams, df_params, get_grad=False, L_only=True)
+        bic_val = BIC(Xsf.shape[0], i*6, -nlnL)
         bic_vals[i] = bic_val
         post_vals[i] = -nlnp
         if stdout:
-            print(opt.success, opt.message)
-            print(i, "   BIC: ", bic_val, "   lnP: ", -nlnp)
+            #print(opt.success, opt.message)
+            print(i, "   BIC: ", bic_val, "   lnP: ", -nlnp, "   lnL: ", -nlnL)
+            print(i, "   BIC: ", bic_val, "   AIC: ", AIC(Xsf.shape[0], i*6, -nlnL), "   AICc: ", AICc(Xsf.shape[0], i*6, -nlnL))
 
         sf_params_n[i] = opt.x.reshape(-1,6)
-
+    print("Using TNC_sf_SFonly")
     if stdout:
         print('Best components (posterior): ', np.argmax(post_vals))
         print('Best components (BIC): ', np.argmin(bic_vals))
@@ -3470,7 +3479,7 @@ def BGMM_df(Xdf, priorParams, max_components=25, stdout=False):
                 break
             #if (bic_vals[i]>bic_vals[i-1]) and (bic_vals[i-1]>bic_vals[i-2]):
             #    break
-
+    print("Using BGMM_df.")
     if stdout:
         print('Best components: ', np.argmin(bic_vals))
 

@@ -126,7 +126,7 @@ class SFGenerator():
 
     def __call__(self, catalogue, method='intrinsic',
                 coords = ['age', 'mh', 's', 'mass'],
-                angle_coords=['phi','theta'],
+                angle_coords=['phi','theta'], ID_coords=None,
                 rng_phi=(0, 2*np.pi), rng_th=(-np.pi/2, np.pi/2), progress=False):
 
         '''
@@ -147,7 +147,8 @@ class SFGenerator():
                     - 'inion', 'field_info', 'points'
         '''
 
-        catalogue = catalogue[coords+angle_coords]
+        if ID_coords is None: catalogue = catalogue[coords+angle_coords]
+        else: catalogue = catalogue[coords+angle_coords+[ID_coords]]
 
         if method=='observable':
             SFcalc = lambda field, df: np.array( self.obsSF[field]((df[coords[0]], df[coords[1]])) )
@@ -162,13 +163,25 @@ class SFGenerator():
 
         if self.style == 'multiobj':
             # Drop column which will be readded if this has been calculated before.
-            if 'SFprob' in list(catalogue): catalogue = catalogue.drop('SFprob', axis=1)
+            #if 'SFprob' in list(catalogue): catalogue = catalogue.drop('SFprob', axis=1)
+
+            # Getting field IDs of points
+            if ID_coords is None:
+                if progress: print('Assigning fields...')
+                catalogue = AM.AnglePointsToPointingsMatrix(catalogue, self.pointings,
+                                                                        angle_coords[0], angle_coords[1], 'halfangle',
+                                                                        IDtype=self.fieldlabel_type,
+                                                                        Nsample=FieldAssignment.iterLimit(len(self.pointings)))
+                ID_coords = 'points'
+                if progress: print('...done')
+
             if progress: print('Calculating all SF values...')
             catalogue = FieldUnions.GenerateMatrices(catalogue, self.pointings,
-                                                    angle_coords, point_coords, 'halfangle',
-                                                    SFcalc, IDtype=self.fieldlabel_type, progress=progressFalse)
-            if progress: print('...done')
-            if progress: print catalogue.SFprob
+                                                    angle_coords, point_coords, ID_coords, 'halfangle',
+                                                    SFcalc, IDtype=self.fieldlabel_type, progress=progress)
+            if progress:
+                print('...done')
+                print catalogue.SFprob
 
             # The SF probabilities are used to calculate the field union.
             if progress: print('Calculating union contribution...')
