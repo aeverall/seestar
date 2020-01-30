@@ -27,9 +27,7 @@ Functions
                         in angles (smallest angle displacement)
 '''
 
-import numpy as np
-import pandas as pd
-import healpy as hp
+import numpy as np, pandas as pd
 from itertools import product
 import re, pickle, multiprocessing
 import cProfile, pstats, time

@@ -23,7 +23,8 @@ setup(
 
     # Project uses reStructuredText, so ensure that the docutils get
     # installed or upgraded on the target machine
-    install_requires=['numpy', 'pandas', 'scipy', 'regex', 'matplotlib', 'seaborn'],
+    install_requires=['numpy', 'pandas', 'scipy', 'matplotlib', 'emcee', 'mpmath',
+                      'scikit-learn', 'tqdm', 'healpy', 'future', 'psutil', 'dill', 'h5py'],
 
     setup_requires=["pytest-runner"],
     tests_require=["pytest"],
